@@ -1,0 +1,89 @@
+# Render.com blueprint — deploys the API and the web app from this monorepo.
+# In Render: New + → Blueprint → pick this repo. Then fill the secret env vars
+# (marked sync:false) and add your custom domains.
+services:
+  # ---------------------------------------------------------------- API
+  - type: web
+    name: gc4s-api
+    runtime: node
+    plan: starter # "free" spins down when idle; "starter" stays warm
+    region: frankfurt # pick the region closest to your Neon DB
+    buildCommand: npm install && npm run build:shared && npm run prisma:generate -w @gc4s/api && npm run prisma:deploy -w @gc4s/api && npm run build -w @gc4s/api
+    startCommand: npm run start -w @gc4s/api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WEB_URL
+        value: https://www.giftcard4sale.com
+      - key: API_URL
+        value: https://api.giftcard4sale.com
+      - key: CORS_ORIGINS
+        value: https://giftcard4sale.com,https://www.giftcard4sale.com
+      - key: JWT_SECRET
+        generateValue: true # Render generates a strong secret
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # --- secrets you paste in the Render dashboard ---
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: MAIL_FROM
+        value: GiftCard4Sale <no-reply@giftcard4sale.com>
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:admin@giftcard4sale.com
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_PUBLIC_URL
+        sync: false
+      - key: PAYOUT_PROVIDER
+        value: manual
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: RATE_NGN_PER_USDT
+        value: "1650"
+      - key: RATE_NGN_PER_GHS
+        value: "110"
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+
+  # ---------------------------------------------------------------- Web
+  - type: web
+    name: gc4s-web
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm install && npm run build:shared && npm run build -w @gc4s/web
+    startCommand: npm run start -w @gc4s/web
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://api.giftcard4sale.com
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://www.giftcard4sale.com

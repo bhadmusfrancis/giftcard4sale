@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gc4s_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gc4s
+      POSTGRES_PASSWORD: gc4s_password
+      POSTGRES_DB: gc4s
+    ports:
+      - "5432:5432"
+    volumes:
+      - gc4s_pgdata:/var/lib/postgresql/data
+
+  # Optional: local mail catcher so you can see verification / notification emails in dev.
+  # Open http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: gc4s_mail
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  gc4s_pgdata:

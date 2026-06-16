@@ -1,0 +1,26 @@
+node_modules/
+dist/
+.next/
+out/
+build/
+coverage/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# uploads (local dev storage)
+apps/api/uploads/
+
+# logs
+*.log
+npm-debug.log*
+
+# os
+.DS_Store
+Thumbs.db
+
+# prisma
+apps/api/prisma/*.db
+apps/api/prisma/migrations/dev.db*

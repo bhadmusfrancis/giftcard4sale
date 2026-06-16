@@ -1,0 +1,26 @@
+{
+  "name": "giftcard4sale",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GiftCard4Sale.com - sell gift cards for USDT, Naira or Cedi.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @gc4s/shared",
+    "dev:api": "npm run dev -w @gc4s/api",
+    "dev:web": "npm run dev -w @gc4s/web",
+    "dev": "npm run build:shared && concurrently -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "db:up": "docker compose up -d db",
+    "db:migrate": "npm run prisma:migrate -w @gc4s/api",
+    "db:seed": "npm run seed -w @gc4s/api",
+    "setup": "npm install && npm run build:shared && npm run db:up && npm run db:migrate && npm run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

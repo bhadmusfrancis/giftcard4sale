@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum CardMedium {
+  PHYSICAL
+  ECODE
+}
+
+enum ReceiptType {
+  NONE
+  CASH
+  DEBIT
+}
+
+enum PayoutCurrency {
+  USDT
+  NGN
+  GHS
+}
+
+enum TradeStatus {
+  PENDING
+  PROCESSING
+  INFO_REQUESTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum TxnType {
+  TRADE_CREDIT
+  WITHDRAWAL_DEBIT
+  TRANSFER_DEBIT
+  TRANSFER_CREDIT
+  REFERRAL_BONUS
+  ADMIN_ADJUSTMENT
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  passwordHash      String
+  displayName       String?
+  avatarUrl         String?
+  role              UserRole @default(USER)
+
+  emailVerified     Boolean  @default(false)
+  verifyToken       String?
+  verifyTokenExp    DateTime?
+  resetToken        String?
+  resetTokenExp     DateTime?
+
+  // reputation
+  goodScore         Int      @default(0)
+  badScore          Int      @default(0)
+  trustLevel        Int      @default(1)
+
+  // wallet balances (kept as Decimal for money math)
+  balanceUsdt       Decimal  @default(0) @db.Decimal(20, 6)
+  balanceNgn        Decimal  @default(0) @db.Decimal(20, 2)
+  balanceGhs        Decimal  @default(0) @db.Decimal(20, 2)
+
+  // referral
+  referralCode      String   @unique
+  referredById      String?
+  referredBy        User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals         User[]   @relation("Referrals")
+
+  // push subscriptions (JSON array of PushSubscription)
+  pushSubscriptions PushSubscription[]
+
+  bankAccounts      BankAccount[]
+  trades            Trade[]
+  withdrawals       Withdrawal[]
+  transactions      WalletTransaction[]
+  referralEarnings  ReferralEarning[]  @relation("Earner")
+  generatedEarnings ReferralEarning[]  @relation("Source")
+  notifications     Notification[]
+  sentMessages      TradeMessage[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model CardType {
+  id          String   @id @default(cuid())
+  name        String   @unique // e.g. "Apple/iTunes"
+  slug        String   @unique // e.g. "apple-itunes"
+  sellSlug    String   @unique // e.g. "sell-apple-itunes-gift-card"
+  description String?
+  imageUrl    String?
+  active      Boolean  @default(true)
+  rates       Rate[]
+  trades      Trade[]
+  landingPage LandingPage?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Rate {
+  id            String     @id @default(cuid())
+  cardType      CardType   @relation(fields: [cardTypeId], references: [id], onDelete: Cascade)
+  cardTypeId    String
+  country       String
+  currency      String // face currency of the card, e.g. USD, GBP
+  minDenom      Int?
+  maxDenom      Int?
+  medium        CardMedium @default(PHYSICAL)
+  nairaPerUnit  Decimal    @db.Decimal(20, 4) // SLOW base rate, NGN per unit
+  speed         String? // SLOW | FAST (kept for audit)
+  active        Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([cardTypeId, country, medium])
+}
+
+// Live exchange rates + reduction config, single editable row (latest wins).
+model RateConfig {
+  id                    String   @id @default(cuid())
+  ngnPerUsdt            Decimal  @db.Decimal(20, 4)
+  ngnPerGhs             Decimal  @db.Decimal(20, 4)
+  nairaReductionPercent Int      @default(20)
+  fxReductionPercent    Int      @default(30)
+  referralPercent       Int      @default(1)
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+}
+
+model Trade {
+  id              String         @id @default(cuid())
+  user            User           @relation(fields: [userId], references: [id])
+  userId          String
+  cardType        CardType       @relation(fields: [cardTypeId], references: [id])
+  cardTypeId      String
+
+  country         String
+  currency        String
+  medium          CardMedium
+  receiptType     ReceiptType    @default(NONE)
+  cardAmount      Decimal        @db.Decimal(20, 2) // face value in card currency
+  payoutCurrency  PayoutCurrency
+
+  // Quote snapshot at creation time
+  nairaPerUnit    Decimal        @db.Decimal(20, 4)
+  effectiveRate   Decimal        @db.Decimal(20, 6)
+  quotedPayout    Decimal        @db.Decimal(20, 6)
+
+  // What is actually paid (admin can adjust)
+  finalPayout     Decimal?       @db.Decimal(20, 6)
+
+  status          TradeStatus    @default(PENDING)
+  ecodes          String? // pasted codes (for ECODE trades)
+  notes           String?
+  rejectionReason String?
+
+  attachments     TradeAttachment[]
+  messages        TradeMessage[]
+  transaction     WalletTransaction?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([userId, status])
+}
+
+model TradeAttachment {
+  id        String   @id @default(cuid())
+  trade     Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  tradeId   String
+  url       String
+  filename  String
+  createdAt DateTime @default(now())
+}
+
+model TradeMessage {
+  id        String   @id @default(cuid())
+  trade     Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  tradeId   String
+  sender    User     @relation(fields: [senderId], references: [id])
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([tradeId])
+}
+
+model BankAccount {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  bankName      String
+  accountNumber String
+  accountName   String
+  withdrawals   Withdrawal[]
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Withdrawal {
+  id             String           @id @default(cuid())
+  user           User             @relation(fields: [userId], references: [id])
+  userId         String
+  currency       PayoutCurrency
+  amount         Decimal          @db.Decimal(20, 6)
+
+  // Destination: for NGN -> bank account; for USDT -> wallet address
+  bankAccountId  String?
+  bankAccount    BankAccount? @relation(fields: [bankAccountId], references: [id])
+  destinationAddress String?
+
+  status         WithdrawalStatus @default(PENDING)
+  adminNote      String?
+  transaction    WalletTransaction?
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([userId, status])
+}
+
+model WalletTransaction {
+  id           String         @id @default(cuid())
+  user         User           @relation(fields: [userId], references: [id])
+  userId       String
+  type         TxnType
+  currency     PayoutCurrency
+  amount       Decimal        @db.Decimal(20, 6) // positive = credit, negative = debit
+  balanceAfter Decimal        @db.Decimal(20, 6)
+  description  String?
+
+  tradeId      String?        @unique
+  trade        Trade?         @relation(fields: [tradeId], references: [id])
+  withdrawalId String?        @unique
+  withdrawal   Withdrawal?    @relation(fields: [withdrawalId], references: [id])
+
+  createdAt    DateTime       @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ReferralEarning {
+  id           String   @id @default(cuid())
+  earner       User     @relation("Earner", fields: [earnerId], references: [id])
+  earnerId     String
+  source       User     @relation("Source", fields: [sourceId], references: [id])
+  sourceId     String
+  currency     PayoutCurrency
+  amount       Decimal  @db.Decimal(20, 6)
+  description  String?
+  createdAt    DateTime @default(now())
+
+  @@index([earnerId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+// SEO landing pages rewritten from Facebook posts.
+model LandingPage {
+  id           String    @id @default(cuid())
+  slug         String    @unique // e.g. "sell-lowes-gift-card"
+  title        String
+  metaTitle    String?
+  metaDesc     String?
+  bodyHtml     String // rewritten post content
+  cardType     CardType? @relation(fields: [cardTypeId], references: [id])
+  cardTypeId   String?   @unique
+  sourceUrl    String? // original facebook post url (for reference)
+  published    Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
