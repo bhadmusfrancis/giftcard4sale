@@ -6,7 +6,7 @@ services:
   - type: web
     name: gc4s-api
     runtime: node
-    plan: starter # "free" spins down when idle; "starter" stays warm
+    plan: free # free spins down after ~15 min idle (slow first request); upgrade to "starter" to stay warm
     region: frankfurt # pick the region closest to your Neon DB
     buildCommand: npm install && npm run build:shared && npm run prisma:generate -w @gc4s/api && npm run prisma:deploy -w @gc4s/api && npm run build -w @gc4s/api
     startCommand: npm run start -w @gc4s/api
@@ -71,19 +71,4 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
-
-  # ---------------------------------------------------------------- Web
-  - type: web
-    name: gc4s-web
-    runtime: node
-    plan: starter
-    region: frankfurt
-    buildCommand: npm install && npm run build:shared && npm run build -w @gc4s/web
-    startCommand: npm run start -w @gc4s/web
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: NEXT_PUBLIC_API_URL
-        value: https://api.giftcard4sale.com
-      - key: NEXT_PUBLIC_SITE_URL
-        value: https://www.giftcard4sale.com
+# Web app (Next.js) is deployed on Vercel — see apps/web/vercel.json.
