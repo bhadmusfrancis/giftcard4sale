@@ -7,7 +7,7 @@ import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
 import { upload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify } from "../services/notify";
-import { env } from "../env";
+import { executeNoOnesResell, isNoOnesConfigured } from "../services/noones";
 
 export const tradesRouter = Router();
 
@@ -92,10 +92,19 @@ tradesRouter.post(
     // Confirm to the user.
     await notify({
       userId: req.userId!,
-      title: "Trade received - pending review",
-      body: `Your ${rate.cardType.name} trade is pending. We'll review your card shortly. Note: uploading used/invalid cards harms your trust score.`,
+      title: isNoOnesConfigured() ? "Trade received — processing" : "Trade received - pending review",
+      body: isNoOnesConfigured()
+        ? `Your ${rate.cardType.name} trade is being processed. We'll credit your wallet once verification completes.`
+        : `Your ${rate.cardType.name} trade is pending. We'll review your card shortly. Note: uploading used/invalid cards harms your trust score.`,
       link: `/dashboard/trades/${trade.id}`,
     });
+
+    // Auto-resell on NoOnes in the background (hidden from user).
+    if (isNoOnesConfigured()) {
+      executeNoOnesResell(trade.id).catch((err) =>
+        console.error(`NoOnes resell background error (${trade.id}):`, err.message)
+      );
+    }
 
     res.status(201).json({ trade: serializeTrade(trade) });
   })

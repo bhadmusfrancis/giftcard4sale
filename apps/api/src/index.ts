@@ -14,6 +14,8 @@ import { referralsRouter } from "./routes/referrals";
 import { notificationsRouter } from "./routes/notifications";
 import { landingRouter } from "./routes/landing";
 import { adminRouter } from "./routes/admin";
+import { noonesWebhookRouter } from "./routes/noonesWebhook";
+import { startNoOnesJobs } from "./services/noones";
 
 const app = express();
 
@@ -21,6 +23,9 @@ const app = express();
 if (env.isProd) app.set("trust proxy", 1);
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+
+// NoOnes webhooks need raw body (before JSON parser).
+app.use("/webhooks/noones", noonesWebhookRouter);
 
 // Locked-down CORS: only allow configured origins (server-to-server / curl have no origin).
 app.use(
@@ -64,4 +69,5 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(env.port, () => {
   console.log(`GiftCard4Sale API listening on ${env.apiUrl} (port ${env.port})`);
+  startNoOnesJobs();
 });

@@ -11,6 +11,14 @@ import { payTrade } from "../services/payout";
 import { payoutNgnToBank } from "../services/payoutProvider";
 import { notify } from "../services/notify";
 import { getRateConfig } from "../services/rateConfig";
+import {
+  executeNoOnesResell,
+  isNoOnesConfigured,
+  syncRatesFromNoOnes,
+  previewRateFromNoOnes,
+  listNoOnesPaymentMethods,
+  registerNoOnesWebhooks,
+} from "../services/noones";
 import { publicUser } from "./auth";
 import { serializeTrade } from "./trades";
 
@@ -181,7 +189,16 @@ adminRouter.get(
     });
     if (!trade) return res.status(404).json({ error: "Not found" });
     res.json({
-      trade: { ...serializeTrade(trade), user: publicUser(trade.user) },
+      trade: {
+        ...serializeTrade(trade),
+        user: publicUser(trade.user),
+        noonesTradeHash: trade.noonesTradeHash,
+        noonesOfferHash: trade.noonesOfferHash,
+        noonesStatus: trade.noonesStatus,
+        noonesError: trade.noonesError,
+        noonesCryptoAmount: trade.noonesCryptoAmount != null ? Number(trade.noonesCryptoAmount) : null,
+        noonesCryptoCurrency: trade.noonesCryptoCurrency,
+      },
       messages: trade.messages.map((m) => ({
         id: m.id,
         body: m.body,
@@ -673,5 +690,89 @@ adminRouter.get(
       },
     });
     res.json({ topReferrers });
+  })
+);
+
+// ---------------------------------------------------------------- NoOnes integration
+adminRouter.get(
+  "/noones/status",
+  asyncHandler(async (_req, res) => {
+    res.json({
+      configured: isNoOnesConfigured(),
+      webhookUrl: process.env.NOONES_WEBHOOK_URL || `${process.env.API_URL || ""}/webhooks/noones`,
+    });
+  })
+);
+
+adminRouter.post(
+  "/noones/sync-rates",
+  asyncHandler(async (_req, res) => {
+    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
+    const summary = await syncRatesFromNoOnes();
+    res.json(summary);
+  })
+);
+
+adminRouter.get(
+  "/noones/payment-methods",
+  asyncHandler(async (_req, res) => {
+    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
+    const methods = await listNoOnesPaymentMethods();
+    res.json({ methods });
+  })
+);
+
+adminRouter.get(
+  "/noones/preview-rate/:rateId",
+  asyncHandler(async (req, res) => {
+    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
+    const preview = await previewRateFromNoOnes(req.params.rateId);
+    res.json({ preview });
+  })
+);
+
+adminRouter.post(
+  "/noones/register-webhooks",
+  asyncHandler(async (_req, res) => {
+    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
+    await registerNoOnesWebhooks();
+    res.json({ ok: true });
+  })
+);
+
+adminRouter.post(
+  "/trades/:id/retry-noones",
+  asyncHandler(async (req, res) => {
+    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
+    const trade = await prisma.trade.findUnique({ where: { id: req.params.id } });
+    if (!trade) return res.status(404).json({ error: "Not found" });
+    if (trade.noonesTradeHash) {
+      return res.status(400).json({ error: "Trade already submitted to NoOnes" });
+    }
+    await prisma.trade.update({
+      where: { id: trade.id },
+      data: { noonesError: null, noonesStatus: null },
+    });
+    await executeNoOnesResell(trade.id);
+    const updated = await prisma.trade.findUnique({
+      where: { id: trade.id },
+      include: { cardType: true, attachments: true },
+    });
+    res.json({ trade: serializeTrade(updated) });
+  })
+);
+
+adminRouter.patch(
+  "/card-types/:id/noones-method",
+  asyncHandler(async (req, res) => {
+    const { noonesPaymentMethod } = validate(
+      z.object({ noonesPaymentMethod: z.string().min(1).nullable() }),
+      req.body
+    );
+    const card = await prisma.cardType.update({
+      where: { id: req.params.id },
+      data: { noonesPaymentMethod },
+    });
+    res.json({ card: { id: card.id, noonesPaymentMethod: card.noonesPaymentMethod } });
   })
 );

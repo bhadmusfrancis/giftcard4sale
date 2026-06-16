@@ -86,6 +86,26 @@ export const env = {
     email: process.env.ADMIN_EMAIL || "admin@giftcard4sale.com",
     password: process.env.ADMIN_PASSWORD || "ChangeMe123!",
   },
+
+  noones: {
+    enabled: (process.env.NOONES_ENABLED || "false") === "true",
+    clientId: process.env.NOONES_CLIENT_ID || process.env.NOONES_APP_ID || "",
+    clientSecret: process.env.NOONES_CLIENT_SECRET || process.env.NOONES_APP_SECRET || "",
+    applicationId: process.env.NOONES_APPLICATION_ID || "",
+    apiBase: (process.env.NOONES_API_BASE || "https://api.noones.com/noones/v1").replace(/\/$/, ""),
+    tokenUrl: process.env.NOONES_TOKEN_URL || "https://auth.noones.com/oauth2/token",
+    cryptoCurrency: (process.env.NOONES_CRYPTO_CURRENCY || "USDT").toUpperCase(),
+    rateSyncMinutes: num(process.env.NOONES_RATE_SYNC_MINUTES, 5),
+    tradePollMinutes: num(process.env.NOONES_TRADE_POLL_MINUTES, 2),
+    /** When NoOnes has no separate e-code offers, ECODE rate = PHYSICAL × this factor. */
+    ecodeRateFactor: num(process.env.NOONES_ECODE_RATE_FACTOR, 0.88),
+    webhookPublicKey:
+      process.env.NOONES_WEBHOOK_PUBLIC_KEY ||
+      "fvcYFZlQl21obFbW5+RK2/foq8JzK/Y5fCEqg+NEy+k=",
+    webhookUrl:
+      process.env.NOONES_WEBHOOK_URL ||
+      `${process.env.API_URL || "http://localhost:4000"}/webhooks/noones`,
+  },
 };
 
 // Fail fast on insecure production config.
