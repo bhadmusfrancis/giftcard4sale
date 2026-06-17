@@ -7,7 +7,7 @@ import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
 import { upload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify } from "../services/notify";
-import { executeNoOnesResell, isNoOnesConfigured } from "../services/noones";
+import { executeNoOnesResell, isNoOnesConfigured, resolveOfferForCard } from "../services/noones";
 
 export const tradesRouter = Router();
 
@@ -25,19 +25,48 @@ tradesRouter.post(
   "/",
   requireAuth,
   requireVerified(),
-  upload.array("images", 8),
+  upload.fields([
+    { name: "images", maxCount: 8 },
+    { name: "receiptImages", maxCount: 4 },
+  ]),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = validate(createSchema, req.body);
     const rate = await prisma.rate.findUnique({ where: { id: data.rateId }, include: { cardType: true } });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
-    const files = (req.files as Express.Multer.File[]) || [];
+    const uploaded = req.files as { images?: Express.Multer.File[]; receiptImages?: Express.Multer.File[] };
+    const cardFiles = uploaded?.images || [];
+    const receiptFiles = uploaded?.receiptImages || [];
+
     if (data.medium === "ECODE") {
-      if (!data.ecodes && files.length === 0) {
+      if (!data.ecodes && cardFiles.length === 0) {
         return res.status(400).json({ error: "Please paste the e-codes or upload code images" });
       }
-    } else if (files.length === 0) {
+    } else if (cardFiles.length === 0) {
       return res.status(400).json({ error: "Please upload at least one picture of the gift card" });
+    }
+
+    let requiresReceipt = false;
+    if (isNoOnesConfigured()) {
+      const market = await resolveOfferForCard({
+        cardSlug: rate.cardType.slug,
+        cardName: rate.cardType.name,
+        paymentMethodOverride: rate.cardType.noonesPaymentMethod,
+        cardCurrency: rate.currency,
+        cardAmount: data.cardAmount,
+        medium: data.medium,
+      });
+      requiresReceipt = market?.requiresReceipt ?? false;
+    }
+
+    if (requiresReceipt && data.receiptType === "NONE") {
+      return res.status(400).json({
+        error: "This card requires a purchase receipt. Go back and confirm you have a receipt, or choose a different offer.",
+      });
+    }
+
+    if (requiresReceipt && data.receiptType !== "NONE" && receiptFiles.length === 0) {
+      return res.status(400).json({ error: "Please upload a photo of your purchase receipt" });
     }
 
     const config = await getRateConfig();
@@ -67,10 +96,16 @@ tradesRouter.post(
         notes: data.notes,
         status: "PENDING",
         attachments: {
-          create: files.map((f) => ({
-            url: fileUrl(f),
-            filename: f.originalname,
-          })),
+          create: [
+            ...cardFiles.map((f) => ({
+              url: fileUrl(f),
+              filename: f.originalname,
+            })),
+            ...receiptFiles.map((f) => ({
+              url: fileUrl(f),
+              filename: `receipt-${f.originalname}`,
+            })),
+          ],
         },
       },
       include: { attachments: true, cardType: true },

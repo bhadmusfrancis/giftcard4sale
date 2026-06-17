@@ -1,4 +1,5 @@
 import { CardMedium } from "@prisma/client";
+import { normalizeCardTypeName } from "@gc4s/shared";
 
 /** Default country/currency tiers synced from NoOnes when no rate row exists yet. */
 export const DEFAULT_RATE_TIERS = [
@@ -77,9 +78,11 @@ export function buildSyncTargets(
 
 /** Turn a NoOnes payment-method slug into a display name for CardType. */
 export function paymentMethodToCardName(slug: string, name?: string): string {
-  if (name?.trim()) return name.trim();
-  return slug
-    .replace(/-gift-card$/i, "")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  const display = name?.trim()
+    ? name.trim()
+    : slug
+        .replace(/-gift-card$/i, "")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+  return normalizeCardTypeName(display);
 }

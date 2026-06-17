@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { RateEntry, slugifyCardType, sellSlug } from "@gc4s/shared";
+import { RateEntry, canonicalCardSlug, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
 import { prisma } from "../prisma";
 
 export interface ImportSummary {
@@ -24,11 +24,12 @@ export async function importRates(entries: RateEntry[], replaceExisting = false)
   let totalRates = 0;
 
   for (const [typeName, list] of byType) {
-    const slug = slugifyCardType(typeName);
+    const name = normalizeCardTypeName(typeName);
+    const slug = canonicalCardSlug(name);
     const card = await prisma.cardType.upsert({
       where: { slug },
-      update: {},
-      create: { name: typeName, slug, sellSlug: sellSlug(typeName) },
+      update: { name },
+      create: { name, slug, sellSlug: sellSlug(name) },
     });
 
     if (replaceExisting) {

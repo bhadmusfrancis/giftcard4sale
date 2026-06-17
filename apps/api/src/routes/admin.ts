@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { parseRateText, slugifyCardType, sellSlug } from "@gc4s/shared";
+import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode } from "../lib/auth";
@@ -472,9 +472,10 @@ adminRouter.post(
       z.object({ name: z.string().min(1), description: z.string().optional(), imageUrl: z.string().optional() }),
       req.body
     );
-    const slug = slugifyCardType(data.name);
+    const name = normalizeCardTypeName(data.name);
+    const slug = canonicalCardSlug(name);
     const card = await prisma.cardType.create({
-      data: { name: data.name, slug, sellSlug: sellSlug(data.name), description: data.description, imageUrl: data.imageUrl },
+      data: { name, slug, sellSlug: sellSlug(name), description: data.description, imageUrl: data.imageUrl },
     });
     res.status(201).json({ card });
   })
@@ -494,8 +495,10 @@ adminRouter.patch(
     );
     const patch: any = { ...data };
     if (data.name) {
-      patch.slug = slugifyCardType(data.name);
-      patch.sellSlug = sellSlug(data.name);
+      const name = normalizeCardTypeName(data.name);
+      patch.name = name;
+      patch.slug = canonicalCardSlug(name);
+      patch.sellSlug = sellSlug(name);
     }
     const card = await prisma.cardType.update({ where: { id: req.params.id }, data: patch });
     res.json({ card });

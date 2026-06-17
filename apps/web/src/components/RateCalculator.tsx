@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { calculateRateQuote, PayoutCurrency, CardMedium } from "@gc4s/shared";
+import { calculateRateQuote, PayoutCurrency, CardMedium, ReceiptType } from "@gc4s/shared";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 
 interface Rate {
@@ -40,6 +41,10 @@ export function RateCalculator({
   const [medium, setMedium] = useState<CardMedium>("PHYSICAL");
   const [amount, setAmount] = useState<number>(100);
   const [payoutCurrency, setPayoutCurrency] = useState<PayoutCurrency>("NGN");
+  const [hasReceipt, setHasReceipt] = useState<boolean | null>(null);
+  const [isCashReceipt, setIsCashReceipt] = useState<boolean | null>(null);
+  const [requiresReceipt, setRequiresReceipt] = useState(false);
+  const [policyLoading, setPolicyLoading] = useState(false);
 
   // Rates matching the chosen country + medium.
   const candidates = useMemo(
@@ -71,13 +76,39 @@ export function RateCalculator({
 
   const mediumAvailable = (m: CardMedium) => rates.some((r) => r.country === country && r.medium === m);
 
+  useEffect(() => {
+    if (!matched || !amount) {
+      setRequiresReceipt(false);
+      return;
+    }
+    setPolicyLoading(true);
+    api<{ receiptPolicy: { requiresReceipt: boolean } }>("/cards/quote", {
+      body: { rateId: matched.id, cardAmount: amount, payoutCurrency },
+    })
+      .then((d) => setRequiresReceipt(d.receiptPolicy?.requiresReceipt ?? false))
+      .catch(() => setRequiresReceipt(false))
+      .finally(() => setPolicyLoading(false));
+  }, [matched?.id, amount, payoutCurrency]);
+
+  const receiptType: ReceiptType = useMemo(() => {
+    if (hasReceipt !== true) return "NONE";
+    if (isCashReceipt === true) return "CASH";
+    if (isCashReceipt === false) return "DEBIT";
+    return "NONE";
+  }, [hasReceipt, isCashReceipt]);
+
+  const receiptBlocked = requiresReceipt && hasReceipt === false;
+  const receiptIncomplete = hasReceipt === null || (hasReceipt === true && isCashReceipt === null);
+  const canProceed = Boolean(quote && !receiptBlocked && !receiptIncomplete && !policyLoading);
+
   function proceed() {
-    if (!matched) return;
+    if (!matched || !canProceed) return;
     const params = new URLSearchParams({
       rateId: matched.id,
       amount: String(amount),
       payout: payoutCurrency,
       medium,
+      receiptType,
     });
     if (!user) {
       router.push(`/login?next=${encodeURIComponent(`/dashboard/trades/new?${params}`)}`);
@@ -143,6 +174,61 @@ export function RateCalculator({
         </div>
       </div>
 
+      <div className="mt-4 space-y-3 rounded-xl border border-slate-200 p-4">
+        <div>
+          <label className="label">Do you have a purchase receipt for this gift card?</label>
+          <div className="flex gap-2">
+            {([true, false] as const).map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                onClick={() => {
+                  setHasReceipt(v);
+                  if (!v) setIsCashReceipt(null);
+                }}
+                className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold ${
+                  hasReceipt === v ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-600"
+                }`}
+              >
+                {v ? "Yes, I have a receipt" : "No receipt"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {hasReceipt === true ? (
+          <div>
+            <label className="label">How did you pay for the gift card?</label>
+            <div className="flex gap-2">
+              {([true, false] as const).map((cash) => (
+                <button
+                  key={String(cash)}
+                  type="button"
+                  onClick={() => setIsCashReceipt(cash)}
+                  className={`flex-1 rounded-lg border px-3 py-2.5 text-sm font-semibold ${
+                    isCashReceipt === cash
+                      ? "border-brand-600 bg-brand-50 text-brand-800"
+                      : "border-slate-300 text-slate-600"
+                  }`}
+                >
+                  {cash ? "Cash" : "Debit / card"}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {requiresReceipt && hasReceipt === false ? (
+          <p className="text-sm text-red-600">
+            Marketplace buyers for this card require a purchase receipt. You cannot open this trade without one.
+          </p>
+        ) : requiresReceipt && hasReceipt === true ? (
+          <p className="text-xs text-slate-500">
+            You&apos;ll be asked to upload your receipt photo on the next step.
+          </p>
+        ) : null}
+      </div>
+
       <div className="mt-6 rounded-xl bg-slate-900 p-5 text-white">
         {quote ? (
           <>
@@ -160,7 +246,7 @@ export function RateCalculator({
         )}
       </div>
 
-      <button onClick={proceed} disabled={!quote} className="btn-primary mt-4 w-full">
+      <button onClick={proceed} disabled={!canProceed} className="btn-primary mt-4 w-full">
         Proceed to open a trade
       </button>
       <p className="mt-3 text-xs text-slate-500">

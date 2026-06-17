@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { apiServer } from "@/lib/api";
 import { RateCalculator } from "@/components/RateCalculator";
-import { RequestRateForm } from "@/components/RequestRateForm";
 import { BrandLogo } from "@/components/BrandLogo";
 
 interface LandingResp {
@@ -114,15 +113,13 @@ export default async function SlugPage({ params }: { params: { slug: string } })
             />
           ) : (
             <div className="card p-6">
-              <h3 className="text-lg font-bold">Rate not listed yet</h3>
+              <h3 className="text-lg font-bold">Rate not available yet</h3>
               <p className="mt-2 text-sm text-slate-600">
-                We don&apos;t have a published rate for this card yet. Log in and request a rate and we&apos;ll get back
-                to you quickly.
+                Rates for this card are synced automatically from our marketplace partners. Please check back shortly
+                or try another card.
               </p>
             </div>
           )}
-
-          {card && <RequestRateForm cardName={card.card.name} />}
         </div>
       </div>
     </div>

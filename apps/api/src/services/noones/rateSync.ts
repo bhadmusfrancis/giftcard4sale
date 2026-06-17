@@ -1,6 +1,7 @@
 import { CardMedium, Prisma } from "@prisma/client";
-import { slugifyCardType, sellSlug } from "@gc4s/shared";
+import { canonicalCardSlug, sellSlug } from "@gc4s/shared";
 import { prisma } from "../../prisma";
+import { findExistingCardType } from "../cardTypeDedup";
 import { isNoOnesConfigured, noonesPost } from "./client";
 import { resolvePaymentMethodSlug } from "./paymentMethods";
 import { buildSyncTargets, paymentMethodToCardName, RateSyncTarget } from "./rateCatalog";
@@ -16,14 +17,27 @@ export interface RateSyncSummary {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+interface NoOnesPaymentMethod {
+  name: string;
+  slug: string;
+  group_slug?: string;
+}
+
+function parsePaymentMethodList(raw: unknown): NoOnesPaymentMethod[] {
+  if (Array.isArray(raw)) return raw;
+  const obj = raw as { methods?: NoOnesPaymentMethod[]; data?: NoOnesPaymentMethod[] };
+  return obj.methods ?? obj.data ?? [];
+}
+
 /** List gift-card payment methods from NoOnes. */
 export async function listGiftCardPaymentMethods(): Promise<{ name: string; slug: string }[]> {
-  const raw = await noonesPost<{ name: string; slug: string }[] | { data?: { name: string; slug: string }[] }>(
-    "payment-method/list",
-    {}
+  const raw = await noonesPost<unknown>("payment-method/list", {});
+  const list = parsePaymentMethodList(raw);
+  return list.filter(
+    (m) =>
+      m.group_slug === "gift-cards" ||
+      /gift.?card|itunes|steam|playstation|xbox|google-play/i.test(m.slug)
   );
-  const list = Array.isArray(raw) ? raw : (raw as { data?: { name: string; slug: string }[] }).data ?? [];
-  return list.filter((m) => /gift.?card|itunes|steam|playstation|xbox|google-play/i.test(m.slug));
 }
 
 /** Ensure a CardType exists for each NoOnes gift-card payment method. */
@@ -33,22 +47,29 @@ async function ensureCardTypesFromNoOnes(): Promise<number> {
 
   for (const method of methods) {
     const name = paymentMethodToCardName(method.slug, method.name);
-    const slug = slugifyCardType(name);
+    const slug = canonicalCardSlug(name);
+    const existing = await findExistingCardType(method);
 
-    await prisma.cardType.upsert({
-      where: { slug },
-      create: {
-        name,
-        slug,
-        sellSlug: sellSlug(name),
-        noonesPaymentMethod: method.slug,
-        active: true,
-      },
-      update: {
-        noonesPaymentMethod: method.slug,
-        active: true,
-      },
-    });
+    if (existing) {
+      await prisma.cardType.update({
+        where: { id: existing.id },
+        data: {
+          name,
+          noonesPaymentMethod: method.slug,
+          active: true,
+        },
+      });
+    } else {
+      await prisma.cardType.create({
+        data: {
+          name,
+          slug,
+          sellSlug: sellSlug(name),
+          noonesPaymentMethod: method.slug,
+          active: true,
+        },
+      });
+    }
     count++;
     await sleep(50);
   }

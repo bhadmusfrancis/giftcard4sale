@@ -2,7 +2,15 @@ import { env } from "../../env";
 import { getRateConfig } from "../rateConfig";
 import { noonesPost } from "./client";
 import { resolvePaymentMethodSlug } from "./paymentMethods";
-import { NoOnesOffer, NoOnesOfferAllData } from "./types";
+import { NoOnesOffer, NoOnesOfferAllData, NoOnesOfferTag } from "./types";
+
+/** Whether the matched NoOnes offer expects a purchase receipt upload. */
+export function offerRequiresReceipt(tags: NoOnesOfferTag[] | undefined): boolean {
+  if (!tags?.length) return false;
+  const slugs = tags.map((t) => t.slug);
+  if (slugs.includes("no-receipt-needed")) return false;
+  return slugs.includes("receipt-required");
+}
 
 export interface MarketRateResult {
   paymentMethod: string;
@@ -13,6 +21,15 @@ export interface MarketRateResult {
   /** Estimated NGN per 1 unit of card face currency. */
   nairaPerUnit: number;
   margin?: number;
+  tradeVolume?: number;
+  /** True when the best offer is tagged receipt-required on NoOnes. */
+  requiresReceipt: boolean;
+}
+
+/** Completed trades on this offer (NoOnes `total_successful_trades`). */
+export function offerTradeVolume(offer: NoOnesOffer): number {
+  const trades = Number(offer.total_successful_trades);
+  return Number.isFinite(trades) && trades > 0 ? trades : 0;
 }
 
 /** How much USDT (or BTC) you receive per 1 unit of card face currency. */
@@ -79,20 +96,22 @@ export async function fetchBestOffer(params: {
   const offers = (data.offers || []).filter((o) => o.active !== false);
   if (!offers.length) return null;
 
-  let best: NoOnesOffer | null = null;
-  let bestNaira = 0;
+  type ScoredOffer = { offer: NoOnesOffer; nairaPerUnit: number; tradeVolume: number };
+  const scored: ScoredOffer[] = [];
 
   for (const offer of offers) {
     const naira = await offerToNairaPerUnit(offer, params.cardCurrency);
-    if (naira && naira > bestNaira) {
-      bestNaira = naira;
-      best = offer;
-    }
+    if (!naira || naira <= 0) continue;
+    scored.push({ offer, nairaPerUnit: naira, tradeVolume: offerTradeVolume(offer) });
   }
 
-  if (!best) return null;
+  if (!scored.length) return null;
 
-  const hash = best.offer_id || best.offer_hash;
+  // Highest trade volume first; tie-break by best naira rate.
+  scored.sort((a, b) => b.tradeVolume - a.tradeVolume || b.nairaPerUnit - a.nairaPerUnit);
+  const best = scored[0];
+
+  const hash = best.offer.offer_id || best.offer.offer_hash;
   if (!hash) return null;
 
   return {
@@ -100,9 +119,11 @@ export async function fetchBestOffer(params: {
     currency: params.cardCurrency,
     cryptoCurrency: crypto,
     offerHash: hash,
-    fiatPricePerCrypto: Number(best.fiat_price_per_crypto),
-    nairaPerUnit: bestNaira,
-    margin: best.margin,
+    fiatPricePerCrypto: Number(best.offer.fiat_price_per_crypto),
+    nairaPerUnit: best.nairaPerUnit,
+    margin: best.offer.margin,
+    tradeVolume: best.tradeVolume,
+    requiresReceipt: offerRequiresReceipt(best.offer.tags),
   };
 }
 
@@ -138,6 +159,7 @@ export async function resolveOfferForCard(params: {
   paymentMethodOverride?: string | null;
   cardCurrency: string;
   cardAmount: number;
+  medium?: "PHYSICAL" | "ECODE";
 }): Promise<MarketRateResult | null> {
   const paymentMethod = resolvePaymentMethodSlug(
     params.cardSlug,
@@ -145,6 +167,15 @@ export async function resolveOfferForCard(params: {
     params.paymentMethodOverride
   );
   if (!paymentMethod) return null;
+
+  if (params.medium === "ECODE") {
+    return fetchBestOfferForMedium({
+      paymentMethod,
+      cardCurrency: params.cardCurrency,
+      cardAmount: params.cardAmount,
+      medium: "ECODE",
+    });
+  }
 
   return fetchBestOffer({
     paymentMethod,

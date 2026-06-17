@@ -1,6 +1,6 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { parseRateText, slugifyCardType, sellSlug } from "@gc4s/shared";
+import { parseRateText, canonicalCardSlug, sellSlug } from "@gc4s/shared";
 import { importRates } from "../src/services/rateImport";
 import { env } from "../src/env";
 
@@ -120,9 +120,9 @@ async function main() {
   const extraCards = ["Lowes", "Amazon", "eBay", "Walmart", "Nike", "Visa", "Vanilla"];
   for (const name of extraCards) {
     await prisma.cardType.upsert({
-      where: { slug: slugifyCardType(name) },
+      where: { slug: canonicalCardSlug(name) },
       update: {},
-      create: { name, slug: slugifyCardType(name), sellSlug: sellSlug(name) },
+      create: { name, slug: canonicalCardSlug(name), sellSlug: sellSlug(name) },
     });
   }
 

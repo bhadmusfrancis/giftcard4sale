@@ -25,8 +25,20 @@ export default async function HomePage() {
           <p className="mx-auto mt-5 max-w-2xl text-lg text-brand-50/90">
             Get the best rates in seconds. Calculate your payout, open a trade, and get paid fast — physical cards and e-codes welcome.
           </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link href="/cards" className="btn bg-white text-brand-800 hover:bg-brand-50">Calculate a rate</Link>
+          <form action="/cards" method="get" className="mx-auto mt-8 flex max-w-lg gap-2">
+            <input
+              name="q"
+              type="search"
+              className="input flex-1 border-white/20 bg-white/95 text-slate-900 placeholder:text-slate-500"
+              placeholder="Search gift cards (Amazon, Steam, iTunes…)"
+              aria-label="Search gift cards"
+            />
+            <button type="submit" className="btn shrink-0 bg-white text-brand-800 hover:bg-brand-50">
+              Search
+            </button>
+          </form>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <Link href="/cards" className="btn border border-white/40 text-white hover:bg-white/10">Browse all cards</Link>
             <Link href="/register" className="btn border border-white/40 text-white hover:bg-white/10">Create account</Link>
           </div>
         </div>

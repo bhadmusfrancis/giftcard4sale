@@ -71,6 +71,7 @@ export async function executeNoOnesResell(tradeId: string): Promise<void> {
       paymentMethodOverride: trade.cardType.noonesPaymentMethod,
       cardCurrency: trade.currency,
       cardAmount,
+      medium: trade.medium,
     });
 
     if (!market) {

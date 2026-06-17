@@ -5,6 +5,12 @@ export interface NoOnesApiResponse<T = unknown> {
   error?: { code: number; message: string };
 }
 
+export interface NoOnesOfferTag {
+  slug: string;
+  name?: string;
+  description?: string;
+}
+
 export interface NoOnesOffer {
   offer_id: string;
   offer_hash?: string;
@@ -19,6 +25,11 @@ export interface NoOnesOffer {
   payment_method_name?: string;
   offer_type?: string;
   active?: boolean;
+  tags?: NoOnesOfferTag[];
+  /** Completed trades on this offer (NoOnes marketplace liquidity signal). */
+  total_successful_trades?: number;
+  offer_owner_feedback_positive?: number;
+  offer_owner_username?: string;
 }
 
 export interface NoOnesOfferAllData {

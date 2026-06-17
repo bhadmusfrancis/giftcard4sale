@@ -4,17 +4,27 @@ import { calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { getRateConfig } from "../services/rateConfig";
-import { requireAuth, AuthedRequest } from "../lib/auth";
-import { notify } from "../services/notify";
-import { env } from "../env";
+import { isNoOnesConfigured, resolveOfferForCard } from "../services/noones";
 
 export const cardsRouter = Router();
 
 cardsRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const cards = await prisma.cardType.findMany({
-      where: { active: true },
+      where: {
+        active: true,
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { slug: { contains: q, mode: "insensitive" } },
+                { description: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true, slug: true, sellSlug: true, imageUrl: true, description: true },
     });
@@ -74,7 +84,10 @@ cardsRouter.post(
   "/quote",
   asyncHandler(async (req, res) => {
     const data = validate(quoteSchema, req.body);
-    const rate = await prisma.rate.findUnique({ where: { id: data.rateId } });
+    const rate = await prisma.rate.findUnique({
+      where: { id: data.rateId },
+      include: { cardType: true },
+    });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
     const config = await getRateConfig();
@@ -86,38 +99,24 @@ cardsRouter.post(
       rates: config.rates,
       reductions: config.reductions,
     });
-    res.json({ quote, rate: { country: rate.country, currency: rate.currency, medium: rate.medium } });
-  })
-);
 
-// Logged-in users can request a rate that isn't listed.
-cardsRouter.post(
-  "/request-rate",
-  requireAuth,
-  asyncHandler(async (req: AuthedRequest, res) => {
-    const data = validate(
-      z.object({
-        cardType: z.string().min(1),
-        country: z.string().min(1),
-        details: z.string().optional(),
-      }),
-      req.body
-    );
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    // Notify all admins.
-    const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-    await Promise.all(
-      admins.map((a) =>
-        notify({
-          userId: a.id,
-          title: "New rate request",
-          body: `${user?.displayName || user?.email} requested a rate for ${data.cardType} (${data.country}). ${data.details ?? ""}`,
-          link: "/admin/rates",
-          push: true,
-          email: true,
-        })
-      )
-    );
-    res.json({ ok: true, message: "Your rate request has been sent. We'll get back to you shortly." });
+    let requiresReceipt = false;
+    if (isNoOnesConfigured()) {
+      const market = await resolveOfferForCard({
+        cardSlug: rate.cardType.slug,
+        cardName: rate.cardType.name,
+        paymentMethodOverride: rate.cardType.noonesPaymentMethod,
+        cardCurrency: rate.currency,
+        cardAmount: data.cardAmount,
+        medium: rate.medium,
+      });
+      requiresReceipt = market?.requiresReceipt ?? false;
+    }
+
+    res.json({
+      quote,
+      rate: { country: rate.country, currency: rate.currency, medium: rate.medium },
+      receiptPolicy: { requiresReceipt },
+    });
   })
 );
