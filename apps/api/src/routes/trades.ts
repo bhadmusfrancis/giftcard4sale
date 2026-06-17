@@ -7,7 +7,9 @@ import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
 import { upload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify } from "../services/notify";
-import { executeNoOnesResell, isNoOnesConfigured, resolveOfferForCard } from "../services/noones";
+import { executeNoOnesResell, isNoOnesConfigured, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
+import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
+import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 
 export const tradesRouter = Router();
 
@@ -19,6 +21,8 @@ const createSchema = z.object({
   receiptType: z.enum(["NONE", "CASH", "DEBIT"]).default("NONE"),
   ecodes: z.string().optional(),
   notes: z.string().max(2000).optional(),
+  cardDenominations: z.string().min(1).max(200).optional(),
+  otherCountryName: z.string().min(2).max(100).optional(),
 });
 
 tradesRouter.post(
@@ -34,6 +38,13 @@ tradesRouter.post(
     const rate = await prisma.rate.findUnique({ where: { id: data.rateId }, include: { cardType: true } });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
+    if (rate.medium !== data.medium) {
+      return res.status(400).json({ error: "Card type does not match the selected rate." });
+    }
+
+    const amountError = validateCardAmountForRate(data.cardAmount, rate);
+    if (amountError) return res.status(400).json({ error: amountError });
+
     const uploaded = req.files as { images?: Express.Multer.File[]; receiptImages?: Express.Multer.File[] };
     const cardFiles = uploaded?.images || [];
     const receiptFiles = uploaded?.receiptImages || [];
@@ -46,32 +57,62 @@ tradesRouter.post(
       return res.status(400).json({ error: "Please upload at least one picture of the gift card" });
     }
 
-    let requiresReceipt = false;
-    if (isNoOnesConfigured()) {
-      const market = await resolveOfferForCard({
-        cardSlug: rate.cardType.slug,
-        cardName: rate.cardType.name,
-        paymentMethodOverride: rate.cardType.noonesPaymentMethod,
-        cardCurrency: rate.currency,
-        cardAmount: data.cardAmount,
-        medium: data.medium,
-      });
-      requiresReceipt = market?.requiresReceipt ?? false;
-    }
+    const receiptType = receiptTypeForQuote({
+      receiptType: data.receiptType,
+      preferNoReceipt: data.receiptType === "NONE",
+    });
 
-    if (requiresReceipt && data.receiptType === "NONE") {
+    const ecodeSibling =
+      rate.medium === "PHYSICAL"
+        ? await prisma.rate.findFirst({
+            where: {
+              cardTypeId: rate.cardTypeId,
+              country: rate.country,
+              medium: "ECODE",
+              minDenom: rate.minDenom,
+              maxDenom: rate.maxDenom,
+              active: true,
+            },
+          })
+        : null;
+
+    const nairaPerUnit = storedNairaFromRate(rate, receiptType, {
+      ecodeRate: ecodeSibling
+        ? { nairaPerUnit: Number(ecodeSibling.nairaPerUnit), storedQuotes: ecodeSibling.storedQuotes }
+        : null,
+    });
+    const paymentMethod = resolvePaymentMethodSlug(
+      rate.cardType.slug,
+      rate.cardType.name,
+      rate.cardType.noonesPaymentMethod
+    );
+    const { requiresReceipt } = receiptPolicyFromStored({
+      paymentMethod,
+      storedQuotes: parseStoredQuotes(rate.storedQuotes),
+      medium: data.medium,
+    });
+
+    if (data.medium !== "ECODE" && requiresReceipt && data.receiptType === "NONE") {
       return res.status(400).json({
         error: "This card requires a purchase receipt. Go back and confirm you have a receipt, or choose a different offer.",
       });
     }
 
-    if (requiresReceipt && data.receiptType !== "NONE" && receiptFiles.length === 0) {
+    if (data.medium !== "ECODE" && requiresReceipt && data.receiptType !== "NONE" && receiptFiles.length === 0) {
       return res.status(400).json({ error: "Please upload a photo of your purchase receipt" });
+    }
+
+    if (rate.country === "Other" && !data.otherCountryName?.trim()) {
+      return res.status(400).json({ error: "Please specify your card country" });
+    }
+
+    if (data.medium === "PHYSICAL" && !data.cardDenominations?.trim()) {
+      return res.status(400).json({ error: "Please enter card denominations (e.g. 200x1, 50x4)" });
     }
 
     const config = await getRateConfig();
     const quote = calculateRateQuote({
-      nairaPerUnit: Number(rate.nairaPerUnit),
+      nairaPerUnit,
       cardAmount: data.cardAmount,
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: rate.medium,
@@ -88,8 +129,10 @@ tradesRouter.post(
         medium: data.medium,
         receiptType: data.receiptType,
         cardAmount: data.cardAmount,
+        cardDenominations: data.cardDenominations?.trim() || null,
+        otherCountryName: data.otherCountryName?.trim() || null,
         payoutCurrency: data.payoutCurrency,
-        nairaPerUnit: rate.nairaPerUnit,
+        nairaPerUnit,
         effectiveRate: quote.effectiveNairaPerUnit,
         quotedPayout: quote.payoutAmount,
         ecodes: data.ecodes,
@@ -221,10 +264,12 @@ export function serializeTrade(t: any) {
     id: t.id,
     cardType: t.cardType ? { id: t.cardType.id, name: t.cardType.name, slug: t.cardType.slug } : undefined,
     country: t.country,
+    otherCountryName: t.otherCountryName,
     currency: t.currency,
     medium: t.medium,
     receiptType: t.receiptType,
     cardAmount: Number(t.cardAmount),
+    cardDenominations: t.cardDenominations,
     payoutCurrency: t.payoutCurrency,
     nairaPerUnit: Number(t.nairaPerUnit),
     effectiveRate: Number(t.effectiveRate),

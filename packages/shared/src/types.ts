@@ -6,6 +6,98 @@ export type CardMedium = "PHYSICAL" | "ECODE";
 
 export type ReceiptType = "NONE" | "CASH" | "DEBIT";
 
+/** Cached naira-per-unit from NoOnes for each receipt scenario on a rate row. */
+export interface StoredQuotes {
+  /** Best offer when user has no purchase receipt. */
+  NONE?: number;
+  /** Best offer when user has a cash receipt. */
+  CASH?: number;
+  /** Best offer when user has a debit/card receipt. */
+  DEBIT?: number;
+}
+
+function maxPositive(...values: (number | undefined)[]): number {
+  const nums = values.filter((v): v is number => v != null && v > 0);
+  return nums.length ? Math.max(...nums) : 0;
+}
+
+/** Pick the stored base rate for a receipt choice; falls back to nairaPerUnit. */
+export function resolveStoredNairaPerUnit(
+  nairaPerUnit: number,
+  storedQuotes: StoredQuotes | null | undefined,
+  receiptType: ReceiptType = "NONE",
+  options?: { ecodeQuotes?: StoredQuotes | null; medium?: CardMedium }
+): number {
+  const stored = storedQuotes ?? {};
+  let rate: number;
+
+  if (receiptType === "NONE") {
+    rate = maxPositive(stored.NONE, stored.CASH, stored.DEBIT) || nairaPerUnit;
+  } else if (receiptType === "CASH") {
+    rate = maxPositive(stored.CASH, stored.DEBIT) || stored.NONE || nairaPerUnit;
+  } else {
+    rate = maxPositive(stored.DEBIT, stored.CASH) || stored.NONE || nairaPerUnit;
+  }
+
+  if (options?.medium === "PHYSICAL" && options.ecodeQuotes) {
+    const ecode = options.ecodeQuotes;
+    let ecodeRate: number;
+    if (receiptType === "NONE") {
+      ecodeRate = maxPositive(ecode.NONE, ecode.CASH, ecode.DEBIT);
+    } else if (receiptType === "CASH") {
+      ecodeRate = maxPositive(ecode.CASH, ecode.DEBIT) || ecode.NONE || 0;
+    } else {
+      ecodeRate = maxPositive(ecode.DEBIT, ecode.CASH) || ecode.NONE || 0;
+    }
+    if (ecodeRate > rate) rate = ecodeRate;
+  }
+
+  return rate;
+}
+
+/** Sort country labels with "Other" always last. */
+export function sortCountriesForDisplay(countries: string[]): string[] {
+  const rest = countries.filter((c) => c !== "Other").sort();
+  if (countries.includes("Other")) rest.push("Other");
+  return rest;
+}
+
+export interface RateDenomRange {
+  minDenom: number | null;
+  maxDenom: number | null;
+  currency?: string;
+}
+
+/** True when a card face amount falls within a rate tier's advertised bounds. */
+export function cardAmountInRateRange(amount: number, rate: RateDenomRange): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  if (rate.minDenom != null && amount < rate.minDenom) return false;
+  if (rate.maxDenom != null && amount > rate.maxDenom) return false;
+  return true;
+}
+
+/** Find the tier whose [min,max] contains the amount, if any. */
+export function findRateTierForAmount<T extends RateDenomRange>(tiers: T[], amount: number): T | null {
+  return tiers.find((tier) => cardAmountInRateRange(amount, tier)) ?? null;
+}
+
+/** Human-readable validation error for an out-of-range amount. */
+export function rateAmountRangeError(amount: number, rate: RateDenomRange): string | null {
+  if (cardAmountInRateRange(amount, rate)) return null;
+
+  const cur = rate.currency ? ` ${rate.currency}` : "";
+  if (rate.minDenom != null && rate.maxDenom != null) {
+    return `Amount must be between ${rate.minDenom} and ${rate.maxDenom}${cur} for this offer.`;
+  }
+  if (rate.minDenom != null) {
+    return `Amount must be at least ${rate.minDenom}${cur} for this offer.`;
+  }
+  if (rate.maxDenom != null) {
+    return `Amount must be at most ${rate.maxDenom}${cur} for this offer.`;
+  }
+  return "Amount is not valid for this offer tier.";
+}
+
 export type TradeStatus =
   | "PENDING"
   | "PROCESSING"

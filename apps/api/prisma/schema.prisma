@@ -122,6 +122,8 @@ model CardType {
   description String?
   imageUrl    String?
   active      Boolean  @default(true)
+  // Cached NoOnes buy-offer count for catalog popularity sorting.
+  offerCount  Int      @default(0)
   rates       Rate[]
   trades      Trade[]
   landingPage LandingPage?
@@ -139,6 +141,7 @@ model Rate {
   maxDenom      Int?
   medium        CardMedium @default(PHYSICAL)
   nairaPerUnit  Decimal    @db.Decimal(20, 4) // SLOW base rate, NGN per unit
+  storedQuotes  Json?      // Cached NoOnes variants: NONE, CASH, DEBIT (per medium row)
   speed         String? // SLOW | FAST (kept for audit)
   active        Boolean    @default(true)
   createdAt     DateTime   @default(now())
@@ -155,6 +158,8 @@ model RateConfig {
   nairaReductionPercent Int      @default(20)
   fxReductionPercent    Int      @default(30)
   referralPercent       Int      @default(1)
+  noonesRateRefreshMinutes Int   @default(15)
+  noonesTopOffersForRate   Int   @default(3)
   updatedAt             DateTime @updatedAt
   createdAt             DateTime @default(now())
 }
@@ -167,10 +172,12 @@ model Trade {
   cardTypeId      String
 
   country         String
+  otherCountryName String?
   currency        String
   medium          CardMedium
   receiptType     ReceiptType    @default(NONE)
   cardAmount      Decimal        @db.Decimal(20, 2) // face value in card currency
+  cardDenominations String?
   payoutCurrency  PayoutCurrency
 
   // Quote snapshot at creation time
@@ -193,6 +200,7 @@ model Trade {
   noonesError         String?
   noonesCryptoAmount  Decimal? @db.Decimal(20, 8)
   noonesCryptoCurrency String?
+  noonesAwaitingSend  Boolean  @default(false)
 
   attachments     TradeAttachment[]
   messages        TradeMessage[]

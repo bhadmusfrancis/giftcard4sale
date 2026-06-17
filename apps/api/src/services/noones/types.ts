@@ -26,6 +26,8 @@ export interface NoOnesOffer {
   offer_type?: string;
   active?: boolean;
   tags?: NoOnesOfferTag[];
+  description?: string;
+  offer_terms?: string;
   /** Completed trades on this offer (NoOnes marketplace liquidity signal). */
   total_successful_trades?: number;
   offer_owner_feedback_positive?: number;

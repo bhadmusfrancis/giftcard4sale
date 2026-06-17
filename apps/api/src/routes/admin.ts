@@ -594,6 +594,8 @@ adminRouter.put(
         nairaReductionPercent: z.number().int().min(0).max(100),
         fxReductionPercent: z.number().int().min(0).max(100),
         referralPercent: z.number().int().min(0).max(100),
+        noonesRateRefreshMinutes: z.number().int().min(1).max(1440),
+        noonesTopOffersForRate: z.number().int().min(1).max(50),
       }),
       req.body
     );
@@ -604,6 +606,8 @@ adminRouter.put(
         nairaReductionPercent: data.nairaReductionPercent,
         fxReductionPercent: data.fxReductionPercent,
         referralPercent: data.referralPercent,
+        noonesRateRefreshMinutes: data.noonesRateRefreshMinutes,
+        noonesTopOffersForRate: data.noonesTopOffersForRate,
       },
     });
     res.json({ config: cfg });

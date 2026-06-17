@@ -1,10 +1,17 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
+import { calculateRateQuote, PayoutCurrency, ReceiptType } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { getRateConfig } from "../services/rateConfig";
-import { isNoOnesConfigured, resolveOfferForCard } from "../services/noones";
+import {
+  hydrateCardRatesFromNoOnes,
+  isNoOnesConfigured,
+  parseStoredQuotes,
+  receiptPolicyFromStored,
+} from "../services/noones";
+import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
+import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 
 export const cardsRouter = Router();
 
@@ -25,7 +32,7 @@ cardsRouter.get(
             }
           : {}),
       },
-      orderBy: { name: "asc" },
+      orderBy: [{ offerCount: "desc" }, { rates: { _count: "desc" } }, { name: "asc" }],
       select: { id: true, name: true, slug: true, sellSlug: true, imageUrl: true, description: true },
     });
     res.json({ cards });
@@ -49,6 +56,15 @@ cardsRouter.get(
     });
     if (!card) return res.status(404).json({ error: "Card type not found" });
 
+    if (card.rates.length === 0 && isNoOnesConfigured()) {
+      await hydrateCardRatesFromNoOnes(card.id);
+      const refreshed = await prisma.rate.findMany({
+        where: { cardTypeId: card.id, active: true },
+        orderBy: [{ country: "asc" }, { minDenom: "asc" }],
+      });
+      card.rates = refreshed;
+    }
+
     const config = await getRateConfig();
     res.json({
       card: {
@@ -67,6 +83,7 @@ cardsRouter.get(
         maxDenom: r.maxDenom,
         medium: r.medium,
         nairaPerUnit: Number(r.nairaPerUnit),
+        storedQuotes: parseStoredQuotes(r.storedQuotes),
       })),
       config,
     });
@@ -77,6 +94,9 @@ const quoteSchema = z.object({
   rateId: z.string(),
   cardAmount: z.number().positive(),
   payoutCurrency: z.enum(["USDT", "NGN", "GHS"]),
+  receiptType: z.enum(["NONE", "CASH", "DEBIT"]).optional(),
+  /** When true, prefer offers that do not require a receipt (user has none). */
+  preferNoReceipt: z.boolean().optional(),
 });
 
 // Compute a payout quote for a specific rate row.
@@ -90,9 +110,44 @@ cardsRouter.post(
     });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
+    const amountError = validateCardAmountForRate(data.cardAmount, rate);
+    if (amountError) return res.status(400).json({ error: amountError });
+
     const config = await getRateConfig();
+    const receiptType = receiptTypeForQuote({
+      receiptType: data.receiptType as ReceiptType | undefined,
+      preferNoReceipt: data.preferNoReceipt,
+    });
+
+    const ecodeSibling =
+      rate.medium === "PHYSICAL"
+        ? await prisma.rate.findFirst({
+            where: {
+              cardTypeId: rate.cardTypeId,
+              country: rate.country,
+              medium: "ECODE",
+              minDenom: rate.minDenom,
+              maxDenom: rate.maxDenom,
+              active: true,
+            },
+          })
+        : null;
+
+    const nairaPerUnit = storedNairaFromRate(rate, receiptType, {
+      ecodeRate: ecodeSibling
+        ? { nairaPerUnit: Number(ecodeSibling.nairaPerUnit), storedQuotes: ecodeSibling.storedQuotes }
+        : null,
+    });
+    const storedQuotes = parseStoredQuotes(rate.storedQuotes);
+    const paymentMethod = resolvePaymentMethodSlug(
+      rate.cardType.slug,
+      rate.cardType.name,
+      rate.cardType.noonesPaymentMethod
+    );
+    const receiptPolicy = receiptPolicyFromStored({ paymentMethod, storedQuotes, medium: rate.medium });
+
     const quote = calculateRateQuote({
-      nairaPerUnit: Number(rate.nairaPerUnit),
+      nairaPerUnit,
       cardAmount: data.cardAmount,
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: rate.medium,
@@ -100,23 +155,12 @@ cardsRouter.post(
       reductions: config.reductions,
     });
 
-    let requiresReceipt = false;
-    if (isNoOnesConfigured()) {
-      const market = await resolveOfferForCard({
-        cardSlug: rate.cardType.slug,
-        cardName: rate.cardType.name,
-        paymentMethodOverride: rate.cardType.noonesPaymentMethod,
-        cardCurrency: rate.currency,
-        cardAmount: data.cardAmount,
-        medium: rate.medium,
-      });
-      requiresReceipt = market?.requiresReceipt ?? false;
-    }
-
     res.json({
       quote,
       rate: { country: rate.country, currency: rate.currency, medium: rate.medium },
-      receiptPolicy: { requiresReceipt },
+      receiptPolicy,
+      quoteSource: "stored",
+      storedQuotes,
     });
   })
 );

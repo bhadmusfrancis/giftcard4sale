@@ -32,6 +32,8 @@ function ConfigSection() {
         nairaReductionPercent: Number(config.reductions.nairaReductionPercent),
         fxReductionPercent: Number(config.reductions.fxReductionPercent),
         referralPercent: Number(config.referralPercent),
+        noonesRateRefreshMinutes: Number(config.noonesRateRefreshMinutes ?? 15),
+        noonesTopOffersForRate: Number(config.noonesTopOffersForRate ?? 3),
       },
     });
     setMsg("Saved.");
@@ -42,13 +44,26 @@ function ConfigSection() {
   return (
     <form onSubmit={save} className="card p-6">
       <h3 className="font-bold">Exchange rates &amp; deductions</h3>
-      <p className="text-sm text-slate-500">Used to convert Naira card value to USDT/Cedi and to deduct the margin.</p>
+      <p className="text-sm text-slate-500">
+        Used to convert Naira card value to USDT/Cedi and to deduct the margin. NoOnes card rates are averaged from
+        the top offers by completed trades and refresh on the configured interval.
+      </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <Field label="NGN per 1 USDT" value={config.rates.ngnPerUsdt} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerUsdt: v } })} />
         <Field label="NGN per 1 GHS (Cedi)" value={config.rates.ngnPerGhs} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerGhs: v } })} />
         <Field label="Referral %" value={config.referralPercent} onChange={(v) => setConfig({ ...config, referralPercent: v })} />
         <Field label="Naira deduction %" value={config.reductions.nairaReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, nairaReductionPercent: v } })} />
         <Field label="USDT/Cedi deduction %" value={config.reductions.fxReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, fxReductionPercent: v } })} />
+        <Field
+          label="NoOnes rate refresh (minutes)"
+          value={config.noonesRateRefreshMinutes ?? 15}
+          onChange={(v) => setConfig({ ...config, noonesRateRefreshMinutes: v })}
+        />
+        <Field
+          label="NoOnes offers to average"
+          value={config.noonesTopOffersForRate ?? 3}
+          onChange={(v) => setConfig({ ...config, noonesTopOffersForRate: v })}
+        />
       </div>
       <div className="mt-4 flex items-center gap-3">
         <button className="btn-primary">Save config</button>

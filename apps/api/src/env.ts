@@ -95,7 +95,7 @@ export const env = {
     apiBase: (process.env.NOONES_API_BASE || "https://api.noones.com/noones/v1").replace(/\/$/, ""),
     tokenUrl: process.env.NOONES_TOKEN_URL || "https://auth.noones.com/oauth2/token",
     cryptoCurrency: (process.env.NOONES_CRYPTO_CURRENCY || "USDT").toUpperCase(),
-    rateSyncMinutes: num(process.env.NOONES_RATE_SYNC_MINUTES, 5),
+    rateSyncMinutes: num(process.env.NOONES_RATE_SYNC_MINUTES, 15),
     tradePollMinutes: num(process.env.NOONES_TRADE_POLL_MINUTES, 2),
     /** When NoOnes has no separate e-code offers, ECODE rate = PHYSICAL × this factor. */
     ecodeRateFactor: num(process.env.NOONES_ECODE_RATE_FACTOR, 0.88),

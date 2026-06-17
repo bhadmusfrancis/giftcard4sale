@@ -7,30 +7,22 @@
 import "dotenv/config";
 import { canonicalCardSlug, sellSlug } from "@gc4s/shared";
 import { prisma } from "../src/prisma";
-import { isNoOnesConfigured, noonesPost } from "../src/services/noones/client";
+import { isNoOnesConfigured } from "../src/services/noones/client";
 import { paymentMethodToCardName } from "../src/services/noones/rateCatalog";
 import { findExistingCardType } from "../src/services/cardTypeDedup";
 import { listGiftCardPaymentMethods } from "../src/services/noones/rateSync";
-import { NoOnesOfferAllData } from "../src/services/noones/types";
+import { countNoOnesOffers } from "../src/services/noones/offers";
+import { isCardPublishable, MAX_OFFERS_FOR_PUBLISH } from "../src/services/noones/publishPolicy";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const maxOffersArg = args.find((a) => a.startsWith("--max-offers="));
-const maxOffers = maxOffersArg ? Number(maxOffersArg.split("=")[1]) : 10;
+const maxOffers = maxOffersArg ? Number(maxOffersArg.split("=")[1]) : MAX_OFFERS_FOR_PUBLISH;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function countOffers(paymentMethod: string): Promise<number> {
-  const data = await noonesPost<NoOnesOfferAllData>("offer/all", {
-    offer_type: "buy",
-    group: "gift-cards",
-    payment_method: paymentMethod,
-    crypto_currency_code: process.env.NOONES_CRYPTO_CURRENCY || "USDT",
-    limit: 1,
-  });
-
-  const total = data.totalCount ?? data.count ?? (data.offers?.length ?? 0);
-  return total;
+  return countNoOnesOffers(paymentMethod);
 }
 
 async function alreadyExists(
@@ -85,7 +77,7 @@ async function main() {
       continue;
     }
 
-    if (offerCount > maxOffers) {
+    if (!isCardPublishable(offerCount, maxOffers)) {
       skippedTooMany.push(`${method.slug} (${offerCount} offers)`);
       continue;
     }
@@ -120,7 +112,7 @@ async function main() {
     if (existingCard) {
       await prisma.cardType.update({
         where: { id: existingCard.id },
-        data: { name, noonesPaymentMethod: method.slug, active: true },
+        data: { name, noonesPaymentMethod: method.slug, offerCount, active: true },
       });
       console.log(`  ✓ Linked ${name} to existing card (${method.slug}, ${offerCount} offers)`);
       continue;
@@ -132,6 +124,7 @@ async function main() {
         slug,
         sellSlug: sellSlug(name),
         noonesPaymentMethod: method.slug,
+        offerCount,
         active: true,
       },
     });

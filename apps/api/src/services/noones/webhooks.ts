@@ -2,7 +2,7 @@ import nacl from "tweetnacl";
 import { prisma } from "../../prisma";
 import { env } from "../../env";
 import { getAccessToken } from "./client";
-import { handleNoOnesTradeStatus } from "./tradeExecutor";
+import { handleNoOnesTradeStatus, handleNoOnesChatMessage } from "./tradeExecutor";
 import { NoOnesWebhookPayload } from "./types";
 
 export function verifyNoOnesSignature(signatureB64: string, rawBody: string): boolean {
@@ -76,6 +76,8 @@ export async function processNoOnesWebhook(rawBody: string, signature?: string):
     await handleNoOnesTradeStatus(trade.id, tradeHash, "Released", body.trade);
   } else if (eventType === "trade.cancelled_or_expired" || eventType.includes("cancelled")) {
     await handleNoOnesTradeStatus(trade.id, tradeHash, "Cancelled", body.trade);
+  } else if (eventType === "trade.chat_message_received" || eventType.includes("chat_message")) {
+    await handleNoOnesChatMessage(tradeHash);
   } else if (eventType === "trade.paid") {
     await prisma.trade.update({
       where: { id: trade.id },
