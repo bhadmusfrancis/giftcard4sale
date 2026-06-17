@@ -23,6 +23,8 @@ const SLUG_MAP: Record<string, string> = {
   roblox: "roblox-gift-card",
   doordash: "doordash-gift-card",
   chime: "chime-gift-card",
+  "cvs-pharmacy": "cvs-gift-card",
+  "dollar-general": "dollar-general",
 };
 
 const NAME_PATTERNS: [RegExp, string][] = [
@@ -45,6 +47,8 @@ const NAME_PATTERNS: [RegExp, string][] = [
   [/roblox/i, "roblox-gift-card"],
   [/doordash/i, "doordash-gift-card"],
   [/chime/i, "chime-gift-card"],
+  [/cvs/i, "cvs-gift-card"],
+  [/dollar\s?general/i, "dollar-general"],
   [/gamestop/i, "gamestop-gift-card"],
   [/lowes/i, "lowes-gift-card"],
   [/home\s?depot/i, "home-depot-gift-card"],

@@ -75,7 +75,8 @@ Load: 10-20 mins.
 ●【PlayStation】(10-200) = 773
 ●【Roblox】(25-300) = 630
 ●【Google】(5-500) = 935
-●【CVS Pharmacy & Dollar General】(100-500) = 1108`;
+●【CVS Pharmacy】(100-500) = 1108
+●【Dollar General】(100-500) = 1108`;
 
 async function main() {
   // --- Admin ---
