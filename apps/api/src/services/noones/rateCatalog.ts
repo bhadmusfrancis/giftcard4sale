@@ -1,6 +1,7 @@
 import { CardMedium } from "@prisma/client";
 import { normalizeCardTypeName } from "@gc4s/shared";
 import { CardRegionLock, tierMatchesRegionLock } from "./regionLock";
+import type { CurrencyOfferMeta, OfferDenomRange } from "./offers";
 
 /** Fast tiers fetched on-demand when a card page has no stored rates yet. */
 export const HYDRATION_RATE_TIERS = [
@@ -182,6 +183,73 @@ export function appendDiscoveredCurrencyTargets(
   }
 
   return [...map.values()];
+}
+
+/** Ensure PHYSICAL + ECODE placeholder tiers exist for every currency with offer metadata. */
+export function ensureTargetsForCurrencyMeta(
+  targets: RateSyncTarget[],
+  metaByCurrency: Map<string, CurrencyOfferMeta>
+): RateSyncTarget[] {
+  const map = new Map(targets.map((t) => [targetKey(t), t]));
+
+  for (const [currency, meta] of metaByCurrency) {
+    if (!meta.ranges.length) continue;
+    const tier = currencyTierFromCode(currency);
+    for (const medium of MEDIUMS) {
+      const hasCurrencyMedium = [...map.values()].some(
+        (t) => t.currency === currency && t.medium === medium
+      );
+      if (hasCurrencyMedium) continue;
+      const key = targetKey({ ...tier, medium, minDenom: null, maxDenom: null });
+      map.set(key, {
+        ...tier,
+        medium,
+        minDenom: null,
+        maxDenom: null,
+        sampleAmount: tier.sampleAmount,
+      });
+    }
+  }
+
+  return [...map.values()];
+}
+
+/** Replace each currency tier with every distinct denomination range from NoOnes offers. */
+export function expandTargetsFromOfferRanges(
+  targets: RateSyncTarget[],
+  metaByCurrency: Map<string, CurrencyOfferMeta>
+): RateSyncTarget[] {
+  const expanded: RateSyncTarget[] = [];
+  const seen = new Set<string>();
+
+  for (const base of targets) {
+    const meta = metaByCurrency.get(base.currency);
+    let ranges: (OfferDenomRange | { min: number | null; max: number | null })[] = [];
+
+    if (meta?.ranges.length) {
+      ranges = meta.ranges;
+    } else if (base.minDenom != null || base.maxDenom != null) {
+      ranges = [{ min: base.minDenom, max: base.maxDenom }];
+    } else {
+      continue;
+    }
+
+    for (const range of ranges) {
+      const minDenom = range.min;
+      const maxDenom = range.max;
+      const key = targetKey({ country: base.country, medium: base.medium, minDenom, maxDenom });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      expanded.push({
+        ...base,
+        minDenom,
+        maxDenom,
+        sampleAmount: sampleFor(minDenom, maxDenom),
+      });
+    }
+  }
+
+  return expanded;
 }
 
 /** Turn a NoOnes payment-method slug into a display name for CardType. */

@@ -18,6 +18,7 @@ import {
   previewRateFromNoOnes,
   listNoOnesPaymentMethods,
   registerNoOnesWebhooks,
+  reapplyCountryTierVisibility,
 } from "../services/noones";
 import { publicUser } from "./auth";
 import { serializeTrade, serializeMessage } from "./trades";
@@ -599,10 +600,11 @@ adminRouter.put(
         referralPercent: z.number().int().min(0).max(100),
         noonesRateRefreshMinutes: z.number().int().min(1).max(1440),
         noonesTopOffersForRate: z.number().int().min(1).max(50),
+        minCountryOffersForDisplay: z.number().int().min(1).max(100),
       }),
       req.body
     );
-    const cfg = await prisma.rateConfig.create({
+    await prisma.rateConfig.create({
       data: {
         ngnPerUsdt: new Prisma.Decimal(data.ngnPerUsdt),
         ngnPerGhs: new Prisma.Decimal(data.ngnPerGhs),
@@ -611,9 +613,12 @@ adminRouter.put(
         referralPercent: data.referralPercent,
         noonesRateRefreshMinutes: data.noonesRateRefreshMinutes,
         noonesTopOffersForRate: data.noonesTopOffersForRate,
+        minCountryOffersForDisplay: data.minCountryOffersForDisplay,
       },
     });
-    res.json({ config: cfg });
+    const tiersUpdated = await reapplyCountryTierVisibility(data.minCountryOffersForDisplay);
+    const config = await getRateConfig();
+    res.json({ config, tiersUpdated });
   })
 );
 

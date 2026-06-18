@@ -24,7 +24,7 @@ function ConfigSection() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    await api("/admin/config", {
+    const d = await api("/admin/config", {
       method: "PUT",
       body: {
         ngnPerUsdt: Number(config.rates.ngnPerUsdt),
@@ -34,9 +34,15 @@ function ConfigSection() {
         referralPercent: Number(config.referralPercent),
         noonesRateRefreshMinutes: Number(config.noonesRateRefreshMinutes ?? 15),
         noonesTopOffersForRate: Number(config.noonesTopOffersForRate ?? 3),
+        minCountryOffersForDisplay: Number(config.minCountryOffersForDisplay ?? 5),
       },
     });
-    setMsg("Saved.");
+    if (d.config) setConfig(d.config);
+    setMsg(
+      d.tiersUpdated
+        ? `Saved. Updated ${d.tiersUpdated} country tier(s) to match the new minimum.`
+        : "Saved."
+    );
   }
 
   if (!config) return null;
@@ -64,7 +70,15 @@ function ConfigSection() {
           value={config.noonesTopOffersForRate ?? 3}
           onChange={(v) => setConfig({ ...config, noonesTopOffersForRate: v })}
         />
+        <Field
+          label="Min offers per country tier"
+          value={config.minCountryOffersForDisplay ?? 5}
+          onChange={(v) => setConfig({ ...config, minCountryOffersForDisplay: v })}
+        />
       </div>
+      <p className="mt-2 text-xs text-slate-500">
+        A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
+      </p>
       <div className="mt-4 flex items-center gap-3">
         <button className="btn-primary">Save config</button>
         {msg && <span className="text-sm text-brand-700">{msg}</span>}

@@ -106,6 +106,7 @@ async function main() {
         nairaReductionPercent: env.reductions.nairaReductionPercent,
         fxReductionPercent: env.reductions.fxReductionPercent,
         referralPercent: env.referralPercent,
+        minCountryOffersForDisplay: 5,
       },
     });
     console.log("Created rate config");

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, sortCountriesForDisplay } from "@gc4s/shared";
+import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, findBoundedRateForAmount, buildCountryOptions, formatDenomRanges, defaultAmountForTiers, collectDenomRangesForCurrency, collectDenomRangesFromCurrencyMeta } from "@gc4s/shared";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
+import { RateRefreshStatus, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
 
 interface Rate {
   id: string;
@@ -22,6 +23,15 @@ interface Rate {
 interface Config {
   rates: { ngnPerUsdt: number; ngnPerGhs: number };
   reductions: { nairaReductionPercent: number; fxReductionPercent: number };
+  noonesRateRefreshMinutes?: number;
+}
+
+interface CurrencyMetaRow {
+  country: string;
+  currency: string;
+  offerCount: number;
+  denomRanges: { min: number; max: number }[];
+  syncedAt: string;
 }
 
 export function RateCalculator({
@@ -29,29 +39,21 @@ export function RateCalculator({
   cardSellSlug,
   rates,
   config,
+  rateMeta,
+  currencyMeta = [],
 }: {
   cardName: string;
   cardSellSlug: string;
   rates: Rate[];
   config: Config;
+  rateMeta?: RateFreshnessMeta;
+  currencyMeta?: CurrencyMetaRow[];
 }) {
   const router = useRouter();
   const { user } = useAuth();
 
-  const offerCountByCountry = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const r of rates) {
-      const count = r.countryOfferCount ?? 0;
-      map[r.country] = Math.max(map[r.country] ?? 0, count);
-    }
-    return map;
-  }, [rates]);
-
-  const countries = useMemo(
-    () => sortCountriesForDisplay(Array.from(new Set(rates.map((r) => r.country))), offerCountByCountry),
-    [rates, offerCountByCountry]
-  );
-  const [country, setCountry] = useState(countries[0] ?? "");
+  const countryOptions = useMemo(() => buildCountryOptions(rates, currencyMeta), [rates, currencyMeta]);
+  const [country, setCountry] = useState(countryOptions[0]?.country ?? "");
   const [otherCountryName, setOtherCountryName] = useState("");
   const [medium, setMedium] = useState<CardMedium>("PHYSICAL");
   const [amount, setAmount] = useState<number>(100);
@@ -64,11 +66,13 @@ export function RateCalculator({
   const [liveQuote, setLiveQuote] = useState<RateQuote | null>(null);
   const [quoteReady, setQuoteReady] = useState(false);
 
+  const selectedCurrency = countryOptions.find((o) => o.country === country)?.currency;
+
   useEffect(() => {
-    if (countries.length && !countries.includes(country)) {
-      setCountry(countries[0]);
+    if (countryOptions.length && !countryOptions.some((o) => o.country === country)) {
+      setCountry(countryOptions[0].country);
     }
-  }, [countries, country]);
+  }, [countryOptions, country]);
 
   // Rates matching the chosen country + medium.
   const candidates = useMemo(
@@ -76,18 +80,32 @@ export function RateCalculator({
     [rates, country, medium]
   );
 
-  // Pick the tier whose [min,max] contains the amount.
-  const matched = useMemo(
-    () => findRateTierForAmount(candidates, amount),
-    [candidates, amount]
+  const boundedTiers = useMemo(() => {
+    const fromMeta = collectDenomRangesFromCurrencyMeta(currencyMeta, country, selectedCurrency);
+    if (fromMeta.length) return fromMeta;
+    return collectDenomRangesForCurrency(rates, country, selectedCurrency);
+  }, [currencyMeta, rates, country, selectedCurrency]);
+
+  const rangesReady = boundedTiers.length > 0;
+  const advertisedRanges = useMemo(() => formatDenomRanges(boundedTiers), [boundedTiers]);
+
+  // Snap amount to a valid tier before quoting (runs before paint on country/currency change).
+  useLayoutEffect(() => {
+    if (!rangesReady) return;
+    if (!findRateTierForAmount(boundedTiers, amount)) {
+      setAmount(defaultAmountForTiers(boundedTiers));
+    }
+  }, [country, selectedCurrency, medium, boundedTiers, rangesReady]);
+
+  const boundedTier = useMemo(
+    () => (rangesReady ? findRateTierForAmount(boundedTiers, amount) : null),
+    [boundedTiers, amount, rangesReady]
   );
 
-  const advertisedRanges = useMemo(() => {
-    if (!candidates.length) return "";
-    return candidates
-      .map((r) => `${r.minDenom ?? "any"}–${r.maxDenom ?? "any"}`)
-      .join(", ");
-  }, [candidates]);
+  const matched = useMemo(
+    () => (rangesReady ? findBoundedRateForAmount(candidates, boundedTiers, amount) : null),
+    [candidates, boundedTiers, amount, rangesReady]
+  );
 
   const receiptType: ReceiptType = useMemo(() => {
     if (medium === "ECODE") return "NONE";
@@ -97,7 +115,10 @@ export function RateCalculator({
     return "NONE";
   }, [medium, hasReceipt, isCashReceipt]);
 
-  const amountOutOfRange = Boolean(amount > 0 && candidates.length > 0 && !matched);
+  const amountOutOfRange = Boolean(
+    rangesReady && amount > 0 && (!boundedTier || !matched)
+  );
+  const pricingReady = rangesReady && Boolean(boundedTier) && Boolean(matched) && !amountOutOfRange;
   const showReceiptPrompt = askReceipt && medium !== "ECODE" && !amountOutOfRange;
 
   const isOtherCountry = country === "Other";
@@ -108,7 +129,7 @@ export function RateCalculator({
   const mediumAvailable = (m: CardMedium) => rates.some((r) => r.country === country && r.medium === m);
 
   useEffect(() => {
-    if (!matched || !amount || amountOutOfRange) {
+    if (!pricingReady) {
       setAskReceipt(false);
       setRequiresReceipt(false);
       setLiveQuote(null);
@@ -125,7 +146,7 @@ export function RateCalculator({
       "/cards/quote",
       {
         body: {
-          rateId: matched.id,
+          rateId: matched!.id,
           cardAmount: amount,
           payoutCurrency,
           receiptType,
@@ -154,7 +175,7 @@ export function RateCalculator({
     return () => {
       cancelled = true;
     };
-  }, [matched?.id, amount, amountOutOfRange, payoutCurrency, hasReceipt, medium, receiptType]);
+  }, [pricingReady, matched?.id, amount, payoutCurrency, hasReceipt, medium, receiptType]);
 
   useEffect(() => {
     if (!askReceipt || medium === "ECODE") {
@@ -167,8 +188,7 @@ export function RateCalculator({
   const receiptIncomplete =
     showReceiptPrompt && (hasReceipt === null || (hasReceipt === true && isCashReceipt === null));
   const canProceed = Boolean(
-    matched &&
-      !amountOutOfRange &&
+    pricingReady &&
       quoteReady &&
       quote &&
       !receiptBlocked &&
@@ -198,14 +218,17 @@ export function RateCalculator({
 
   return (
     <div className="card p-6">
-      <h3 className="text-lg font-bold">Calculate your {cardName} rate</h3>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h3 className="text-lg font-bold">Calculate your {cardName} rate</h3>
+        {rateMeta ? <RateRefreshStatus rateMeta={rateMeta} /> : null}
+      </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label">Card country</label>
           <select className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
-            {countries.map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {countryOptions.map((o) => (
+              <option key={o.country} value={o.country}>{o.label}</option>
             ))}
           </select>
           {isOtherCountry ? (
@@ -244,17 +267,22 @@ export function RateCalculator({
         </div>
 
         <div>
-          <label className="label">Card amount ({matched?.currency ?? "USD"})</label>
+          <label className="label">Card amount ({matched?.currency ?? selectedCurrency ?? "USD"})</label>
           <input
             type="number"
             className="input"
             value={amount}
-            min={matched?.minDenom ?? candidates[0]?.minDenom ?? 1}
-            max={matched?.maxDenom ?? undefined}
+            min={boundedTier?.minDenom ?? boundedTiers[0]?.minDenom ?? 1}
+            max={boundedTier?.maxDenom ?? undefined}
             onChange={(e) => setAmount(Number(e.target.value))}
+            disabled={!rangesReady}
           />
-          {advertisedRanges ? (
-            <p className="mt-1 text-xs text-slate-500">Accepted amounts: {advertisedRanges} {matched?.currency ?? candidates[0]?.currency}</p>
+          {!rangesReady ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Loading accepted amounts for {selectedCurrency ?? "this currency"}…
+            </p>
+          ) : advertisedRanges ? (
+            <p className="mt-1 text-xs text-slate-500">Accepted amounts: {advertisedRanges}</p>
           ) : null}
           {amountOutOfRange ? (
             <p className="mt-1 text-sm text-red-600">
@@ -335,9 +363,13 @@ export function RateCalculator({
       ) : null}
 
       <div className="mt-6 rounded-xl bg-slate-900 p-5 text-white">
-        {policyLoading || (matched && !amountOutOfRange && !quoteReady) ? (
+        {!rangesReady ? (
+          <div className="text-slate-300">
+            Loading accepted amounts for {selectedCurrency ?? "this currency"}…
+          </div>
+        ) : policyLoading || (pricingReady && !quoteReady) ? (
           <div className="text-slate-300">Calculating your payout…</div>
-        ) : quote && matched && !amountOutOfRange ? (
+        ) : quote && pricingReady ? (
           <>
             <div className="text-sm text-slate-300">You will receive</div>
             <div className="text-3xl font-extrabold">{money(quote.payoutAmount, payoutCurrency)}</div>
@@ -356,7 +388,7 @@ export function RateCalculator({
           </>
         ) : amountOutOfRange ? (
           <div className="text-slate-300">
-            No rate for {amount} {matched?.currency ?? candidates[0]?.currency ?? "USD"}. Use an amount
+            No rate for {amount} {selectedCurrency ?? matched?.currency ?? "USD"}. Use an amount
             {advertisedRanges ? `: ${advertisedRanges}` : ""}.
           </div>
         ) : (

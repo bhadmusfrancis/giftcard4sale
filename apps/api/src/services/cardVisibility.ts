@@ -11,13 +11,48 @@ export function isManualRateSpeed(speed: string | null | undefined): boolean {
   return speed == null || speed === "SLOW" || speed === "FAST";
 }
 
-/** Public catalog: NoOnes-imported cards with at least one live offer. */
+/** Public catalog: NoOnes cards that have at least one quotable rate row. */
 export function noOnesCatalogWhere(): Prisma.CardTypeWhereInput {
   return {
     noonesPaymentMethod: { not: null },
-    offerCount: { gte: 1 },
     active: true,
+    rates: { some: { active: true } },
   };
+}
+
+/** Whether a card should appear in the public catalog (has quotable rates). */
+export async function cardHasQuotableRates(cardTypeId: string): Promise<boolean> {
+  const activeRates = await prisma.rate.count({
+    where: { cardTypeId, active: true },
+  });
+  return activeRates > 0;
+}
+
+/** Sync card.active and landing publish state from active rate rows. */
+export async function refreshCardCatalogVisibility(cardTypeId: string): Promise<boolean> {
+  const [activeRates, manualActive] = await Promise.all([
+    prisma.rate.count({ where: { cardTypeId, active: true } }),
+    prisma.rate.count({ where: { cardTypeId, active: true, ...MANUAL_RATE_WHERE } }),
+  ]);
+
+  const visible = activeRates > 0;
+  const card = await prisma.cardType.findUnique({
+    where: { id: cardTypeId },
+    select: { active: true },
+  });
+
+  if (card && card.active !== visible) {
+    await prisma.cardType.update({ where: { id: cardTypeId }, data: { active: visible } });
+  }
+
+  if (!visible && manualActive === 0) {
+    await prisma.landingPage.updateMany({
+      where: { cardTypeId },
+      data: { published: false },
+    });
+  }
+
+  return visible;
 }
 
 export function catalogCardWhere(search?: string): Prisma.CardTypeWhereInput {
@@ -58,7 +93,12 @@ export async function applyNoOnesPublishState(
 
   await prisma.cardType.update({
     where: { id: cardTypeId },
-    data: { offerCount, tradeVolume, active: publishable || manualActive > 0 },
+    data: {
+      offerCount,
+      tradeVolume,
+      // Only force active when manual rates exist; otherwise wait for rate sync.
+      ...(publishable ? {} : { active: manualActive > 0 }),
+    },
   });
 
   if (!publishable) {
@@ -122,14 +162,10 @@ export async function syncNoOnesCatalogVisibilityFromStored(): Promise<{
   });
 
   for (const card of cards) {
-    const shouldPublish = isCardPublishable(card.offerCount);
-    if (shouldPublish && !card.active) {
-      await prisma.cardType.update({ where: { id: card.id }, data: { active: true } });
-      published++;
-    } else if (!shouldPublish && card.active) {
-      const { drafted: didDraft } = await applyNoOnesPublishState(card.id, card.offerCount, true);
-      if (didDraft) drafted++;
-    }
+    const wasActive = card.active;
+    const visible = await refreshCardCatalogVisibility(card.id);
+    if (visible && !wasActive) published++;
+    else if (!visible && wasActive) drafted++;
   }
 
   return { published, drafted };

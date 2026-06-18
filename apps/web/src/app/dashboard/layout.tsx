@@ -5,20 +5,22 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { CollapsibleSidebar, useCollapsibleSidebar } from "@/components/CollapsibleSidebar";
 
 const NAV = [
-  ["/dashboard", "Overview"],
-  ["/dashboard/trades", "My trades"],
-  ["/dashboard/wallet", "Wallet"],
-  ["/dashboard/referrals", "Referrals"],
-  ["/dashboard/notifications", "Notifications"],
-  ["/dashboard/profile", "Profile"],
+  { href: "/dashboard", label: "Overview" },
+  { href: "/dashboard/trades", label: "My trades" },
+  { href: "/dashboard/wallet", label: "Wallet" },
+  { href: "/dashboard/referrals", label: "Referrals" },
+  { href: "/dashboard/notifications", label: "Notifications" },
+  { href: "/dashboard/profile", label: "Profile" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { open, toggle } = useCollapsibleSidebar();
 
   useEffect(() => {
     if (!loading && !user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
@@ -45,30 +47,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      <div className="grid gap-6 md:grid-cols-[220px_1fr]">
-        <aside className="md:sticky md:top-20 md:self-start">
-          <nav className="card overflow-hidden">
-            {NAV.map(([href, label]) => {
-              const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`block px-4 py-3 text-sm font-medium ${
-                    active ? "bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {label}
-                </Link>
-              );
-            })}
-            {user.role === "ADMIN" && (
+      <div className={`grid gap-6 ${open ? "md:grid-cols-[220px_1fr]" : ""}`}>
+        <CollapsibleSidebar
+          title="Dashboard menu"
+          items={NAV}
+          rootHref="/dashboard"
+          open={open}
+          onToggle={toggle}
+          footer={
+            user.role === "ADMIN" ? (
               <Link href="/admin" className="block px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
                 Admin console →
               </Link>
-            )}
-          </nav>
-        </aside>
+            ) : undefined
+          }
+        />
         <section>{children}</section>
       </div>
     </div>

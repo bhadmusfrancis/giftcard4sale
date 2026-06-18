@@ -127,6 +127,7 @@ model CardType {
   // Sum of completed trades across NoOnes offers (catalog tie-breaker).
   tradeVolume Int      @default(0)
   rates       Rate[]
+  currencyMeta CardCurrencyMeta[]
   trades      Trade[]
   landingPage LandingPage?
   createdAt   DateTime @default(now())
@@ -153,6 +154,21 @@ model Rate {
   @@index([cardTypeId, country, medium])
 }
 
+// Cached NoOnes offer metadata per card currency (ranges, offer count).
+model CardCurrencyMeta {
+  id          String   @id @default(cuid())
+  cardType    CardType @relation(fields: [cardTypeId], references: [id], onDelete: Cascade)
+  cardTypeId  String
+  country     String
+  currency    String
+  offerCount  Int      @default(0)
+  denomRanges Json     @default("[]") // [{ min, max }, ...] from NoOnes offers
+  syncedAt    DateTime @default(now())
+
+  @@unique([cardTypeId, currency])
+  @@index([cardTypeId])
+}
+
 // Live exchange rates + reduction config, single editable row (latest wins).
 model RateConfig {
   id                    String   @id @default(cuid())
@@ -163,6 +179,7 @@ model RateConfig {
   referralPercent       Int      @default(1)
   noonesRateRefreshMinutes Int   @default(15)
   noonesTopOffersForRate   Int   @default(3)
+  minCountryOffersForDisplay Int @default(5)
   updatedAt             DateTime @updatedAt
   createdAt             DateTime @default(now())
 }

@@ -4,13 +4,9 @@ import { calculateRateQuote, PayoutCurrency, ReceiptType } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { catalogCardWhere } from "../services/cardVisibility";
-import { getRateConfig } from "../services/rateConfig";
-import {
-  hydrateCardRatesFromNoOnes,
-  isNoOnesConfigured,
-  parseStoredQuotes,
-  receiptPolicyFromStored,
-} from "../services/noones";
+import { buildRateFreshnessMeta, getRateConfig } from "../services/rateConfig";
+import { parseStoredQuotes, receiptPolicyFromStored } from "../services/noones";
+import { listCardCurrencyMetaForDisplay } from "../services/noones/currencyMeta";
 import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { resolveCardRegionLock, tierMatchesRegionLock } from "../services/noones/regionLock";
 import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
@@ -30,7 +26,7 @@ cardsRouter.get(
   })
 );
 
-// Fetch one card by slug or sellSlug, including active rates.
+// Fetch one card by slug or sellSlug, including active rates (database only — no live NoOnes calls).
 cardsRouter.get(
   "/:slug",
   asyncHandler(async (req, res) => {
@@ -42,7 +38,7 @@ cardsRouter.get(
       include: {
         rates: {
           where: { active: true },
-          orderBy: [{ country: "asc" }, { minDenom: "asc" }],
+          orderBy: [{ countryOfferCount: "desc" }, { country: "asc" }, { minDenom: "asc" }],
         },
         landingPage: true,
       },
@@ -51,20 +47,14 @@ cardsRouter.get(
 
     const regionLock = resolveCardRegionLock(card.slug, card.name, card.noonesPaymentMethod);
 
-    if (card.rates.length === 0 && isNoOnesConfigured()) {
-      await hydrateCardRatesFromNoOnes(card.id);
-      const refreshed = await prisma.rate.findMany({
-        where: { cardTypeId: card.id, active: true },
-        orderBy: [{ country: "asc" }, { minDenom: "asc" }],
-      });
-      card.rates = refreshed;
-    }
-
     const visibleRates = regionLock
       ? card.rates.filter((r) => tierMatchesRegionLock(r, regionLock))
       : card.rates;
 
     const config = await getRateConfig();
+    const rateMeta = buildRateFreshnessMeta(visibleRates, config.noonesRateRefreshMinutes);
+    const currencyMeta = await listCardCurrencyMetaForDisplay(card.id);
+
     res.json({
       card: {
         id: card.id,
@@ -84,8 +74,11 @@ cardsRouter.get(
         nairaPerUnit: Number(r.nairaPerUnit),
         storedQuotes: parseStoredQuotes(r.storedQuotes),
         countryOfferCount: r.countryOfferCount ?? 0,
+        updatedAt: r.updatedAt,
       })),
       config,
+      rateMeta,
+      currencyMeta,
     });
   })
 );
@@ -99,7 +92,7 @@ const quoteSchema = z.object({
   preferNoReceipt: z.boolean().optional(),
 });
 
-// Compute a payout quote for a specific rate row.
+// Compute a payout quote for a specific rate row (stored NoOnes data only).
 cardsRouter.post(
   "/quote",
   asyncHandler(async (req, res) => {
@@ -109,6 +102,10 @@ cardsRouter.post(
       include: { cardType: true },
     });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
+
+    if (rate.minDenom == null && rate.maxDenom == null) {
+      return res.status(400).json({ error: "Rate tier bounds are not available yet for this currency" });
+    }
 
     const amountError = validateCardAmountForRate(data.cardAmount, rate);
     if (amountError) return res.status(400).json({ error: amountError });
@@ -162,10 +159,12 @@ cardsRouter.post(
         currency: rate.currency,
         medium: rate.medium,
         cardName: rate.cardType.name,
+        updatedAt: rate.updatedAt,
       },
       receiptPolicy,
       quoteSource: "stored",
       storedQuotes,
+      rateMeta: buildRateFreshnessMeta([rate], config.noonesRateRefreshMinutes),
     });
   })
 );

@@ -20,6 +20,19 @@ interface CardResp {
   card: { id: string; name: string; slug: string; sellSlug: string; description?: string; imageUrl?: string };
   rates: any[];
   config: any;
+  rateMeta?: {
+    lastUpdatedAt: string | null;
+    nextRefreshAt: string | null;
+    refreshMinutes: number;
+    isStale: boolean;
+  };
+  currencyMeta?: {
+    country: string;
+    currency: string;
+    offerCount: number;
+    denomRanges: { min: number; max: number }[];
+    syncedAt: string;
+  }[];
 }
 
 async function load(slug: string) {
@@ -104,19 +117,33 @@ export default async function SlugPage({ params }: { params: { slug: string } })
         </div>
 
         <div className="space-y-6">
-          {card && card.rates.length > 0 ? (
+          {card?.rates?.length ? (
             <RateCalculator
               cardName={card.card.name}
               cardSellSlug={card.card.sellSlug}
               rates={card.rates}
               config={card.config}
+              rateMeta={card.rateMeta}
+              currencyMeta={card.currencyMeta}
             />
-          ) : (
+          ) : card ? (
             <div className="card p-6">
               <h3 className="text-lg font-bold">Rate not available yet</h3>
               <p className="mt-2 text-sm text-slate-600">
-                Rates for this card are synced automatically from our marketplace partners. Please check back shortly
-                or try another card.
+                Rates for this card are synced automatically in the background from our marketplace partners. The next
+                sync runs on the schedule set in admin (typically every {card.config?.noonesRateRefreshMinutes ?? 15}{" "}
+                minutes). Please check back shortly.
+              </p>
+            </div>
+          ) : (
+            <div className="card p-6">
+              <h3 className="text-lg font-bold">Calculate your payout</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Browse our{" "}
+                <a href="/cards" className="text-brand-700 hover:underline">
+                  gift card catalog
+                </a>{" "}
+                to find a card with live rates.
               </p>
             </div>
           )}

@@ -1,24 +1,25 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
+import { CollapsibleSidebar, useCollapsibleSidebar } from "@/components/CollapsibleSidebar";
 
 const NAV = [
-  ["/admin", "Overview"],
-  ["/admin/users", "Users"],
-  ["/admin/trades", "Trades"],
-  ["/admin/withdrawals", "Withdrawals"],
-  ["/admin/rates", "Rates & cards"],
-  ["/admin/landing", "Landing pages"],
-  ["/admin/referrals", "Referrals"],
+  { href: "/admin", label: "Overview" },
+  { href: "/admin/users", label: "Users" },
+  { href: "/admin/trades", label: "Trades" },
+  { href: "/admin/withdrawals", label: "Withdrawals" },
+  { href: "/admin/rates", label: "Rates & cards" },
+  { href: "/admin/landing", label: "Landing pages" },
+  { href: "/admin/referrals", label: "Referrals" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const { open, toggle } = useCollapsibleSidebar();
 
   useEffect(() => {
     if (!loading && (!user || user.role !== "ADMIN")) router.replace("/login?next=/admin");
@@ -34,25 +35,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <span className="badge bg-slate-900 text-white">ADMIN</span>
         <h1 className="text-lg font-bold">Admin console</h1>
       </div>
-      <div className="grid gap-6 md:grid-cols-[200px_1fr]">
-        <aside className="md:sticky md:top-20 md:self-start">
-          <nav className="card overflow-hidden">
-            {NAV.map(([href, label]) => {
-              const active = pathname === href || (href !== "/admin" && pathname.startsWith(href));
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`block px-4 py-3 text-sm font-medium ${
-                    active ? "bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {label}
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
+      <div className={`grid gap-6 ${open ? "md:grid-cols-[200px_1fr]" : ""}`}>
+        <CollapsibleSidebar
+          title="Admin menu"
+          items={NAV}
+          rootHref="/admin"
+          open={open}
+          onToggle={toggle}
+        />
         <section>{children}</section>
       </div>
     </div>

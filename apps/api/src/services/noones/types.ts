@@ -18,6 +18,10 @@ export interface NoOnesOffer {
   fiat_price_per_crypto?: number;
   fiat_amount_range_min?: number;
   fiat_amount_range_max?: number;
+  /** Paxful-compatible aliases seen on some NoOnes offer payloads. */
+  fiat_amount_min?: number;
+  fiat_amount_max?: number;
+  predefined_amounts?: number[];
   fiat_currency_code?: string;
   currency_code?: string;
   crypto_currency_code?: string;
