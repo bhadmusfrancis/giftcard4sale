@@ -55,9 +55,22 @@ export function resolveStoredNairaPerUnit(
   return rate;
 }
 
-/** Sort country labels with "Other" always last. */
-export function sortCountriesForDisplay(countries: string[]): string[] {
-  const rest = countries.filter((c) => c !== "Other").sort();
+/** Sort country labels by NoOnes offer count (highest first). "Other" is always last. */
+export function sortCountriesForDisplay(
+  countries: string[],
+  offerCountByCountry?: Record<string, number>
+): string[] {
+  const rest = countries.filter((c) => c !== "Other");
+
+  if (offerCountByCountry) {
+    rest.sort((a, b) => {
+      const diff = (offerCountByCountry[b] ?? 0) - (offerCountByCountry[a] ?? 0);
+      return diff !== 0 ? diff : a.localeCompare(b);
+    });
+  } else {
+    rest.sort((a, b) => a.localeCompare(b));
+  }
+
   if (countries.includes("Other")) rest.push("Other");
   return rest;
 }

@@ -20,7 +20,8 @@ import {
   registerNoOnesWebhooks,
 } from "../services/noones";
 import { publicUser } from "./auth";
-import { serializeTrade } from "./trades";
+import { serializeTrade, serializeMessage } from "./trades";
+import { rejectTradeWithBadScore } from "../services/tradeRejection";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -199,12 +200,7 @@ adminRouter.get(
         noonesCryptoAmount: trade.noonesCryptoAmount != null ? Number(trade.noonesCryptoAmount) : null,
         noonesCryptoCurrency: trade.noonesCryptoCurrency,
       },
-      messages: trade.messages.map((m) => ({
-        id: m.id,
-        body: m.body,
-        createdAt: m.createdAt,
-        sender: { id: m.sender.id, displayName: m.sender.displayName, role: m.sender.role },
-      })),
+      messages: trade.messages.map((m) => serializeMessage(m)),
     });
   })
 );
@@ -225,18 +221,25 @@ adminRouter.patch(
     const trade = await prisma.trade.findUnique({ where: { id: req.params.id } });
     if (!trade) return res.status(404).json({ error: "Not found" });
 
-    const updateData: Prisma.TradeUpdateInput = {};
-    if (data.finalPayout != null) updateData.finalPayout = new Prisma.Decimal(data.finalPayout);
-    if (data.rejectionReason != null) updateData.rejectionReason = data.rejectionReason;
-    if (data.status && data.status !== "PAID") updateData.status = data.status;
+    const patch: Prisma.TradeUpdateInput = {};
+    if (data.finalPayout != null) patch.finalPayout = new Prisma.Decimal(data.finalPayout);
 
-    if (Object.keys(updateData).length > 0) {
-      await prisma.trade.update({ where: { id: trade.id }, data: updateData });
+    if (data.status === "REJECTED" && trade.status !== "REJECTED") {
+      await rejectTradeWithBadScore(trade.id, {
+        rejectionReason: data.rejectionReason ?? trade.rejectionReason ?? undefined,
+      });
+    } else {
+      if (data.rejectionReason != null) patch.rejectionReason = data.rejectionReason;
+      if (data.status && data.status !== "PAID") patch.status = data.status;
     }
 
     if (data.status === "PAID") {
       await payTrade(trade.id);
-    } else if (data.status === "REJECTED") {
+    } else if (Object.keys(patch).length > 0) {
+      await prisma.trade.update({ where: { id: trade.id }, data: patch });
+    }
+
+    if (data.status === "REJECTED" && trade.status !== "REJECTED") {
       await notify({
         userId: trade.userId,
         title: "Trade rejected",

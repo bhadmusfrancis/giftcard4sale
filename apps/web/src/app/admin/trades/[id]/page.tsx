@@ -96,7 +96,7 @@ export default function AdminTradeDetail() {
           </div>
         </div>
 
-        {user && <TradeChat tradeId={trade.id} myUserId={user.id} />}
+        {user && <TradeChat tradeId={trade.id} myUserId={user.id} isAdmin={user.role === "ADMIN"} />}
       </div>
     </div>
   );

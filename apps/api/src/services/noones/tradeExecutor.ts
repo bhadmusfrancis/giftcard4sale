@@ -6,6 +6,7 @@ import { env } from "../../env";
 import { UPLOAD_DIR } from "../../lib/upload";
 import { notify } from "../notify";
 import { payTrade } from "../payout";
+import { rejectTradeWithBadScore } from "../tradeRejection";
 import { getRateConfig } from "../rateConfig";
 import { isNoOnesConfigured, noonesPost, noonesUpload, NoOnesApiError } from "./client";
 import { resolveOfferForCard } from "./rates";
@@ -370,16 +371,12 @@ async function finalizeFailedResell(tradeId: string, noonesTradeHash: string, re
   const trade = await prisma.trade.findUnique({ where: { id: tradeId } });
   if (!trade || trade.status === "PAID" || trade.status === "REJECTED") return;
 
-  await prisma.trade.update({
-    where: { id: tradeId },
-    data: {
-      status: "REJECTED",
-      noonesStatus: "CANCELLED",
-      noonesTradeHash,
-      noonesAwaitingSend: false,
-      rejectionReason: reason,
-    },
+  const rejected = await rejectTradeWithBadScore(tradeId, {
+    rejectionReason: reason,
+    noonesStatus: "CANCELLED",
+    noonesTradeHash,
   });
+  if (!rejected) return;
 
   await notify({
     userId: trade.userId,

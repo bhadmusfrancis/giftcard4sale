@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { apiServer } from "@/lib/api";
-import { BrandLogo } from "@/components/BrandLogo";
+import { PopularCards } from "@/components/PopularCards";
+import type { GiftCard } from "@/components/GiftCardCatalog";
 
 interface Card {
   id: string;
@@ -12,7 +13,7 @@ interface Card {
 
 export default async function HomePage() {
   const data = await apiServer<{ cards: Card[] }>("/cards");
-  const cards = data?.cards ?? [];
+  const cards = (data?.cards ?? []) as GiftCard[];
 
   return (
     <div>
@@ -51,16 +52,7 @@ export default async function HomePage() {
           <Link href="/cards" className="text-brand-700 hover:underline">View all</Link>
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {cards.slice(0, 12).map((c) => (
-            <Link key={c.id} href={`/${c.sellSlug}`} className="card p-5 hover:shadow-md transition">
-              <BrandLogo name={c.name} slug={c.slug} imageUrl={c.imageUrl} className="mb-3 h-12 w-12 text-lg" />
-              <div className="font-semibold">{c.name}</div>
-              <div className="text-sm text-slate-500">Check rate →</div>
-            </Link>
-          ))}
-          {cards.length === 0 && (
-            <p className="text-slate-500">No cards yet. Run the seed script to load card types.</p>
-          )}
+          <PopularCards initialCards={cards} />
         </div>
       </section>
 

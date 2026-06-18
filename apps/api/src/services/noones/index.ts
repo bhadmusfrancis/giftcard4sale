@@ -3,7 +3,7 @@ import { env } from "../../env";
 import { getRateConfig } from "../rateConfig";
 
 import { isNoOnesConfigured } from "./client";
-
+import { repairManualRateCatalog } from "../cardVisibility";
 import { syncRatesFromNoOnes } from "./rateSync";
 
 import { pollActiveNoOnesTrades } from "./tradeExecutor";
@@ -39,6 +39,8 @@ export function startNoOnesJobs(): void {
   const runRateSync = async () => {
 
     try {
+
+      await repairManualRateCatalog();
 
       const s = await syncRatesFromNoOnes();
 
@@ -147,4 +149,5 @@ export * from "./tradeExecutor";
 export * from "./webhooks";
 
 export * from "./paymentMethods";
+export * from "./regionLock";
 

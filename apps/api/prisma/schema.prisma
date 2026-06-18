@@ -124,6 +124,8 @@ model CardType {
   active      Boolean  @default(true)
   // Cached NoOnes buy-offer count for catalog popularity sorting.
   offerCount  Int      @default(0)
+  // Sum of completed trades across NoOnes offers (catalog tie-breaker).
+  tradeVolume Int      @default(0)
   rates       Rate[]
   trades      Trade[]
   landingPage LandingPage?
@@ -142,6 +144,7 @@ model Rate {
   medium        CardMedium @default(PHYSICAL)
   nairaPerUnit  Decimal    @db.Decimal(20, 4) // SLOW base rate, NGN per unit
   storedQuotes  Json?      // Cached NoOnes variants: NONE, CASH, DEBIT (per medium row)
+  countryOfferCount Int?   // Cached NoOnes offers for this country/currency tier
   speed         String? // SLOW | FAST (kept for audit)
   active        Boolean    @default(true)
   createdAt     DateTime   @default(now())
@@ -240,7 +243,10 @@ model TradeMessage {
   tradeId   String
   sender    User     @relation(fields: [senderId], references: [id])
   senderId  String
-  body      String
+  body      String   @default("")
+  attachmentUrl      String?
+  attachmentFilename String?
+  attachmentMimeType String?
   createdAt DateTime @default(now())
 
   @@index([tradeId])

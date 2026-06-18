@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { api } from "@/lib/api";
 
 export interface GiftCard {
   id: string;
@@ -35,12 +36,22 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(initialQuery);
+  const [liveCards, setLiveCards] = useState<GiftCard[] | null>(null);
 
   useEffect(() => {
     setQuery(searchParams.get("q") ?? initialQuery);
   }, [searchParams, initialQuery]);
 
-  const filtered = useMemo(() => filterCards(cards, query), [cards, query]);
+  // SSR can miss the API when the server starts before the API is ready.
+  useEffect(() => {
+    if (cards.length > 0) return;
+    api<{ cards: GiftCard[] }>("/cards")
+      .then((data) => setLiveCards(data.cards ?? []))
+      .catch(() => setLiveCards([]));
+  }, [cards.length]);
+
+  const catalogCards = liveCards ?? cards;
+  const filtered = useMemo(() => filterCards(catalogCards, query), [catalogCards, query]);
 
   function handleQueryChange(value: string) {
     setQuery(value);
@@ -94,13 +105,21 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
 
       {filtered.length === 0 && (
         <div className="card mt-8 p-8 text-center">
-          <p className="font-medium text-slate-700">No gift cards found</p>
+          <p className="font-medium text-slate-700">
+            {liveCards === null && cards.length === 0 ? "Loading gift cards…" : "No gift cards found"}
+          </p>
           <p className="mt-2 text-sm text-slate-500">
-            Try a different search term, or{" "}
-            <button type="button" onClick={() => handleQueryChange("")} className="text-brand-700 hover:underline">
-              clear the search
-            </button>
-            .
+            {liveCards === null && cards.length === 0 ? (
+              "Fetching the latest cards from our marketplace partners."
+            ) : (
+              <>
+                Try a different search term, or{" "}
+                <button type="button" onClick={() => handleQueryChange("")} className="text-brand-700 hover:underline">
+                  clear the search
+                </button>
+                .
+              </>
+            )}
           </p>
         </div>
       )}

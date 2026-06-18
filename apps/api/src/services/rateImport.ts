@@ -70,11 +70,14 @@ export async function importRates(entries: RateEntry[], replaceExisting = false)
             medium: e.medium,
             nairaPerUnit: new Prisma.Decimal(e.nairaPerUnit),
             speed: e.speed,
+            active: true,
           },
         });
       }
       totalRates++;
     }
+
+    await prisma.cardType.update({ where: { id: card.id }, data: { active: true } });
     details.push({ cardType: typeName, rates: list.length });
   }
 

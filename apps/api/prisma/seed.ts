@@ -117,6 +117,16 @@ async function main() {
   console.log(`Imported ${summary.cardTypes} card types, ${summary.rates} rates.`);
   if (warnings.length) console.log("Warnings:", warnings.slice(0, 5));
 
+  // Retire the old combined CVS/Dollar General card type.
+  await prisma.cardType.updateMany({
+    where: { slug: "cvs-pharmacy-dollar-general" },
+    data: { active: false },
+  });
+  await prisma.rate.updateMany({
+    where: { cardType: { slug: "cvs-pharmacy-dollar-general" } },
+    data: { active: false },
+  });
+
   // --- Card types that appear in the FB posts but not the rate text ---
   const extraCards = ["Lowes", "Amazon", "eBay", "Walmart", "Nike", "Visa", "Vanilla"];
   for (const name of extraCards) {

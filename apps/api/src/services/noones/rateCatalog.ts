@@ -1,5 +1,6 @@
 import { CardMedium } from "@prisma/client";
 import { normalizeCardTypeName } from "@gc4s/shared";
+import { CardRegionLock, tierMatchesRegionLock } from "./regionLock";
 
 /** Fast tiers fetched on-demand when a card page has no stored rates yet. */
 export const HYDRATION_RATE_TIERS = [
@@ -106,12 +107,27 @@ export function buildSyncTargets(
     maxDenom: number | null;
     medium: CardMedium;
   }[],
-  options?: { hydrationOnly?: boolean }
+  options?: { hydrationOnly?: boolean; regionLock?: CardRegionLock | null }
 ): RateSyncTarget[] {
-  const tierSource = options?.hydrationOnly ? HYDRATION_RATE_TIERS : DEFAULT_RATE_TIERS;
+  let tierSource: readonly {
+    country: string;
+    currency: string;
+    minDenom: number;
+    maxDenom: number;
+    sampleAmount: number;
+  }[] = options?.hydrationOnly ? HYDRATION_RATE_TIERS : DEFAULT_RATE_TIERS;
+
+  if (options?.regionLock) {
+    tierSource = DEFAULT_RATE_TIERS.filter((tier) => tierMatchesRegionLock(tier, options.regionLock!));
+    if (!tierSource.length) {
+      tierSource = HYDRATION_RATE_TIERS.filter((tier) => tierMatchesRegionLock(tier, options.regionLock!));
+    }
+  }
+
   const map = new Map<string, RateSyncTarget>();
 
   for (const r of existing) {
+    if (options?.regionLock && !tierMatchesRegionLock(r, options.regionLock)) continue;
     map.set(targetKey(r), {
       country: r.country,
       currency: r.currency,
@@ -147,8 +163,11 @@ export function buildSyncTargets(
 /** Add PHYSICAL + ECODE tiers for currencies discovered on NoOnes (e.g. CNY, INR). */
 export function appendDiscoveredCurrencyTargets(
   targets: RateSyncTarget[],
-  currencies: string[]
+  currencies: string[],
+  regionLock?: CardRegionLock | null
 ): RateSyncTarget[] {
+  if (regionLock) return targets;
+
   const map = new Map(targets.map((t) => [targetKey(t), t]));
 
   for (const currency of currencies) {

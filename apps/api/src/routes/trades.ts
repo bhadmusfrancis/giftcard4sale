@@ -4,7 +4,7 @@ import { calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
-import { upload, fileUrl } from "../lib/upload";
+import { upload, chatUpload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify } from "../services/notify";
 import { executeNoOnesResell, isNoOnesConfigured, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
@@ -50,8 +50,8 @@ tradesRouter.post(
     const receiptFiles = uploaded?.receiptImages || [];
 
     if (data.medium === "ECODE") {
-      if (!data.ecodes && cardFiles.length === 0) {
-        return res.status(400).json({ error: "Please paste the e-codes or upload code images" });
+      if (!data.ecodes?.trim()) {
+        return res.status(400).json({ error: "Please paste your e-code(s)" });
       }
     } else if (cardFiles.length === 0) {
       return res.status(400).json({ error: "Please upload at least one picture of the gift card" });
@@ -98,7 +98,7 @@ tradesRouter.post(
       });
     }
 
-    if (data.medium !== "ECODE" && requiresReceipt && data.receiptType !== "NONE" && receiptFiles.length === 0) {
+    if (data.medium !== "ECODE" && data.receiptType !== "NONE" && receiptFiles.length === 0) {
       return res.status(400).json({ error: "Please upload a photo of your purchase receipt" });
     }
 
@@ -225,17 +225,42 @@ tradesRouter.get(
 tradesRouter.post(
   "/:id/messages",
   requireAuth,
+  chatUpload.single("file"),
   asyncHandler(async (req: AuthedRequest, res) => {
-    const { body } = validate(z.object({ body: z.string().min(1).max(2000) }), req.body);
+    const text = typeof req.body?.body === "string" ? req.body.body.trim() : "";
+    const file = req.file;
+    if (!text && !file) {
+      return res.status(400).json({ error: "Message text or a file attachment is required" });
+    }
+
     const trade = await prisma.trade.findUnique({ where: { id: req.params.id } });
     if (!trade) return res.status(404).json({ error: "Trade not found" });
     if (trade.userId !== req.userId && req.userRole !== "ADMIN") {
       return res.status(403).json({ error: "Forbidden" });
     }
+
+    const isOwner = trade.userId === req.userId;
+    if (isOwner && trade.status === "REJECTED") {
+      return res.status(403).json({ error: "This trade was rejected. Chat is closed." });
+    }
+
     const message = await prisma.tradeMessage.create({
-      data: { tradeId: trade.id, senderId: req.userId!, body },
+      data: {
+        tradeId: trade.id,
+        senderId: req.userId!,
+        body: text,
+        ...(file
+          ? {
+              attachmentUrl: fileUrl(file),
+              attachmentFilename: file.originalname,
+              attachmentMimeType: file.mimetype,
+            }
+          : {}),
+      },
       include: { sender: true },
     });
+
+    const notifyBody = text || (file ? `Sent a file: ${file.originalname}` : "New message");
 
     // Notify the other party.
     const recipientId = req.userRole === "ADMIN" ? trade.userId : null;
@@ -243,14 +268,20 @@ tradesRouter.post(
       await notify({
         userId: recipientId,
         title: "New message on your trade",
-        body,
+        body: notifyBody,
         link: `/dashboard/trades/${trade.id}`,
       });
     } else {
       const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
       await Promise.all(
         admins.map((a) =>
-          notify({ userId: a.id, title: "Trade chat reply", body, link: `/admin/trades/${trade.id}`, email: false })
+          notify({
+            userId: a.id,
+            title: "Trade chat reply",
+            body: notifyBody,
+            link: `/admin/trades/${trade.id}`,
+            email: false,
+          })
         )
       );
     }
@@ -289,6 +320,9 @@ export function serializeMessage(m: any) {
   return {
     id: m.id,
     body: m.body,
+    attachmentUrl: m.attachmentUrl ?? null,
+    attachmentFilename: m.attachmentFilename ?? null,
+    attachmentMimeType: m.attachmentMimeType ?? null,
     createdAt: m.createdAt,
     sender: { id: m.sender.id, displayName: m.sender.displayName, role: m.sender.role },
   };

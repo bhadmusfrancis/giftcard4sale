@@ -27,8 +27,8 @@ function NewTradeInner() {
 
   const [quote, setQuote] = useState<any>(null);
   const [rateInfo, setRateInfo] = useState<any>(null);
-  const [requiresReceipt, setRequiresReceipt] = useState(false);
-  const [askReceipt, setAskReceipt] = useState(false);
+  const [quoteReady, setQuoteReady] = useState(false);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [ecodes, setEcodes] = useState("");
   const [cardDenominations, setCardDenominations] = useState("");
   const [notes, setNotes] = useState("");
@@ -38,10 +38,20 @@ function NewTradeInner() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const needsReceiptUpload = medium !== "ECODE" && askReceipt && requiresReceipt && receiptType !== "NONE";
+  const needsReceiptUpload = medium !== "ECODE" && receiptType !== "NONE";
 
   useEffect(() => {
-    if (!rateId || !amount) return;
+    if (!rateId || !amount) {
+      setQuote(null);
+      setQuoteReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    setQuoteLoading(true);
+    setQuoteReady(false);
+    setQuote(null);
+
     api("/cards/quote", {
       body: {
         rateId,
@@ -52,19 +62,36 @@ function NewTradeInner() {
       },
     })
       .then((d) => {
+        if (cancelled) return;
         setQuote(d.quote);
         setRateInfo(d.rate);
-        setAskReceipt(d.receiptPolicy?.askReceipt ?? false);
-        setRequiresReceipt(d.receiptPolicy?.requiresReceipt ?? false);
+        setQuoteReady(true);
+        setError(null);
       })
-      .catch((e) => setError(e.message));
-  }, [rateId, amount, payout]);
+      .catch((e) => {
+        if (cancelled) return;
+        setQuote(null);
+        setQuoteReady(false);
+        setError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rateId, amount, payout, receiptType]);
 
   const receiptSummary = useMemo(() => RECEIPT_LABELS[receiptType] ?? RECEIPT_LABELS.NONE, [receiptType]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!quoteReady || !quote) {
+      setError("Please wait for your payout to finish calculating.");
+      return;
+    }
     if (!agree) {
       setError("Please confirm your card is valid and unused.");
       return;
@@ -75,6 +102,10 @@ function NewTradeInner() {
     }
     if (rateInfo?.country === "Other" && !otherCountryName.trim()) {
       setError("Please specify your card country.");
+      return;
+    }
+    if (medium === "ECODE" && !ecodes.trim()) {
+      setError("Please paste your e-code(s).");
       return;
     }
     if (medium === "PHYSICAL" && !cardDenominations.trim()) {
@@ -124,17 +155,22 @@ function NewTradeInner() {
       <div className="card p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
+            {rateInfo?.cardName ? (
+              <div className="text-lg font-semibold text-slate-900">{rateInfo.cardName}</div>
+            ) : null}
             <div className="text-sm text-slate-500">
               {rateInfo?.country === "Other" && otherCountryName
                 ? otherCountryName
                 : rateInfo?.country}{" "}
-              · {medium} · {amount} {rateInfo?.currency}
+              · {medium === "ECODE" ? "E-code" : "Physical"} · {amount} {rateInfo?.currency}
             </div>
-            {askReceipt && receiptType !== "NONE" ? (
+            {receiptType !== "NONE" ? (
               <div className="text-sm text-slate-500">Receipt: {receiptSummary}</div>
             ) : null}
             <div className="text-sm text-slate-500">You will receive</div>
-            <div className="text-2xl font-bold">{quote ? money(quote.payoutAmount, payout) : "…"}</div>
+            <div className="text-2xl font-bold">
+              {quoteLoading || !quoteReady ? "Calculating…" : quote ? money(quote.payoutAmount, payout) : "—"}
+            </div>
           </div>
           <span className="badge bg-amber-100 text-amber-800">{payout}</span>
         </div>
@@ -149,26 +185,34 @@ function NewTradeInner() {
               placeholder="Paste your gift card code(s) here, one per line"
               value={ecodes}
               onChange={(e) => setEcodes(e.target.value)}
+              required
             />
-            <p className="mt-1 text-xs text-slate-500">You may also upload screenshots of the code below.</p>
           </div>
         ) : null}
 
         {medium === "PHYSICAL" ? (
-          <div>
-            <label className="label">Card denominations</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="e.g. 200x1, 50x4, 100x2"
-              value={cardDenominations}
-              onChange={(e) => setCardDenominations(e.target.value)}
-              required
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              List each denomination and quantity (e.g. one $200 card = 200x1, four $50 cards = 50x4).
-            </p>
-          </div>
+          <>
+            <div>
+              <label className="label">Card denominations</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g. 200x1, 50x4, 100x2"
+                value={cardDenominations}
+                onChange={(e) => setCardDenominations(e.target.value)}
+                required
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                List each denomination and quantity (e.g. one $200 card = 200x1, four $50 cards = 50x4).
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Upload gift card picture(s)</label>
+              <input type="file" accept="image/*" multiple className="input" onChange={(e) => setFiles(e.target.files)} />
+              <p className="mt-1 text-xs text-slate-500">Clear photos of the front and back of the card.</p>
+            </div>
+          </>
         ) : (
           <div>
             <label className="label">Card denominations (optional)</label>
@@ -182,12 +226,6 @@ function NewTradeInner() {
           </div>
         )}
 
-        <div>
-          <label className="label">Upload gift card picture(s)</label>
-          <input type="file" accept="image/*" multiple className="input" onChange={(e) => setFiles(e.target.files)} />
-          <p className="mt-1 text-xs text-slate-500">Clear photos of the front/back of the card or the code.</p>
-        </div>
-
         {needsReceiptUpload ? (
           <div>
             <label className="label">Upload purchase receipt</label>
@@ -195,6 +233,7 @@ function NewTradeInner() {
               type="file"
               accept="image/*"
               multiple
+              required
               className="input"
               onChange={(e) => setReceiptFiles(e.target.files)}
             />
@@ -218,7 +257,9 @@ function NewTradeInner() {
         </label>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button className="btn-primary w-full" disabled={busy}>{busy ? "Submitting…" : "Submit trade"}</button>
+        <button className="btn-primary w-full" disabled={busy || quoteLoading || !quoteReady}>
+          {busy ? "Submitting…" : quoteLoading || !quoteReady ? "Calculating payout…" : "Submit trade"}
+        </button>
       </form>
     </div>
   );

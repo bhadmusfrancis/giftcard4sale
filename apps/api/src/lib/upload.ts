@@ -52,6 +52,18 @@ export const upload = multer({
   },
 });
 
+/** Trade chat: images and PDFs. */
+export const chatUpload = multer({
+  storage,
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok =
+      /image\/(png|jpe?g|webp|gif)/.test(file.mimetype) || file.mimetype === "application/pdf";
+    if (ok) cb(null, true);
+    else cb(new Error("Only image and PDF files are allowed"));
+  },
+});
+
 // Build the public URL for an uploaded file (S3 or local disk).
 export function fileUrl(file: Express.Multer.File): string {
   if (useS3) {

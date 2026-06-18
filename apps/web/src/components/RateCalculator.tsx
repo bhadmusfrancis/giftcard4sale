@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { calculateRateQuote, PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, resolveStoredNairaPerUnit, findRateTierForAmount, sortCountriesForDisplay } from "@gc4s/shared";
+import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, sortCountriesForDisplay } from "@gc4s/shared";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
@@ -16,6 +16,7 @@ interface Rate {
   medium: CardMedium;
   nairaPerUnit: number;
   storedQuotes?: StoredQuotes;
+  countryOfferCount?: number;
 }
 
 interface Config {
@@ -37,7 +38,19 @@ export function RateCalculator({
   const router = useRouter();
   const { user } = useAuth();
 
-  const countries = useMemo(() => sortCountriesForDisplay(Array.from(new Set(rates.map((r) => r.country)))), [rates]);
+  const offerCountByCountry = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const r of rates) {
+      const count = r.countryOfferCount ?? 0;
+      map[r.country] = Math.max(map[r.country] ?? 0, count);
+    }
+    return map;
+  }, [rates]);
+
+  const countries = useMemo(
+    () => sortCountriesForDisplay(Array.from(new Set(rates.map((r) => r.country))), offerCountByCountry),
+    [rates, offerCountByCountry]
+  );
   const [country, setCountry] = useState(countries[0] ?? "");
   const [otherCountryName, setOtherCountryName] = useState("");
   const [medium, setMedium] = useState<CardMedium>("PHYSICAL");
@@ -49,6 +62,13 @@ export function RateCalculator({
   const [requiresReceipt, setRequiresReceipt] = useState(false);
   const [policyLoading, setPolicyLoading] = useState(false);
   const [liveQuote, setLiveQuote] = useState<RateQuote | null>(null);
+  const [quoteReady, setQuoteReady] = useState(false);
+
+  useEffect(() => {
+    if (countries.length && !countries.includes(country)) {
+      setCountry(countries[0]);
+    }
+  }, [countries, country]);
 
   // Rates matching the chosen country + medium.
   const candidates = useMemo(
@@ -80,42 +100,10 @@ export function RateCalculator({
   const amountOutOfRange = Boolean(amount > 0 && candidates.length > 0 && !matched);
   const showReceiptPrompt = askReceipt && medium !== "ECODE" && !amountOutOfRange;
 
-  const ecodeSibling = useMemo(() => {
-    if (medium !== "PHYSICAL" || !matched) return null;
-    return rates.find(
-      (r) =>
-        r.country === country &&
-        r.medium === "ECODE" &&
-        r.minDenom === matched.minDenom &&
-        r.maxDenom === matched.maxDenom
-    );
-  }, [rates, country, medium, matched]);
-
-  const fallbackQuote = useMemo(() => {
-    if (!matched || !amount || amountOutOfRange) return null;
-    const nairaPerUnit = resolveStoredNairaPerUnit(
-      matched.nairaPerUnit,
-      matched.storedQuotes,
-      receiptType,
-      {
-        medium,
-        ecodeQuotes: ecodeSibling?.storedQuotes ?? null,
-      }
-    );
-    return calculateRateQuote({
-      nairaPerUnit,
-      cardAmount: amount,
-      payoutCurrency,
-      medium,
-      rates: config.rates,
-      reductions: config.reductions,
-    });
-  }, [matched, amount, amountOutOfRange, payoutCurrency, medium, config, receiptType, ecodeSibling]);
-
   const isOtherCountry = country === "Other";
   const otherCountryIncomplete = isOtherCountry && !otherCountryName.trim();
 
-  const quote = liveQuote ?? fallbackQuote;
+  const quote = quoteReady ? liveQuote : null;
 
   const mediumAvailable = (m: CardMedium) => rates.some((r) => r.country === country && r.medium === m);
 
@@ -124,29 +112,48 @@ export function RateCalculator({
       setAskReceipt(false);
       setRequiresReceipt(false);
       setLiveQuote(null);
+      setQuoteReady(false);
       return;
     }
+
+    let cancelled = false;
     setPolicyLoading(true);
-    api<{ quote: RateQuote; receiptPolicy: { askReceipt?: boolean; requiresReceipt: boolean }; quoteSource?: string }>("/cards/quote", {
-      body: {
-        rateId: matched.id,
-        cardAmount: amount,
-        payoutCurrency,
-        receiptType,
-        preferNoReceipt: hasReceipt === false,
-      },
-    })
+    setQuoteReady(false);
+    setLiveQuote(null);
+
+    api<{ quote: RateQuote; receiptPolicy: { askReceipt?: boolean; requiresReceipt: boolean }; quoteSource?: string }>(
+      "/cards/quote",
+      {
+        body: {
+          rateId: matched.id,
+          cardAmount: amount,
+          payoutCurrency,
+          receiptType,
+          preferNoReceipt: hasReceipt === false,
+        },
+      }
+    )
       .then((d) => {
+        if (cancelled) return;
         setLiveQuote(d.quote);
+        setQuoteReady(true);
         setAskReceipt(d.receiptPolicy?.askReceipt ?? false);
         setRequiresReceipt(d.receiptPolicy?.requiresReceipt ?? false);
       })
       .catch(() => {
+        if (cancelled) return;
         setAskReceipt(false);
         setRequiresReceipt(false);
         setLiveQuote(null);
+        setQuoteReady(false);
       })
-      .finally(() => setPolicyLoading(false));
+      .finally(() => {
+        if (!cancelled) setPolicyLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [matched?.id, amount, amountOutOfRange, payoutCurrency, hasReceipt, medium, receiptType]);
 
   useEffect(() => {
@@ -160,7 +167,14 @@ export function RateCalculator({
   const receiptIncomplete =
     showReceiptPrompt && (hasReceipt === null || (hasReceipt === true && isCashReceipt === null));
   const canProceed = Boolean(
-    matched && !amountOutOfRange && quote && !receiptBlocked && !receiptIncomplete && !policyLoading && !otherCountryIncomplete
+    matched &&
+      !amountOutOfRange &&
+      quoteReady &&
+      quote &&
+      !receiptBlocked &&
+      !receiptIncomplete &&
+      !policyLoading &&
+      !otherCountryIncomplete
   );
 
   function proceed() {
@@ -321,8 +335,8 @@ export function RateCalculator({
       ) : null}
 
       <div className="mt-6 rounded-xl bg-slate-900 p-5 text-white">
-        {policyLoading && !quote && matched && !amountOutOfRange ? (
-          <div className="text-slate-300">Fetching live rate…</div>
+        {policyLoading || (matched && !amountOutOfRange && !quoteReady) ? (
+          <div className="text-slate-300">Calculating your payout…</div>
         ) : quote && matched && !amountOutOfRange ? (
           <>
             <div className="text-sm text-slate-300">You will receive</div>

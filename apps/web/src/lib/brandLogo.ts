@@ -28,6 +28,8 @@ const SLUG_ALIASES: Record<string, string[]> = {
   macy: ["macy-s-gift-card"],
   tesco: ["tesco-gift-card"],
   razer: ["razer-gold-gift-card"],
+  "cvs-pharmacy": ["cvs-gift-card"],
+  "dollar-general": ["dollar-general-gift-card"],
 };
 
 /**

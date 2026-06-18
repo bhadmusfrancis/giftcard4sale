@@ -16,6 +16,7 @@ import { landingRouter } from "./routes/landing";
 import { adminRouter } from "./routes/admin";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
+import { repairManualRateCatalog, syncNoOnesCatalogVisibilityFromStored } from "./services/cardVisibility";
 
 const app = express();
 
@@ -69,5 +70,17 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(env.port, () => {
   console.log(`GiftCard4Sale API listening on ${env.apiUrl} (port ${env.port})`);
-  startNoOnesJobs();
+  repairManualRateCatalog()
+    .then((n) => {
+      if (n > 0) console.log(`Reactivated ${n} manually imported rate row(s).`);
+    })
+    .catch((e) => console.warn("Manual rate repair:", (e as Error).message))
+    .then(() => syncNoOnesCatalogVisibilityFromStored())
+    .then(({ published, drafted }) => {
+      if (published || drafted) {
+        console.log(`NoOnes catalog visibility: ${published} published, ${drafted} drafted.`);
+      }
+    })
+    .catch((e) => console.warn("NoOnes catalog visibility:", (e as Error).message))
+    .finally(() => startNoOnesJobs());
 });
