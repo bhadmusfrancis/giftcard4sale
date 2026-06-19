@@ -1,4 +1,4 @@
-import type { GiftCardProfile } from "../types";
+import type { GiftCardProfile } from "./types";
 
 type Category = GiftCardProfile["category"];
 

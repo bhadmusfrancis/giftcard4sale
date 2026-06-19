@@ -1,4 +1,4 @@
-import type { GiftCardProfile } from "./types";
+import type { GiftCardProfile } from "../types";
 
 /** Helper to build a profile with consistent structure. */
 function profile(p: GiftCardProfile): GiftCardProfile {
