@@ -22,7 +22,7 @@ interface Rate {
 
 interface Config {
   rates: { ngnPerUsdt: number; ngnPerGhs: number };
-  reductions: { nairaReductionPercent: number; fxReductionPercent: number };
+  reductions: { nairaReductionPercent: number; usdtReductionPercent: number; ghsReductionPercent: number };
   noonesRateRefreshMinutes?: number;
 }
 

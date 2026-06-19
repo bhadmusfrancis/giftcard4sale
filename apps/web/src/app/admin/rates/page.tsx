@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { NoOnesSyncPanel } from "@/components/NoOnesSyncPanel";
 import { NoOnesSyncProvider, useNoOnesSyncState } from "@/components/NoOnesSyncContext";
@@ -24,32 +24,52 @@ export default function AdminRatesPage() {
 function ConfigSection() {
   const [config, setConfig] = useState<any>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgOk, setMsgOk] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const statusRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api("/admin/config").then((d) => setConfig(d.config));
   }, []);
 
+  useEffect(() => {
+    if (msg && statusRef.current) {
+      statusRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [msg]);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const d = await api("/admin/config", {
-      method: "PUT",
-      body: {
-        ngnPerUsdt: Number(config.rates.ngnPerUsdt),
-        ngnPerGhs: Number(config.rates.ngnPerGhs),
-        nairaReductionPercent: Number(config.reductions.nairaReductionPercent),
-        fxReductionPercent: Number(config.reductions.fxReductionPercent),
-        referralPercent: Number(config.referralPercent),
-        noonesRateRefreshMinutes: Number(config.noonesRateRefreshMinutes ?? 15),
-        noonesTopOffersForRate: Number(config.noonesTopOffersForRate ?? 3),
-        minCountryOffersForDisplay: Number(config.minCountryOffersForDisplay ?? 5),
-      },
-    });
-    if (d.config) setConfig(d.config);
-    setMsg(
-      d.tiersUpdated
-        ? `Saved. Updated ${d.tiersUpdated} country tier(s) to match the new minimum.`
-        : "Saved."
-    );
+    if (!config) return;
+    setSaving(true);
+    try {
+      const d = await api("/admin/config", {
+        method: "PUT",
+        body: {
+          ngnPerUsdt: Number(config.rates.ngnPerUsdt),
+          ngnPerGhs: Number(config.rates.ngnPerGhs),
+          nairaReductionPercent: Number(config.reductions.nairaReductionPercent),
+          usdtReductionPercent: Number(config.reductions.usdtReductionPercent),
+          ghsReductionPercent: Number(config.reductions.ghsReductionPercent),
+          referralPercent: Number(config.referralPercent),
+          noonesRateRefreshMinutes: Number(config.noonesRateRefreshMinutes ?? 15),
+          noonesTopOffersForRate: Number(config.noonesTopOffersForRate ?? 3),
+          minCountryOffersForDisplay: Number(config.minCountryOffersForDisplay ?? 5),
+        },
+      });
+      if (d.config) setConfig(d.config);
+      setMsgOk(true);
+      setMsg(
+        d.tiersUpdated
+          ? `Config saved. Updated ${d.tiersUpdated} country tier(s) to match the new minimum.`
+          : "Config saved successfully."
+      );
+    } catch (err) {
+      setMsgOk(false);
+      setMsg((err as Error).message || "Failed to save config.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!config) return null;
@@ -67,7 +87,8 @@ function ConfigSection() {
         <Field label="NGN per 1 GHS (Cedi)" value={config.rates.ngnPerGhs} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerGhs: v } })} />
         <Field label="Referral %" value={config.referralPercent} onChange={(v) => setConfig({ ...config, referralPercent: v })} />
         <Field label="Naira deduction %" value={config.reductions.nairaReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, nairaReductionPercent: v } })} />
-        <Field label="USDT/Cedi deduction %" value={config.reductions.fxReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, fxReductionPercent: v } })} />
+        <Field label="USDT deduction %" value={config.reductions.usdtReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, usdtReductionPercent: v } })} />
+        <Field label="Cedi deduction %" value={config.reductions.ghsReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, ghsReductionPercent: v } })} />
         <Field
           label="NoOnes rate staleness (minutes)"
           value={config.noonesRateRefreshMinutes ?? 15}
@@ -87,9 +108,24 @@ function ConfigSection() {
       <p className="mt-2 text-xs text-slate-500">
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
       </p>
-      <div className="mt-4 flex items-center gap-3">
-        <button className="btn-primary">Save config</button>
-        {msg && <span className="text-sm text-brand-700">{msg}</span>}
+      <div ref={statusRef} className="mt-4 space-y-3">
+        {msg ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`rounded-lg border px-4 py-3 text-sm font-medium ${
+              msgOk
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                : "border-red-200 bg-red-50 text-red-900"
+            }`}
+          >
+            {msgOk ? "✓ " : "✕ "}
+            {msg}
+          </div>
+        ) : null}
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? "Saving…" : "Save config"}
+        </button>
       </div>
     </form>
   );
@@ -117,7 +153,7 @@ function ImportSection() {
     <div className="card p-6">
       <h3 className="font-bold">Paste rate text (Naira format)</h3>
       <p className="text-sm text-slate-500">
-        Paste the rate list. The system deducts 20% for Naira and 30% for USDT/Cedi, ignores &quot;in Ns&quot;, and always
+        Paste the rate list. The system deducts the configured Naira, USDT, and Cedi percentages, ignores &quot;in Ns&quot;, and always
         uses the SLOW rate.
       </p>
       <textarea className="input mt-3 min-h-[200px] font-mono text-sm" value={text} onChange={(e) => setText(e.target.value)} placeholder="===【Apple/iTunes】SLOW ===&#10;● US (200-500 in 100s) = 1092 ..." />

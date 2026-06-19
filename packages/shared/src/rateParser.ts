@@ -12,6 +12,7 @@ const COUNTRY_CURRENCY: Record<string, string> = {
   UK: "GBP",
   GBP: "GBP",
   EUR: "EUR",
+  EURO: "EUR",
   GERMANY: "EUR",
   FINLAND: "EUR",
   NETHERLANDS: "EUR",

@@ -12,7 +12,7 @@ export const HYDRATION_RATE_TIERS = [
 export const DEFAULT_RATE_TIERS = [
   { country: "US", currency: "USD", minDenom: 25, maxDenom: 500, sampleAmount: 100 },
   { country: "UK", currency: "GBP", minDenom: 10, maxDenom: 500, sampleAmount: 100 },
-  { country: "Germany", currency: "EUR", minDenom: 10, maxDenom: 500, sampleAmount: 100 },
+  { country: "Euro", currency: "EUR", minDenom: 10, maxDenom: 500, sampleAmount: 100 },
   { country: "Canada", currency: "CAD", minDenom: 25, maxDenom: 500, sampleAmount: 100 },
   { country: "Australia", currency: "AUD", minDenom: 10, maxDenom: 500, sampleAmount: 100 },
 ] as const;
@@ -81,6 +81,24 @@ export const OTHER_COUNTRY_TIER = {
 
 export function isOtherCountryTier(country: string): boolean {
   return country === OTHER_COUNTRY_TIER.country;
+}
+
+/** Pan-European EUR tier (not tied to a single EU member state). */
+export const GENERIC_EURO_TIER = {
+  country: "Euro",
+  currency: "EUR",
+  minDenom: null,
+  maxDenom: null,
+  sampleAmount: 100,
+} as const;
+
+export function isEuroTier(country: string): boolean {
+  return country === GENERIC_EURO_TIER.country;
+}
+
+/** Country tiers that may be shown without fixed denomination bounds. */
+export function isOpenEndedCountryTier(country: string): boolean {
+  return isOtherCountryTier(country) || isEuroTier(country);
 }
 
 const MEDIUMS: CardMedium[] = ["PHYSICAL", "ECODE"];
@@ -221,13 +239,15 @@ export function ensureTargetsForCurrencyMeta(
 /** Replace each currency tier with every distinct denomination range from NoOnes offers. */
 export function expandTargetsFromOfferRanges(
   targets: RateSyncTarget[],
-  metaByCurrency: Map<string, CurrencyOfferMeta>
+  metaByCurrency: Map<string, CurrencyOfferMeta>,
+  countryMetaOverride?: Map<string, CurrencyOfferMeta>
 ): RateSyncTarget[] {
   const expanded: RateSyncTarget[] = [];
   const seen = new Set<string>();
 
   for (const base of targets) {
-    const meta = metaByCurrency.get(base.currency);
+    const meta =
+      countryMetaOverride?.get(base.country) ?? metaByCurrency.get(base.currency);
     let ranges: (OfferDenomRange | { min: number | null; max: number | null })[] = [];
 
     if (meta?.ranges.length) {

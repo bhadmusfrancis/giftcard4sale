@@ -7,6 +7,13 @@ const DEFAULT_NOONES_RATE_REFRESH_MINUTES = 15;
 const DEFAULT_NOONES_TOP_OFFERS_FOR_RATE = 3;
 const DEFAULT_MIN_COUNTRY_OFFERS_FOR_DISPLAY = 5;
 
+/** Order card types by catalog popularity (offer count, then trade volume). */
+export const cardTypePopularityOrder = [
+  { offerCount: "desc" as const },
+  { tradeVolume: "desc" as const },
+  { name: "asc" as const },
+];
+
 export async function getRateConfig(): Promise<{
   rates: ExchangeRates;
   reductions: RateReductions;
@@ -22,7 +29,8 @@ export async function getRateConfig(): Promise<{
         ngnPerUsdt: env.rates.ngnPerUsdt,
         ngnPerGhs: env.rates.ngnPerGhs,
         nairaReductionPercent: env.reductions.nairaReductionPercent,
-        fxReductionPercent: env.reductions.fxReductionPercent,
+        usdtReductionPercent: env.reductions.usdtReductionPercent,
+        ghsReductionPercent: env.reductions.ghsReductionPercent,
         referralPercent: env.referralPercent,
         noonesRateRefreshMinutes: DEFAULT_NOONES_RATE_REFRESH_MINUTES,
         noonesTopOffersForRate: DEFAULT_NOONES_TOP_OFFERS_FOR_RATE,
@@ -37,7 +45,8 @@ export async function getRateConfig(): Promise<{
     },
     reductions: {
       nairaReductionPercent: cfg.nairaReductionPercent,
-      fxReductionPercent: cfg.fxReductionPercent,
+      usdtReductionPercent: cfg.usdtReductionPercent,
+      ghsReductionPercent: cfg.ghsReductionPercent,
     },
     referralPercent: cfg.referralPercent,
     noonesRateRefreshMinutes: cfg.noonesRateRefreshMinutes,
@@ -125,7 +134,7 @@ export async function listStaleCardTypeIds(
   const cards = await prisma.cardType.findMany({
     where: { noonesPaymentMethod: { not: null } },
     select: { id: true, name: true },
-    orderBy: { name: "asc" },
+    orderBy: cardTypePopularityOrder,
   });
 
   const stale: { id: string; name: string }[] = [];

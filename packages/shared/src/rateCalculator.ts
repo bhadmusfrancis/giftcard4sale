@@ -12,8 +12,8 @@ function round(n: number, dp = 2): number {
  *  - The parsed rate (`nairaPerUnit`) is the SLOW rate, in NGN per 1 unit of the
  *    card's face currency.
  *  - Naira payout:  reduce the rate by NAIRA_REDUCTION_PERCENT (default 20%).
- *  - USDT & Cedi payout: reduce by FX_REDUCTION_PERCENT (default 30%), compute the
- *    naira value, then convert NGN -> USDT or NGN -> GHS using current exchange rates.
+ *  - USDT payout: reduce by USDT_REDUCTION_PERCENT (default 30%), then convert NGN -> USDT.
+ *  - Cedi payout: reduce by GHS_REDUCTION_PERCENT (default 30%), then convert NGN -> GHS.
  */
 export function calculateRateQuote(input: RateQuoteInput): RateQuote {
   const { nairaPerUnit, cardAmount, payoutCurrency, rates, reductions } = input;
@@ -32,8 +32,9 @@ export function calculateRateQuote(input: RateQuoteInput): RateQuote {
     };
   }
 
-  // USDT or GHS: reduce by FX percent, then convert from naira.
-  const reductionPercent = reductions.fxReductionPercent;
+  // USDT or GHS: reduce by currency-specific percent, then convert from naira.
+  const reductionPercent =
+    payoutCurrency === "USDT" ? reductions.usdtReductionPercent : reductions.ghsReductionPercent;
   const effectiveNairaPerUnit = nairaPerUnit * (1 - reductionPercent / 100);
   const reducedNaira = effectiveNairaPerUnit * cardAmount;
 

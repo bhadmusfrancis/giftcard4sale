@@ -117,7 +117,7 @@ cardsRouter.post(
     });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
-    if (rate.minDenom == null && rate.maxDenom == null && rate.country !== "Other") {
+    if (rate.minDenom == null && rate.maxDenom == null && rate.country !== "Other" && rate.country !== "Euro") {
       return res.status(400).json({ error: "Rate tier bounds are not available yet for this currency" });
     }
 

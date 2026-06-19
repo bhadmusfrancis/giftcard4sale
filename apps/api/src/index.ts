@@ -17,7 +17,7 @@ import { adminRouter } from "./routes/admin";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
 import { repairManualRateCatalog, syncNoOnesCatalogVisibilityFromStored } from "./services/cardVisibility";
-import { repairCardSlugSuffixes } from "./services/cardTypeDedup";
+import { repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
 
 const app = express();
 
@@ -81,6 +81,11 @@ app.listen(env.port, () => {
       if (n > 0) console.log(`Repaired ${n} card/landing slug(s) with duplicate gift-card suffix.`);
     })
     .catch((e) => console.warn("Card slug repair:", (e as Error).message))
+    .then(() => repairEuroCountryLabels())
+    .then((n) => {
+      if (n > 0) console.log(`Renamed ${n} EUR rate row(s) from Germany to Euro.`);
+    })
+    .catch((e) => console.warn("Euro country repair:", (e as Error).message))
     .then(() => syncNoOnesCatalogVisibilityFromStored())
     .then(({ published, drafted }) => {
       if (published || drafted) {

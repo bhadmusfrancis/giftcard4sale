@@ -72,7 +72,14 @@ export const env = {
 
   reductions: {
     nairaReductionPercent: num(process.env.NAIRA_REDUCTION_PERCENT, 20),
-    fxReductionPercent: num(process.env.FX_REDUCTION_PERCENT, 30),
+    usdtReductionPercent: num(
+      process.env.USDT_REDUCTION_PERCENT ?? process.env.FX_REDUCTION_PERCENT,
+      30
+    ),
+    ghsReductionPercent: num(
+      process.env.GHS_REDUCTION_PERCENT ?? process.env.FX_REDUCTION_PERCENT,
+      30
+    ),
   },
 
   referralPercent: num(process.env.REFERRAL_PERCENT, 1),

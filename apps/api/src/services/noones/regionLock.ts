@@ -9,7 +9,7 @@ const REGION_RULES: { pattern: RegExp; lock: CardRegionLock }[] = [
   { pattern: /uk[-_ ]only|\(uk only\)/i, lock: { countries: ["UK"], currencies: ["GBP"] } },
   {
     pattern: /eu[-_ ]only|\(eu only\)|europe[-_ ]only|\(europe only\)/i,
-    lock: { countries: ["Germany"], currencies: ["EUR"] },
+    lock: { countries: ["Euro"], currencies: ["EUR"] },
   },
   {
     pattern: /canada[-_ ]only|\(canada only\)|cad[-_ ]only/i,

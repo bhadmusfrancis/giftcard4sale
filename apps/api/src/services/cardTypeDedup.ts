@@ -192,3 +192,16 @@ export async function repairCardSlugSuffixes(): Promise<number> {
 
   return updated;
 }
+
+/** Rename legacy Germany EUR tiers to the pan-European Euro label. */
+export async function repairEuroCountryLabels(): Promise<number> {
+  const rates = await prisma.rate.updateMany({
+    where: { country: "Germany", currency: "EUR" },
+    data: { country: "Euro" },
+  });
+  const meta = await prisma.cardCurrencyMeta.updateMany({
+    where: { country: "Germany", currency: "EUR" },
+    data: { country: "Euro" },
+  });
+  return rates.count + meta.count;
+}

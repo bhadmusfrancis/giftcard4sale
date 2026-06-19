@@ -10,6 +10,7 @@ import { getRateConfig } from "../rateConfig";
 
 import { offerMatchesReceiptType } from "./receiptPolicy";
 import { filterOtherCountryOffers } from "./otherCountries";
+import { filterGenericEuroOffers } from "./genericEuro";
 
 import { averageTopOffersNaira, loadScoredOffersForMedium } from "./rates";
 
@@ -67,6 +68,8 @@ export async function fetchStoredQuotesForTarget(params: {
   medium: CardMedium;
   /** When true, only offers that accept non-standard countries are used. */
   otherCountriesOnly?: boolean;
+  /** When true, only pan-European EUR offers are used (not single-country EU). */
+  genericEuroOnly?: boolean;
 }): Promise<{ storedQuotes: StoredQuotes; nairaPerUnit: number | null }> {
   let scored = await loadScoredOffersForMedium({
     paymentMethod: params.paymentMethod,
@@ -77,6 +80,10 @@ export async function fetchStoredQuotesForTarget(params: {
 
   if (params.otherCountriesOnly) {
     scored = scored.filter((s) => filterOtherCountryOffers([s.offer]).length > 0);
+    if (!scored.length) return { storedQuotes: {}, nairaPerUnit: null };
+  }
+  if (params.genericEuroOnly) {
+    scored = scored.filter((s) => filterGenericEuroOffers([s.offer]).length > 0);
     if (!scored.length) return { storedQuotes: {}, nairaPerUnit: null };
   }
   const { noonesTopOffersForRate } = await getRateConfig();

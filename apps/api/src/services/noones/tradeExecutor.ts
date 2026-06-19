@@ -81,7 +81,11 @@ function buildGreetingMessage(trade: {
 async function grossUpNairaPerUnit(effectiveRate: number, payoutCurrency: string): Promise<number> {
   const config = await getRateConfig();
   const reduction =
-    payoutCurrency === "NGN" ? config.reductions.nairaReductionPercent : config.reductions.fxReductionPercent;
+    payoutCurrency === "NGN"
+      ? config.reductions.nairaReductionPercent
+      : payoutCurrency === "USDT"
+        ? config.reductions.usdtReductionPercent
+        : config.reductions.ghsReductionPercent;
   return effectiveRate / (1 - reduction / 100);
 }
 

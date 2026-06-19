@@ -338,7 +338,8 @@ export interface ExchangeRates {
 
 export interface RateReductions {
   nairaReductionPercent: number; // default 20
-  fxReductionPercent: number; // default 30 (USDT & Cedi)
+  usdtReductionPercent: number; // default 30
+  ghsReductionPercent: number; // default 30 (Cedi)
 }
 
 export interface RateQuoteInput {
