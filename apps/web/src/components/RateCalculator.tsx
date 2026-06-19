@@ -397,7 +397,7 @@ export function RateCalculator({
           <div className="text-slate-300">No rates for this country.</div>
         ) : boundedTier && !matched ? (
           <div className="text-slate-300">
-            No offer tier matches {amount} {selectedCurrency ?? matched?.currency ?? "USD"} exactly.
+            No offer tier matches {amount} {selectedCurrency ?? boundedTier.currency ?? "USD"} exactly.
             {advertisedRanges ? ` Try an amount in ${advertisedRanges}.` : ""}
           </div>
         ) : amountOutOfRange ? (
