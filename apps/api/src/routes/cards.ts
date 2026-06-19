@@ -13,17 +13,17 @@ import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } f
 
 export const cardsRouter = Router();
 
-async function loadCardBySlug(slug: string) {
+async function loadCardBySlug(slug: string, opts: { catalogOnly?: boolean } = {}) {
   const candidates = slug.endsWith("-gift-card-gift-card")
     ? [slug, fixDuplicateSellSlug(slug)]
     : [slug];
 
   let card = null;
   for (const candidate of candidates) {
+    const slugMatch = { OR: [{ slug: candidate }, { sellSlug: candidate }] };
+    const where = opts.catalogOnly ? { AND: [slugMatch, catalogCardWhere()] } : slugMatch;
     card = await prisma.cardType.findFirst({
-      where: {
-        AND: [{ OR: [{ slug: candidate }, { sellSlug: candidate }] }, catalogCardWhere()],
-      },
+      where,
       include: {
         rates: {
           where: { active: true },
