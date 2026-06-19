@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, findBoundedRateForAmount, buildCountryOptions, formatDenomRanges, defaultAmountForTiers, collectDenomRangesForCurrency, collectDenomRangesFromCurrencyMeta } from "@gc4s/shared";
+import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, findBoundedRateForAmount, buildCountryOptions, formatDenomRanges, defaultAmountForTiers, collectDenomRangesFromRateRows } from "@gc4s/shared";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
@@ -80,13 +80,20 @@ export function RateCalculator({
     [rates, country, medium]
   );
 
-  const boundedTiers = useMemo(() => {
-    const fromMeta = collectDenomRangesFromCurrencyMeta(currencyMeta, country, selectedCurrency);
-    if (fromMeta.length) return fromMeta;
-    return collectDenomRangesForCurrency(rates, country, selectedCurrency);
-  }, [currencyMeta, rates, country, selectedCurrency]);
+  const mediumAvailable = (m: CardMedium) => rates.some((r) => r.country === country && r.medium === m);
 
-  const rangesReady = boundedTiers.length > 0;
+  useEffect(() => {
+    if (!mediumAvailable(medium)) {
+      const alt = (["PHYSICAL", "ECODE"] as CardMedium[]).find(mediumAvailable);
+      if (alt) setMedium(alt);
+    }
+  }, [country, rates, medium]);
+
+  // Bounds must come from quotable rows for this country + medium (not global currency meta).
+  const boundedTiers = useMemo(() => collectDenomRangesFromRateRows(candidates), [candidates]);
+
+  const hasCandidates = candidates.length > 0;
+  const rangesReady = hasCandidates && boundedTiers.length > 0;
   const advertisedRanges = useMemo(() => formatDenomRanges(boundedTiers), [boundedTiers]);
 
   // Snap amount to a valid tier before quoting (runs before paint on country/currency change).
@@ -115,18 +122,14 @@ export function RateCalculator({
     return "NONE";
   }, [medium, hasReceipt, isCashReceipt]);
 
-  const amountOutOfRange = Boolean(
-    rangesReady && amount > 0 && (!boundedTier || !matched)
-  );
-  const pricingReady = rangesReady && Boolean(boundedTier) && Boolean(matched) && !amountOutOfRange;
+  const amountOutOfRange = Boolean(rangesReady && amount > 0 && !boundedTier);
+  const pricingReady = rangesReady && Boolean(boundedTier) && Boolean(matched);
   const showReceiptPrompt = askReceipt && medium !== "ECODE" && !amountOutOfRange;
 
   const isOtherCountry = country === "Other";
   const otherCountryIncomplete = isOtherCountry && !otherCountryName.trim();
 
   const quote = quoteReady ? liveQuote : null;
-
-  const mediumAvailable = (m: CardMedium) => rates.some((r) => r.country === country && r.medium === m);
 
   useEffect(() => {
     if (!pricingReady) {
@@ -272,14 +275,16 @@ export function RateCalculator({
             type="number"
             className="input"
             value={amount}
-            min={boundedTier?.minDenom ?? boundedTiers[0]?.minDenom ?? 1}
-            max={boundedTier?.maxDenom ?? undefined}
+            min={boundedTiers[0]?.minDenom ?? 1}
+            max={boundedTiers[0]?.maxDenom ?? undefined}
             onChange={(e) => setAmount(Number(e.target.value))}
             disabled={!rangesReady}
           />
           {!rangesReady ? (
             <p className="mt-1 text-xs text-slate-500">
-              Loading accepted amounts for {selectedCurrency ?? "this currency"}…
+              {hasCandidates
+                ? `Loading accepted amounts for ${selectedCurrency ?? "this currency"}…`
+                : "No rates for this country."}
             </p>
           ) : advertisedRanges ? (
             <p className="mt-1 text-xs text-slate-500">Accepted amounts: {advertisedRanges}</p>
@@ -365,7 +370,9 @@ export function RateCalculator({
       <div className="mt-6 rounded-xl bg-slate-900 p-5 text-white">
         {!rangesReady ? (
           <div className="text-slate-300">
-            Loading accepted amounts for {selectedCurrency ?? "this currency"}…
+            {hasCandidates
+              ? `Loading accepted amounts for ${selectedCurrency ?? "this currency"}…`
+              : "No rates for this country."}
           </div>
         ) : policyLoading || (pricingReady && !quoteReady) ? (
           <div className="text-slate-300">Calculating your payout…</div>
@@ -386,6 +393,13 @@ export function RateCalculator({
                 : ""}
             </div>
           </>
+        ) : !hasCandidates ? (
+          <div className="text-slate-300">No rates for this country.</div>
+        ) : boundedTier && !matched ? (
+          <div className="text-slate-300">
+            No offer tier matches {amount} {selectedCurrency ?? matched?.currency ?? "USD"} exactly.
+            {advertisedRanges ? ` Try an amount in ${advertisedRanges}.` : ""}
+          </div>
         ) : amountOutOfRange ? (
           <div className="text-slate-300">
             No rate for {amount} {selectedCurrency ?? matched?.currency ?? "USD"}. Use an amount

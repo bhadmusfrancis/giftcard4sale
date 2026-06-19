@@ -19,7 +19,7 @@ export function PopularCards({ initialCards }: { initialCards: GiftCard[] }) {
   if (cards.length === 0) {
     return (
       <p className="col-span-full text-slate-500">
-        Loading popular gift cards from our marketplace partners…
+        Loading popular gift cards…
       </p>
     );
   }

@@ -10,7 +10,9 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
-    "import:noones-cards": "tsx scripts/import-noones-cards.ts"
+    "import:noones-cards": "tsx scripts/import-noones-cards.ts",
+    "sync:noones": "tsx scripts/sync-noones.ts",
+    "sync:noones-rates": "tsx scripts/sync-noones.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

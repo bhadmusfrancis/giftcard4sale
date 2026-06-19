@@ -15,6 +15,7 @@ import {
   executeNoOnesResell,
   isNoOnesConfigured,
   syncRatesFromNoOnes,
+  syncCardRatesFromNoOnes,
   previewRateFromNoOnes,
   listNoOnesPaymentMethods,
   registerNoOnesWebhooks,
@@ -464,6 +465,7 @@ adminRouter.get(
         imageUrl: c.imageUrl,
         description: c.description,
         rateCount: c._count.rates,
+        noonesPaymentMethod: c.noonesPaymentMethod,
       })),
     });
   })
@@ -724,6 +726,20 @@ adminRouter.post(
   asyncHandler(async (_req, res) => {
     if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
     const summary = await syncRatesFromNoOnes();
+    res.json(summary);
+  })
+);
+
+adminRouter.post(
+  "/card-types/:id/sync-rates",
+  asyncHandler(async (req, res) => {
+    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
+    const card = await prisma.cardType.findUnique({ where: { id: req.params.id } });
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    if (!card.noonesPaymentMethod) {
+      return res.status(400).json({ error: "This card has no NoOnes payment method mapped" });
+    }
+    const summary = await syncCardRatesFromNoOnes(card.id, { force: true });
     res.json(summary);
   })
 );

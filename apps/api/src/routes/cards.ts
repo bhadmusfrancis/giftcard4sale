@@ -13,6 +13,59 @@ import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } f
 
 export const cardsRouter = Router();
 
+async function loadCardBySlug(slug: string) {
+  const card = await prisma.cardType.findFirst({
+    where: {
+      AND: [{ OR: [{ slug }, { sellSlug: slug }] }, catalogCardWhere()],
+    },
+    include: {
+      rates: {
+        where: { active: true },
+        orderBy: [{ countryOfferCount: "desc" }, { country: "asc" }, { minDenom: "asc" }],
+      },
+      landingPage: true,
+    },
+  });
+  if (!card) return null;
+
+  const regionLock = resolveCardRegionLock(card.slug, card.name, card.noonesPaymentMethod);
+
+  const visibleRates = regionLock
+    ? card.rates.filter((r) => tierMatchesRegionLock(r, regionLock))
+    : card.rates;
+
+  const config = await getRateConfig();
+  const rateMeta = buildRateFreshnessMeta(visibleRates, config.noonesRateRefreshMinutes);
+  const currencyMeta = await listCardCurrencyMetaForDisplay(card.id);
+
+  return {
+    card: {
+      id: card.id,
+      name: card.name,
+      slug: card.slug,
+      sellSlug: card.sellSlug,
+      description: card.description,
+      imageUrl: card.imageUrl,
+    },
+    rates: visibleRates.map((r) => ({
+      id: r.id,
+      country: r.country,
+      currency: r.currency,
+      minDenom: r.minDenom,
+      maxDenom: r.maxDenom,
+      medium: r.medium,
+      nairaPerUnit: Number(r.nairaPerUnit),
+      storedQuotes: parseStoredQuotes(r.storedQuotes),
+      countryOfferCount: r.countryOfferCount ?? 0,
+      updatedAt: r.updatedAt,
+      speed: r.speed,
+    })),
+    config,
+    rateMeta,
+    currencyMeta,
+  };
+}
+
 cardsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -26,63 +79,6 @@ cardsRouter.get(
   })
 );
 
-// Fetch one card by slug or sellSlug, including active rates (database only — no live NoOnes calls).
-cardsRouter.get(
-  "/:slug",
-  asyncHandler(async (req, res) => {
-    const slug = req.params.slug;
-    const card = await prisma.cardType.findFirst({
-      where: {
-        AND: [{ OR: [{ slug }, { sellSlug: slug }] }, catalogCardWhere()],
-      },
-      include: {
-        rates: {
-          where: { active: true },
-          orderBy: [{ countryOfferCount: "desc" }, { country: "asc" }, { minDenom: "asc" }],
-        },
-        landingPage: true,
-      },
-    });
-    if (!card) return res.status(404).json({ error: "Card type not found" });
-
-    const regionLock = resolveCardRegionLock(card.slug, card.name, card.noonesPaymentMethod);
-
-    const visibleRates = regionLock
-      ? card.rates.filter((r) => tierMatchesRegionLock(r, regionLock))
-      : card.rates;
-
-    const config = await getRateConfig();
-    const rateMeta = buildRateFreshnessMeta(visibleRates, config.noonesRateRefreshMinutes);
-    const currencyMeta = await listCardCurrencyMetaForDisplay(card.id);
-
-    res.json({
-      card: {
-        id: card.id,
-        name: card.name,
-        slug: card.slug,
-        sellSlug: card.sellSlug,
-        description: card.description,
-        imageUrl: card.imageUrl,
-      },
-      rates: visibleRates.map((r) => ({
-        id: r.id,
-        country: r.country,
-        currency: r.currency,
-        minDenom: r.minDenom,
-        maxDenom: r.maxDenom,
-        medium: r.medium,
-        nairaPerUnit: Number(r.nairaPerUnit),
-        storedQuotes: parseStoredQuotes(r.storedQuotes),
-        countryOfferCount: r.countryOfferCount ?? 0,
-        updatedAt: r.updatedAt,
-      })),
-      config,
-      rateMeta,
-      currencyMeta,
-    });
-  })
-);
-
 const quoteSchema = z.object({
   rateId: z.string(),
   cardAmount: z.number().positive(),
@@ -91,6 +87,16 @@ const quoteSchema = z.object({
   /** When true, prefer offers that do not require a receipt (user has none). */
   preferNoReceipt: z.boolean().optional(),
 });
+
+// Fetch one card by slug or sellSlug (database only — no live NoOnes calls).
+cardsRouter.get(
+  "/:slug",
+  asyncHandler(async (req, res) => {
+    const payload = await loadCardBySlug(req.params.slug);
+    if (!payload) return res.status(404).json({ error: "Card type not found" });
+    res.json(payload);
+  })
+);
 
 // Compute a payout quote for a specific rate row (stored NoOnes data only).
 cardsRouter.post(

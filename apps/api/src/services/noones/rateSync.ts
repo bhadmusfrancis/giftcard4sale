@@ -240,7 +240,7 @@ async function stashCountryTier(
 async function syncCardTypeRates(
   card: { id: string; slug: string; name: string; noonesPaymentMethod: string | null },
   summary: RateSyncSummary,
-  options?: { hydrationOnly?: boolean }
+  options?: { hydrationOnly?: boolean; force?: boolean }
 ): Promise<void> {
   const paymentMethod = resolvePaymentMethodSlug(card.slug, card.name, card.noonesPaymentMethod);
   if (!paymentMethod) {
@@ -273,7 +273,7 @@ async function syncCardTypeRates(
     metaFresh &&
     activeNoones.every((r) => isRateSyncFresh(r.updatedAt, noonesRateRefreshMinutes));
 
-  if (cardFullyFresh) {
+  if (!options?.force && cardFullyFresh) {
     summary.skipped++;
     return;
   }
@@ -357,7 +357,7 @@ async function syncCardTypeRates(
       }
 
       const missingBounds = existing?.minDenom == null && existing?.maxDenom == null;
-      if (existing && isRateSyncFresh(existing.updatedAt, noonesRateRefreshMinutes) && !missingBounds) {
+      if (!options?.force && existing && isRateSyncFresh(existing.updatedAt, noonesRateRefreshMinutes) && !missingBounds) {
         summary.skipped++;
         continue;
       }
@@ -421,7 +421,7 @@ async function syncCardTypeRates(
           },
         });
 
-        if (existing && isRateSyncFresh(existing.updatedAt, noonesRateRefreshMinutes)) {
+        if (!options?.force && existing && isRateSyncFresh(existing.updatedAt, noonesRateRefreshMinutes)) {
           summary.skipped++;
           continue;
         }
@@ -544,7 +544,7 @@ export async function reapplyCountryTierVisibility(minOffers: number): Promise<n
 /**
  * Generate all rates from NoOnes: existing rows, missing cards, PHYSICAL + ECODE tiers.
  */
-export async function syncRatesFromNoOnes(): Promise<RateSyncSummary> {
+export async function syncRatesFromNoOnes(options?: { force?: boolean }): Promise<RateSyncSummary> {
   const summary: RateSyncSummary = {
     created: 0,
     updated: 0,
@@ -570,18 +570,21 @@ export async function syncRatesFromNoOnes(): Promise<RateSyncSummary> {
   summary.cardTypes = cardTypes.length;
 
   for (const card of cardTypes) {
-    await syncCardTypeRates(card, summary);
+    await syncCardTypeRates(card, summary, options);
   }
 
   return summary;
 }
 
-/** Pull live NoOnes rates for one card when its page would otherwise show none. */
-export async function hydrateCardRatesFromNoOnes(cardTypeId: string): Promise<number> {
-  if (!isNoOnesConfigured()) return 0;
+const cardSyncInFlight = new Map<string, Promise<RateSyncSummary>>();
 
-  const card = await prisma.cardType.findUnique({ where: { id: cardTypeId } });
-  if (!card) return 0;
+/** Pull live NoOnes rates for one card into the database (server-side only). */
+export async function syncCardRatesFromNoOnes(
+  cardTypeId: string,
+  options?: { force?: boolean }
+): Promise<RateSyncSummary> {
+  const inFlight = cardSyncInFlight.get(cardTypeId);
+  if (inFlight) return inFlight;
 
   const summary: RateSyncSummary = {
     created: 0,
@@ -589,11 +592,29 @@ export async function hydrateCardRatesFromNoOnes(cardTypeId: string): Promise<nu
     skipped: 0,
     drafted: 0,
     published: 0,
-    cardTypes: 1,
+    cardTypes: 0,
     errors: [],
   };
 
-  await syncCardTypeRates(card, summary, { hydrationOnly: true });
+  if (!isNoOnesConfigured()) return summary;
+
+  const card = await prisma.cardType.findUnique({ where: { id: cardTypeId } });
+  if (!card) return summary;
+
+  summary.cardTypes = 1;
+
+  const promise = (async () => {
+    await syncCardTypeRates(card, summary, { hydrationOnly: true, force: options?.force });
+    return summary;
+  })().finally(() => cardSyncInFlight.delete(cardTypeId));
+
+  cardSyncInFlight.set(cardTypeId, promise);
+  return promise;
+}
+
+/** @deprecated Use syncCardRatesFromNoOnes */
+export async function hydrateCardRatesFromNoOnes(cardTypeId: string): Promise<number> {
+  const summary = await syncCardRatesFromNoOnes(cardTypeId);
   return summary.created + summary.updated;
 }
 

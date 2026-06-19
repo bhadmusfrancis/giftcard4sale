@@ -52,7 +52,8 @@ function ConfigSection() {
       <h3 className="font-bold">Exchange rates &amp; deductions</h3>
       <p className="text-sm text-slate-500">
         Used to convert Naira card value to USDT/Cedi and to deduct the margin. NoOnes card rates are averaged from
-        the top offers by completed trades and refresh on the configured interval.
+        the top offers by completed trades. Rates are fetched from NoOnes on demand — when a user loads a card page
+        and stored data is older than the refresh interval, or when you click &quot;Sync from NoOnes&quot; on a card below.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <Field label="NGN per 1 USDT" value={config.rates.ngnPerUsdt} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerUsdt: v } })} />
@@ -61,7 +62,7 @@ function ConfigSection() {
         <Field label="Naira deduction %" value={config.reductions.nairaReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, nairaReductionPercent: v } })} />
         <Field label="USDT/Cedi deduction %" value={config.reductions.fxReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, fxReductionPercent: v } })} />
         <Field
-          label="NoOnes rate refresh (minutes)"
+          label="NoOnes rate staleness (minutes)"
           value={config.noonesRateRefreshMinutes ?? 15}
           onChange={(v) => setConfig({ ...config, noonesRateRefreshMinutes: v })}
         />
@@ -159,6 +160,8 @@ function ImportSection() {
 function CardsSection() {
   const [cards, setCards] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   async function load() {
     const d = await api("/admin/cards");
@@ -176,19 +179,60 @@ function CardsSection() {
     load();
   }
 
+  async function syncFromNoones(cardId: string) {
+    setSyncing(cardId);
+    setSyncMsg(null);
+    try {
+      const result = await api(`/admin/card-types/${cardId}/sync-rates`, { method: "POST" });
+      const parts = [
+        result.created ? `${result.created} created` : null,
+        result.updated ? `${result.updated} updated` : null,
+        result.skipped ? `${result.skipped} skipped` : null,
+      ].filter(Boolean);
+      setSyncMsg(
+        result.errors?.length
+          ? `Sync finished with errors: ${result.errors.join("; ")}`
+          : `NoOnes sync: ${parts.join(", ") || "no changes"}`
+      );
+      load();
+    } catch (e) {
+      setSyncMsg((e as Error).message);
+    } finally {
+      setSyncing(null);
+    }
+  }
+
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between">
         <h3 className="font-bold">Card types</h3>
         <button onClick={addCard} className="btn-ghost text-sm">Add card type</button>
       </div>
+      {syncMsg ? (
+        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{syncMsg}</p>
+      ) : null}
       <div className="mt-4 divide-y divide-slate-100">
         {cards.map((c) => (
           <div key={c.id}>
-            <button onClick={() => setExpanded(expanded === c.id ? null : c.id)} className="flex w-full items-center justify-between py-3 text-left">
-              <span className="font-medium">{c.name} <span className="text-slate-400">/{c.sellSlug}</span></span>
-              <span className="text-sm text-slate-500">{c.rateCount} rates {expanded === c.id ? "▲" : "▼"}</span>
-            </button>
+            <div className="flex w-full items-center justify-between gap-2 py-3">
+              <button
+                onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <span className="font-medium">{c.name} <span className="text-slate-400">/{c.sellSlug}</span></span>
+                <span className="ml-2 text-sm text-slate-500">{c.rateCount} rates {expanded === c.id ? "▲" : "▼"}</span>
+              </button>
+              {c.noonesPaymentMethod ? (
+                <button
+                  type="button"
+                  disabled={syncing === c.id}
+                  onClick={() => syncFromNoones(c.id)}
+                  className="btn-ghost shrink-0 text-xs"
+                >
+                  {syncing === c.id ? "Syncing…" : "Sync from NoOnes"}
+                </button>
+              ) : null}
+            </div>
             {expanded === c.id && <RateEditor cardId={c.id} onChange={load} />}
           </div>
         ))}

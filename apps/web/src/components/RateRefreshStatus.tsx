@@ -20,9 +20,10 @@ function formatCountdown(ms: number): string {
 }
 
 export function RateRefreshStatus({ rateMeta }: { rateMeta: RateFreshnessMeta }) {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -30,23 +31,29 @@ export function RateRefreshStatus({ rateMeta }: { rateMeta: RateFreshnessMeta })
   if (!rateMeta.lastUpdatedAt) {
     return (
       <p className="text-xs text-slate-500">
-        Rates are syncing from our marketplace partners in the background. Please check back shortly.
+        No stored rates yet. Rates are loaded from our marketplace partners on a schedule — check back shortly.
       </p>
     );
   }
 
-  const nextMs = rateMeta.nextRefreshAt ? new Date(rateMeta.nextRefreshAt).getTime() - now : 0;
-  const stale = rateMeta.isStale || nextMs <= 0;
+  const nextMs =
+    now !== null && rateMeta.nextRefreshAt
+      ? new Date(rateMeta.nextRefreshAt).getTime() - now
+      : null;
+  const stale = rateMeta.isStale || (nextMs !== null && nextMs <= 0);
 
   return (
     <p className="text-xs text-slate-500">
       Rates as of <span className="font-medium text-slate-600">{date(rateMeta.lastUpdatedAt)}</span>
       {" · "}
       {stale ? (
-        <span className="text-amber-700">Refreshing now — showing last stored rates</span>
+        <span className="text-amber-700">Rates may be outdated — New rate will refresh when available</span>
       ) : (
         <>
-          Next refresh in <span className="font-medium text-slate-600">{formatCountdown(nextMs)}</span>
+          Refresh in{" "}
+          <span className="font-medium text-slate-600">
+            {nextMs !== null ? formatCountdown(nextMs) : "…"}
+          </span>
         </>
       )}
     </p>

@@ -82,7 +82,7 @@ export interface CountryOption {
   label: string;
 }
 
-/** Build sorted country picker options from active rates and stored currency metadata. */
+/** Build sorted country picker options from active rate rows only. */
 export function buildCountryOptions(
   rates: { country: string; currency: string; countryOfferCount?: number }[],
   currencyMeta?: {
@@ -107,18 +107,9 @@ export function buildCountryOptions(
     }
   }
 
-  // Include currencies with stored denomination bands even when no active bounded rate row exists yet.
   for (const meta of currencyMeta ?? []) {
-    if (!meta.denomRanges?.length) continue;
     const existing = byCountry.get(meta.country);
-    if (!existing) {
-      byCountry.set(meta.country, {
-        country: meta.country,
-        currency: meta.currency,
-        offerCount: meta.offerCount,
-        label: `${meta.country} (${meta.currency})`,
-      });
-    } else if (meta.offerCount > existing.offerCount) {
+    if (existing && meta.offerCount > existing.offerCount) {
       existing.offerCount = meta.offerCount;
     }
   }
@@ -134,44 +125,83 @@ export function buildCountryOptions(
   return options;
 }
 
-/** Collect distinct denomination tiers from stored NoOnes currency metadata. */
+/** Collapse multiple denomination bands into one min–max range for a country/currency. */
+export function collapseDenomRangesToSingle(tiers: RateDenomRange[]): RateDenomRange[] {
+  if (!tiers.length) return [];
+
+  let minDenom: number | null = null;
+  let maxDenom: number | null = null;
+  let currency: string | undefined;
+
+  for (const tier of tiers) {
+    if (tier.minDenom != null) {
+      minDenom = minDenom == null ? tier.minDenom : Math.min(minDenom, tier.minDenom);
+    }
+    if (tier.maxDenom != null) {
+      maxDenom = maxDenom == null ? tier.maxDenom : Math.max(maxDenom, tier.maxDenom);
+    }
+    currency ??= tier.currency;
+  }
+
+  if (minDenom == null && maxDenom == null) return [];
+  return [{ minDenom, maxDenom, currency }];
+}
+
+/** Collect denomination bounds from stored NoOnes currency metadata (one range per country). */
 export function collectDenomRangesFromCurrencyMeta(
   currencyMeta: { country: string; currency: string; denomRanges: { min: number; max: number }[] }[],
   country: string,
   currency?: string
 ): RateDenomRange[] {
-  const row =
-    (currency ? currencyMeta.find((m) => m.currency === currency) : undefined) ??
-    currencyMeta.find((m) => m.country === country && (!currency || m.currency === currency));
+  const row = currencyMeta.find(
+    (m) => m.country === country && (!currency || m.currency === currency)
+  );
   if (!row?.denomRanges?.length) return [];
-  return row.denomRanges.map((r) => ({
-    minDenom: r.min,
-    maxDenom: r.max,
-    currency: row.currency,
-  }));
+  return collapseDenomRangesToSingle(
+    row.denomRanges.map((r) => ({
+      minDenom: r.min,
+      maxDenom: r.max,
+      currency: row.currency,
+    }))
+  );
 }
 
-/** Collect distinct denomination tiers for one country/currency from stored rate rows. */
+/** Collect denomination bounds for one country/currency from stored rate rows (one range). */
 export function collectDenomRangesForCurrency(
   rates: { country: string; currency: string; minDenom: number | null; maxDenom: number | null }[],
   country: string,
   currency?: string
 ): RateDenomRange[] {
-  const map = new Map<string, RateDenomRange>();
+  const tiers: RateDenomRange[] = [];
   for (const rate of rates) {
     if (rate.country !== country) continue;
     if (currency && rate.currency !== currency) continue;
     if (rate.minDenom == null && rate.maxDenom == null) continue;
-    const key = `${rate.minDenom ?? ""}|${rate.maxDenom ?? ""}`;
-    map.set(key, {
+    tiers.push({
       minDenom: rate.minDenom,
       maxDenom: rate.maxDenom,
       currency: rate.currency,
     });
   }
-  return [...map.values()].sort(
-    (a, b) => (a.minDenom ?? 0) - (b.minDenom ?? 0) || (a.maxDenom ?? 0) - (b.maxDenom ?? 0)
-  );
+  return collapseDenomRangesToSingle(tiers);
+}
+
+/** Collapse bounds from specific rate rows (e.g. already filtered by country + medium). */
+export function collectDenomRangesFromRateRows(
+  rates: { minDenom: number | null; maxDenom: number | null; currency?: string }[]
+): RateDenomRange[] {
+  const tiers: RateDenomRange[] = [];
+  for (const rate of rates) {
+    if (rate.minDenom == null && rate.maxDenom == null) continue;
+    tiers.push({
+      minDenom: rate.minDenom,
+      maxDenom: rate.maxDenom,
+      currency: rate.currency,
+    });
+  }
+  if (tiers.length) return collapseDenomRangesToSingle(tiers);
+  if (rates.length) return [{ minDenom: 1, maxDenom: null, currency: rates[0].currency }];
+  return [];
 }
 
 /** Format distinct denomination tiers for display (e.g. "25–100, 101–500 USD"). */
@@ -228,24 +258,22 @@ export function isBoundedDenomTier(tier: RateDenomRange): boolean {
   return tier.minDenom != null && tier.maxDenom != null;
 }
 
-/** Match a quotable rate row to the bounded tier that contains the amount. */
+/** Match a quotable rate row whose tier accepts the amount within country bounds. */
 export function findBoundedRateForAmount<
   T extends RateDenomRange & { minDenom: number | null; maxDenom: number | null },
 >(rates: T[], denomTiers: RateDenomRange[], amount: number): T | null {
-  const boundedTier = findRateTierForAmount(denomTiers, amount);
-  if (!boundedTier || !isBoundedDenomTier(boundedTier)) return null;
-
-  const exact = rates.find(
-    (r) =>
-      isBoundedDenomTier(r) &&
-      r.minDenom === boundedTier.minDenom &&
-      r.maxDenom === boundedTier.maxDenom
-  );
-  if (exact) return exact;
-
-  return (
-    rates.find((r) => isBoundedDenomTier(r) && cardAmountInRateRange(amount, r)) ?? null
-  );
+  if (!rates.length) return null;
+  const matching = rates.filter((r) => cardAmountInRateRange(amount, r));
+  if (matching.length) {
+    return matching.sort(
+      (a, b) =>
+        (a.maxDenom ?? Number.MAX_SAFE_INTEGER) -
+        (a.minDenom ?? 0) -
+        ((b.maxDenom ?? Number.MAX_SAFE_INTEGER) - (b.minDenom ?? 0))
+    )[0];
+  }
+  if (!findRateTierForAmount(denomTiers, amount)) return null;
+  return rates.find((r) => r.minDenom == null && r.maxDenom == null) ?? null;
 }
 
 /** Human-readable validation error for an out-of-range amount. */

@@ -15,7 +15,10 @@
     "db:up": "docker compose up -d db",
     "db:migrate": "npm run prisma:migrate -w @gc4s/api",
     "db:seed": "npm run seed -w @gc4s/api",
-    "setup": "npm install && npm run build:shared && npm run db:up && npm run db:migrate && npm run db:seed"
+    "setup": "npm install && npm run build:shared && npm run db:up && npm run db:migrate && npm run db:seed",
+    "sync:noones": "npm run sync:noones -w @gc4s/api --",
+    "sync:noones-rates": "npm run sync:noones -w @gc4s/api --",
+    "import:noones-cards": "npm run import:noones-cards -w @gc4s/api"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

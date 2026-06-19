@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { apiServer } from "@/lib/api";
-import { RateCalculator } from "@/components/RateCalculator";
+import { CardRatePanel } from "@/components/CardRatePanel";
 import { BrandLogo } from "@/components/BrandLogo";
 
 interface LandingResp {
@@ -117,24 +117,15 @@ export default async function SlugPage({ params }: { params: { slug: string } })
         </div>
 
         <div className="space-y-6">
-          {card?.rates?.length ? (
-            <RateCalculator
+          {card ? (
+            <CardRatePanel
               cardName={card.card.name}
               cardSellSlug={card.card.sellSlug}
-              rates={card.rates}
-              config={card.config}
-              rateMeta={card.rateMeta}
-              currencyMeta={card.currencyMeta}
+              initialRates={card.rates}
+              initialConfig={card.config}
+              initialRateMeta={card.rateMeta}
+              initialCurrencyMeta={card.currencyMeta}
             />
-          ) : card ? (
-            <div className="card p-6">
-              <h3 className="text-lg font-bold">Rate not available yet</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Rates for this card are synced automatically in the background from our marketplace partners. The next
-                sync runs on the schedule set in admin (typically every {card.config?.noonesRateRefreshMinutes ?? 15}{" "}
-                minutes). Please check back shortly.
-              </p>
-            </div>
           ) : (
             <div className="card p-6">
               <h3 className="text-lg font-bold">Calculate your payout</h3>

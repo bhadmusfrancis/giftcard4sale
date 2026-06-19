@@ -82,6 +82,39 @@ export interface RateFreshnessMeta {
   isStale: boolean;
 }
 
+/** True when a card's stored NoOnes rates or currency meta are missing or past the refresh window. */
+export async function isCardRateDataStale(
+  cardTypeId: string,
+  refreshMinutes: number
+): Promise<boolean> {
+  const [existingNoones, currencyMetaRows] = await Promise.all([
+    prisma.rate.findMany({
+      where: { cardTypeId, speed: "NOONES" },
+      select: { updatedAt: true, minDenom: true, maxDenom: true, active: true },
+    }),
+    prisma.cardCurrencyMeta.findMany({
+      where: { cardTypeId },
+      select: { syncedAt: true },
+    }),
+  ]);
+
+  if (!existingNoones.length && !currencyMetaRows.length) return true;
+
+  const hasOpenEnded = existingNoones.some((r) => r.active && r.minDenom == null && r.maxDenom == null);
+  const activeNoones = existingNoones.filter((r) => r.active);
+  if (!activeNoones.length) return true;
+
+  const metaFresh =
+    currencyMetaRows.length > 0 &&
+    currencyMetaRows.every((m) => isRateSyncFresh(m.syncedAt, refreshMinutes));
+  const cardFullyFresh =
+    !hasOpenEnded &&
+    metaFresh &&
+    activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshMinutes));
+
+  return !cardFullyFresh;
+}
+
 /** Build user-facing rate freshness from stored rate rows (no live API calls). */
 export function buildRateFreshnessMeta(
   rates: { updatedAt: Date; speed?: string | null }[],

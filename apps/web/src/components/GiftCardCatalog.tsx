@@ -110,7 +110,7 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
           </p>
           <p className="mt-2 text-sm text-slate-500">
             {liveCards === null && cards.length === 0 ? (
-              "Fetching the latest cards from our marketplace partners."
+              "Loading gift cards from our catalog."
             ) : (
               <>
                 Try a different search term, or{" "}
