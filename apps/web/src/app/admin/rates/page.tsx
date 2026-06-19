@@ -2,15 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { NoOnesSyncPanel } from "@/components/NoOnesSyncPanel";
+import { NoOnesSyncProvider, useNoOnesSyncState } from "@/components/NoOnesSyncContext";
 
 export default function AdminRatesPage() {
+  const [cardsKey, setCardsKey] = useState(0);
+
   return (
-    <div className="space-y-8">
-      <h2 className="text-2xl font-bold">Rates &amp; cards</h2>
-      <ConfigSection />
-      <ImportSection />
-      <CardsSection />
-    </div>
+    <NoOnesSyncProvider>
+      <div className="space-y-8">
+        <h2 className="text-2xl font-bold">Rates &amp; cards</h2>
+        <NoOnesSyncPanel onSyncFinished={() => setCardsKey((k) => k + 1)} />
+        <ConfigSection />
+        <ImportSection />
+        <CardsSection key={cardsKey} />
+      </div>
+    </NoOnesSyncProvider>
   );
 }
 
@@ -52,8 +59,8 @@ function ConfigSection() {
       <h3 className="font-bold">Exchange rates &amp; deductions</h3>
       <p className="text-sm text-slate-500">
         Used to convert Naira card value to USDT/Cedi and to deduct the margin. NoOnes card rates are averaged from
-        the top offers by completed trades. Rates are fetched from NoOnes on demand — when a user loads a card page
-        and stored data is older than the refresh interval, or when you click &quot;Sync from NoOnes&quot; on a card below.
+        the top offers by completed trades. Use the NoOnes sync panel above to refresh stored rates, or sync a single
+        card below.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <Field label="NGN per 1 USDT" value={config.rates.ngnPerUsdt} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerUsdt: v } })} />
@@ -160,8 +167,8 @@ function ImportSection() {
 function CardsSection() {
   const [cards, setCards] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const { sync } = useNoOnesSyncState();
 
   async function load() {
     const d = await api("/admin/cards");
@@ -180,25 +187,25 @@ function CardsSection() {
   }
 
   async function syncFromNoones(cardId: string) {
-    setSyncing(cardId);
     setSyncMsg(null);
     try {
-      const result = await api(`/admin/card-types/${cardId}/sync-rates`, { method: "POST" });
-      const parts = [
-        result.created ? `${result.created} created` : null,
-        result.updated ? `${result.updated} updated` : null,
-        result.skipped ? `${result.skipped} skipped` : null,
-      ].filter(Boolean);
-      setSyncMsg(
-        result.errors?.length
-          ? `Sync finished with errors: ${result.errors.join("; ")}`
-          : `NoOnes sync: ${parts.join(", ") || "no changes"}`
-      );
-      load();
+      await api(`/admin/card-types/${cardId}/sync-rates`, { method: "POST" });
+      setSyncMsg("Card sync started — see NoOnes synchronization panel for progress.");
     } catch (e) {
       setSyncMsg((e as Error).message);
-    } finally {
-      setSyncing(null);
+    }
+  }
+
+  async function deleteCard(card: { id: string; name: string }) {
+    if (!confirm(`Delete "${card.name}" and all its rates? This cannot be undone.`)) return;
+    setSyncMsg(null);
+    try {
+      await api(`/admin/cards/${card.id}`, { method: "DELETE" });
+      if (expanded === card.id) setExpanded(null);
+      await load();
+      setSyncMsg(`Deleted ${card.name}.`);
+    } catch (e) {
+      setSyncMsg((e as Error).message);
     }
   }
 
@@ -222,16 +229,30 @@ function CardsSection() {
                 <span className="font-medium">{c.name} <span className="text-slate-400">/{c.sellSlug}</span></span>
                 <span className="ml-2 text-sm text-slate-500">{c.rateCount} rates {expanded === c.id ? "▲" : "▼"}</span>
               </button>
-              {c.noonesPaymentMethod ? (
+              <div className="flex shrink-0 items-center gap-1">
+                {c.noonesPaymentMethod ? (
+                  <button
+                    type="button"
+                    disabled={sync.running}
+                    onClick={() => syncFromNoones(c.id)}
+                    className="btn-ghost text-xs"
+                  >
+                    {sync.running && sync.scope === "card" && sync.cardTypeId === c.id
+                      ? "Syncing…"
+                      : sync.running && sync.scope === "full"
+                        ? "Sync in progress…"
+                        : "Sync from NoOnes"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  disabled={syncing === c.id}
-                  onClick={() => syncFromNoones(c.id)}
-                  className="btn-ghost shrink-0 text-xs"
+                  disabled={sync.running}
+                  onClick={() => deleteCard(c)}
+                  className="btn-ghost text-xs text-red-600 hover:text-red-700"
                 >
-                  {syncing === c.id ? "Syncing…" : "Sync from NoOnes"}
+                  Delete
                 </button>
-              ) : null}
+              </div>
             </div>
             {expanded === c.id && <RateEditor cardId={c.id} onChange={load} />}
           </div>

@@ -1,5 +1,5 @@
 import { CardType, Prisma } from "@prisma/client";
-import { canonicalCardSlug, normalizeCardTypeName } from "@gc4s/shared";
+import { canonicalCardSlug, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { paymentMethodToCardName } from "./noones/rateCatalog";
 
@@ -144,4 +144,51 @@ export async function dedupeCardTypes(): Promise<DedupSummary> {
   }
 
   return summary;
+}
+
+/** Fix card slugs that duplicated the "-gift-card" suffix (e.g. sell-h-m-gift-card-gift-card). */
+export async function repairCardSlugSuffixes(): Promise<number> {
+  const cards = await prisma.cardType.findMany({
+    select: { id: true, name: true, slug: true, sellSlug: true },
+  });
+
+  let updated = 0;
+  for (const card of cards) {
+    const slug = canonicalCardSlug(card.name);
+    const sell = sellSlug(card.name);
+    if (card.slug === slug && card.sellSlug === sell) continue;
+
+    const conflict = await prisma.cardType.findFirst({
+      where: {
+        OR: [{ slug }, { sellSlug: sell }],
+        NOT: { id: card.id },
+      },
+      select: { id: true },
+    });
+    if (conflict) continue;
+
+    await prisma.cardType.update({
+      where: { id: card.id },
+      data: { slug, sellSlug: sell },
+    });
+    updated++;
+  }
+
+  const badLandingSlugs = await prisma.landingPage.findMany({
+    where: { slug: { endsWith: "-gift-card-gift-card" } },
+    select: { id: true, slug: true },
+  });
+  for (const page of badLandingSlugs) {
+    const fixed = page.slug.replace(/-gift-card-gift-card$/, "-gift-card");
+    const taken = await prisma.landingPage.findFirst({
+      where: { slug: fixed, NOT: { id: page.id } },
+      select: { id: true },
+    });
+    if (!taken) {
+      await prisma.landingPage.update({ where: { id: page.id }, data: { slug: fixed } });
+      updated++;
+    }
+  }
+
+  return updated;
 }

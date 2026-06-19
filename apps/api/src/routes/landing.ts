@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { fixDuplicateSellSlug } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler } from "../lib/http";
 
@@ -26,10 +27,18 @@ landingRouter.get(
 landingRouter.get(
   "/:slug",
   asyncHandler(async (req, res) => {
-    const page = await prisma.landingPage.findFirst({
-      where: { slug: req.params.slug, published: true },
-      include: { cardType: { select: { id: true, slug: true, sellSlug: true, name: true } } },
-    });
+    const candidates = req.params.slug.endsWith("-gift-card-gift-card")
+      ? [req.params.slug, fixDuplicateSellSlug(req.params.slug)]
+      : [req.params.slug];
+
+    let page = null;
+    for (const slug of candidates) {
+      page = await prisma.landingPage.findFirst({
+        where: { slug, published: true },
+        include: { cardType: { select: { id: true, slug: true, sellSlug: true, name: true } } },
+      });
+      if (page) break;
+    }
     if (!page) return res.status(404).json({ error: "Page not found" });
     res.json({
       page: {

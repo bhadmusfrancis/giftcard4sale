@@ -6,15 +6,24 @@ import { applyNoOnesPublishState, isManualRateSpeed, MANUAL_RATE_WHERE, refreshC
 import { getRateConfig, isRateSyncFresh } from "../rateConfig";
 import { isNoOnesConfigured, noonesPost } from "./client";
 import { resolvePaymentMethodSlug } from "./paymentMethods";
-import { buildSyncTargets, paymentMethodToCardName, RateSyncTarget, OTHER_COUNTRY_TIER, appendDiscoveredCurrencyTargets, expandTargetsFromOfferRanges, ensureTargetsForCurrencyMeta, currencyTierFromCode } from "./rateCatalog";
+import { buildSyncTargets, paymentMethodToCardName, RateSyncTarget, OTHER_COUNTRY_TIER, isOtherCountryTier, appendDiscoveredCurrencyTargets, expandTargetsFromOfferRanges, ensureTargetsForCurrencyMeta, currencyTierFromCode } from "./rateCatalog";
 import { discoverOfferCurrencies, fetchNoOnesCardStats, fetchCurrencyOfferMeta, type CurrencyOfferMeta } from "./offers";
 import { fetchStoredQuotesForTarget, storedQuotesToJson } from "./storedQuotes";
 import { persistCardCurrencyMeta } from "./currencyMeta";
-import { hasOtherCountryOffers } from "./otherCountries";
+import { countOtherCountryOffers, hasOtherCountryOffers } from "./otherCountries";
 import { fetchAverageOfferForMedium } from "./rates";
 import { StoredQuotes } from "@gc4s/shared";
 import { isCardPublishable, isCountryTierDisplayable } from "./publishPolicy";
 import { resolveCardRegionLock, tierMatchesRegionLock } from "./regionLock";
+import {
+  addNoOnesSyncErrors,
+  isNoOnesSyncActive,
+  mergeNoOnesSyncSummary,
+  setNoOnesSyncCurrentCard,
+  setNoOnesSyncPhase,
+  setNoOnesSyncTotalCards,
+} from "./syncStatus";
+import { getNoOnesSyncLimits, sleep } from "./syncLimits";
 
 export interface RateSyncSummary {
   created: number;
@@ -26,7 +35,12 @@ export interface RateSyncSummary {
   errors: string[];
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export interface RateSyncOptions {
+  force?: boolean;
+  hydrationOnly?: boolean;
+  /** When set, only these card types are synced (used by the stale-card scheduler). */
+  cardTypeIds?: string[];
+}
 
 interface NoOnesPaymentMethod {
   name: string;
@@ -76,7 +90,12 @@ async function ensureCardTypesFromNoOnes(): Promise<number> {
     if (existing) {
       await prisma.cardType.update({
         where: { id: existing.id },
-        data: { name, noonesPaymentMethod: method.slug },
+        data: {
+          name,
+          slug,
+          sellSlug: sellSlug(name),
+          noonesPaymentMethod: method.slug,
+        },
       });
       await applyNoOnesPublishState(existing.id, offerCount, offerCountKnown, tradeVolume);
     } else if (offerCountKnown) {
@@ -105,7 +124,7 @@ async function ensureCardTypesFromNoOnes(): Promise<number> {
       });
     }
     count++;
-    await sleep(50);
+    await sleep(getNoOnesSyncLimits().staleCheckPauseMs);
   }
 
   return count;
@@ -138,7 +157,8 @@ async function upsertRateFromNoOnes(
 
   const displayable =
     isCountryTierDisplayable(countryOfferCount, minCountryOffers) &&
-    !(target.minDenom == null && target.maxDenom == null);
+    (isOtherCountryTier(target.country) ||
+      !(target.minDenom == null && target.maxDenom == null));
   const data = {
     nairaPerUnit: new Prisma.Decimal(nairaPerUnit.toFixed(4)),
     storedQuotes: storedQuotesToJson(storedQuotes),
@@ -175,6 +195,7 @@ async function deactivateStaleDenomTiers(
   });
 
   for (const rate of noonesRates) {
+    if (isOtherCountryTier(rate.country)) continue;
     const meta = metaByCurrency.get(rate.currency);
     if (!meta?.ranges.length) continue;
     const matches = meta.ranges.some((r) => r.min === rate.minDenom && r.max === rate.maxDenom);
@@ -218,7 +239,7 @@ async function stashCountryTier(
     return;
   }
 
-  if (target.minDenom == null && target.maxDenom == null) return;
+  if (target.minDenom == null && target.maxDenom == null && !isOtherCountryTier(target.country)) return;
 
   await prisma.rate.create({
     data: {
@@ -240,7 +261,7 @@ async function stashCountryTier(
 async function syncCardTypeRates(
   card: { id: string; slug: string; name: string; noonesPaymentMethod: string | null },
   summary: RateSyncSummary,
-  options?: { hydrationOnly?: boolean; force?: boolean }
+  options?: RateSyncOptions
 ): Promise<void> {
   const paymentMethod = resolvePaymentMethodSlug(card.slug, card.name, card.noonesPaymentMethod);
   if (!paymentMethod) {
@@ -256,13 +277,15 @@ async function syncCardTypeRates(
 
   const existingNoones = await prisma.rate.findMany({
     where: { cardTypeId: card.id, speed: "NOONES" },
-    select: { updatedAt: true, minDenom: true, maxDenom: true, active: true },
+    select: { updatedAt: true, minDenom: true, maxDenom: true, active: true, country: true },
   });
   const currencyMetaRows = await prisma.cardCurrencyMeta.findMany({
     where: { cardTypeId: card.id },
     select: { syncedAt: true },
   });
-  const hasOpenEnded = existingNoones.some((r) => r.active && r.minDenom == null && r.maxDenom == null);
+  const hasOpenEnded = existingNoones.some(
+    (r) => r.active && r.minDenom == null && r.maxDenom == null && !isOtherCountryTier(r.country)
+  );
   const activeNoones = existingNoones.filter((r) => r.active);
   const metaFresh =
     currencyMetaRows.length > 0 &&
@@ -303,6 +326,7 @@ async function syncCardTypeRates(
       speed: "NOONES",
       minDenom: null,
       maxDenom: null,
+      country: { not: "Other" },
     },
     data: { active: false },
   });
@@ -318,6 +342,7 @@ async function syncCardTypeRates(
   }
   const currencies = [...new Set([...targets.map((t) => t.currency), ...discovered])];
   const metaByCurrency = new Map<string, CurrencyOfferMeta>();
+  const { pauseBetweenTargetsMs } = getNoOnesSyncLimits();
   for (const currency of currencies) {
     try {
       metaByCurrency.set(currency, await fetchCurrencyOfferMeta(paymentMethod, currency));
@@ -325,6 +350,7 @@ async function syncCardTypeRates(
       summary.errors.push(`${card.name}/${currency}: offer meta — ${(err as Error).message}`);
       metaByCurrency.set(currency, { offerCount: 0, ranges: [] });
     }
+    await sleep(pauseBetweenTargetsMs);
   }
   targets = ensureTargetsForCurrencyMeta(targets, metaByCurrency);
   targets = expandTargetsFromOfferRanges(targets, metaByCurrency);
@@ -369,7 +395,7 @@ async function syncCardTypeRates(
         cardCurrency: target.currency,
         cardAmount: target.sampleAmount,
         medium: target.medium as CardMedium,
-        otherCountriesOnly: target.country === "Other",
+        otherCountriesOnly: isOtherCountryTier(target.country),
       });
 
       if (!nairaPerUnit || nairaPerUnit <= 0) {
@@ -396,7 +422,7 @@ async function syncCardTypeRates(
       else if (result === "updated") summary.updated++;
       else summary.skipped++;
 
-      await sleep(150);
+      await sleep(pauseBetweenTargetsMs);
     } catch (err) {
       summary.errors.push(
         `${card.name}/${target.country}/${target.medium}: ${(err as Error).message}`
@@ -442,7 +468,7 @@ async function syncCardTypeRates(
           continue;
         }
 
-        const otherOfferCount = metaByCurrency.get(OTHER_COUNTRY_TIER.currency)?.offerCount ?? 0;
+        const otherOfferCount = await countOtherCountryOffers(paymentMethod, { medium });
         if (!isCountryTierDisplayable(otherOfferCount, minCountryOffersForDisplay)) {
           await stashCountryTier(card.id, otherTarget, otherOfferCount, nairaPerUnit, storedQuotes);
           summary.skipped++;
@@ -460,7 +486,7 @@ async function syncCardTypeRates(
         if (result === "created") summary.created++;
         else if (result === "updated") summary.updated++;
         else summary.skipped++;
-        await sleep(150);
+        await sleep(pauseBetweenTargetsMs);
       }
     } else {
       const staleOther = await prisma.rate.findMany({
@@ -485,6 +511,7 @@ async function syncCardTypeRates(
       speed: "NOONES",
       minDenom: null,
       maxDenom: null,
+      country: { not: "Other" },
     },
     data: { active: false },
   });
@@ -521,8 +548,9 @@ export async function reapplyCountryTierVisibility(minOffers: number): Promise<n
       rate.cardType.noonesPaymentMethod
     );
     let shouldBeActive =
-      !(rate.minDenom == null && rate.maxDenom == null) &&
-      isCountryTierDisplayable(rate.countryOfferCount ?? 0, minOffers);
+      isCountryTierDisplayable(rate.countryOfferCount ?? 0, minOffers) &&
+      (isOtherCountryTier(rate.country) ||
+        !(rate.minDenom == null && rate.maxDenom == null));
     if (shouldBeActive && regionLock && !tierMatchesRegionLock(rate, regionLock)) {
       shouldBeActive = false;
     }
@@ -541,10 +569,42 @@ export async function reapplyCountryTierVisibility(minOffers: number): Promise<n
   return updated;
 }
 
+async function syncCardsInBatches(
+  cardTypes: { id: string; slug: string; name: string; noonesPaymentMethod: string | null }[],
+  summary: RateSyncSummary,
+  options?: RateSyncOptions
+): Promise<void> {
+  const { cardsPerBatch, pauseBetweenBatchesMs, pauseBetweenCardsMs } = getNoOnesSyncLimits();
+
+  for (let batchStart = 0; batchStart < cardTypes.length; batchStart += cardsPerBatch) {
+    const batch = cardTypes.slice(batchStart, batchStart + cardsPerBatch);
+
+    for (let i = 0; i < batch.length; i++) {
+      const card = batch[i];
+      const processed = batchStart + i + 1;
+      if (isNoOnesSyncActive()) {
+        setNoOnesSyncCurrentCard({ id: card.id, name: card.name }, processed);
+      }
+      const errorsBefore = summary.errors.length;
+      await syncCardTypeRates(card, summary, options);
+      if (isNoOnesSyncActive()) {
+        mergeNoOnesSyncSummary(summary);
+        const newErrors = summary.errors.slice(errorsBefore);
+        if (newErrors.length) addNoOnesSyncErrors(newErrors);
+      }
+      if (i < batch.length - 1) await sleep(pauseBetweenCardsMs);
+    }
+
+    if (batchStart + cardsPerBatch < cardTypes.length) {
+      await sleep(pauseBetweenBatchesMs);
+    }
+  }
+}
+
 /**
  * Generate all rates from NoOnes: existing rows, missing cards, PHYSICAL + ECODE tiers.
  */
-export async function syncRatesFromNoOnes(options?: { force?: boolean }): Promise<RateSyncSummary> {
+export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<RateSyncSummary> {
   const summary: RateSyncSummary = {
     created: 0,
     updated: 0,
@@ -557,21 +617,33 @@ export async function syncRatesFromNoOnes(options?: { force?: boolean }): Promis
 
   if (!isNoOnesConfigured()) return summary;
 
+  if (isNoOnesSyncActive()) setNoOnesSyncPhase("discovering");
+
   try {
     await ensureCardTypesFromNoOnes();
   } catch (err) {
     summary.errors.push(`Card type discovery: ${(err as Error).message}`);
+    if (isNoOnesSyncActive()) addNoOnesSyncErrors([summary.errors[summary.errors.length - 1]]);
   }
 
-  const cardTypes = await prisma.cardType.findMany({
+  let cardTypes = await prisma.cardType.findMany({
     where: { noonesPaymentMethod: { not: null } },
     orderBy: { name: "asc" },
   });
+
+  if (options?.cardTypeIds?.length) {
+    const allowed = new Set(options.cardTypeIds);
+    cardTypes = cardTypes.filter((c) => allowed.has(c.id));
+  }
+
   summary.cardTypes = cardTypes.length;
 
-  for (const card of cardTypes) {
-    await syncCardTypeRates(card, summary, options);
+  if (isNoOnesSyncActive()) {
+    setNoOnesSyncTotalCards(cardTypes.length);
+    setNoOnesSyncPhase("syncing");
   }
+
+  await syncCardsInBatches(cardTypes, summary, options);
 
   return summary;
 }
@@ -604,7 +676,17 @@ export async function syncCardRatesFromNoOnes(
   summary.cardTypes = 1;
 
   const promise = (async () => {
+    if (isNoOnesSyncActive()) {
+      setNoOnesSyncPhase("syncing");
+      setNoOnesSyncCurrentCard({ id: card.id, name: card.name }, 1);
+    }
+    const errorsBefore = summary.errors.length;
     await syncCardTypeRates(card, summary, { hydrationOnly: true, force: options?.force });
+    if (isNoOnesSyncActive()) {
+      mergeNoOnesSyncSummary(summary);
+      const newErrors = summary.errors.slice(errorsBefore);
+      if (newErrors.length) addNoOnesSyncErrors(newErrors);
+    }
     return summary;
   })().finally(() => cardSyncInFlight.delete(cardTypeId));
 

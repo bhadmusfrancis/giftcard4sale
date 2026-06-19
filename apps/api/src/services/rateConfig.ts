@@ -1,6 +1,7 @@
 import { ExchangeRates, RateReductions } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { env } from "../env";
+import { getNoOnesSyncLimits, sleep } from "./noones/syncLimits";
 
 const DEFAULT_NOONES_RATE_REFRESH_MINUTES = 15;
 const DEFAULT_NOONES_TOP_OFFERS_FOR_RATE = 3;
@@ -54,17 +55,15 @@ export function isRateSyncFresh(updatedAt: Date, refreshMinutes: number): boolea
 export async function getRateSyncDelayMs(refreshMinutes: number): Promise<number> {
   const windowMs = refreshMinutes * 60_000;
 
-  const [latestRate, latestMeta] = await Promise.all([
-    prisma.rate.findFirst({
-      where: { speed: "NOONES" },
-      orderBy: { updatedAt: "desc" },
-      select: { updatedAt: true },
-    }),
-    prisma.cardCurrencyMeta.findFirst({
-      orderBy: { syncedAt: "desc" },
-      select: { syncedAt: true },
-    }),
-  ]);
+  const latestRate = await prisma.rate.findFirst({
+    where: { speed: "NOONES" },
+    orderBy: { updatedAt: "desc" },
+    select: { updatedAt: true },
+  });
+  const latestMeta = await prisma.cardCurrencyMeta.findFirst({
+    orderBy: { syncedAt: "desc" },
+    select: { syncedAt: true },
+  });
 
   let latest = 0;
   if (latestRate) latest = Math.max(latest, latestRate.updatedAt.getTime());
@@ -90,7 +89,7 @@ export async function isCardRateDataStale(
   const [existingNoones, currencyMetaRows] = await Promise.all([
     prisma.rate.findMany({
       where: { cardTypeId, speed: "NOONES" },
-      select: { updatedAt: true, minDenom: true, maxDenom: true, active: true },
+      select: { updatedAt: true, minDenom: true, maxDenom: true, active: true, country: true },
     }),
     prisma.cardCurrencyMeta.findMany({
       where: { cardTypeId },
@@ -100,7 +99,9 @@ export async function isCardRateDataStale(
 
   if (!existingNoones.length && !currencyMetaRows.length) return true;
 
-  const hasOpenEnded = existingNoones.some((r) => r.active && r.minDenom == null && r.maxDenom == null);
+  const hasOpenEnded = existingNoones.some(
+    (r) => r.active && r.minDenom == null && r.maxDenom == null && r.country !== "Other"
+  );
   const activeNoones = existingNoones.filter((r) => r.active);
   if (!activeNoones.length) return true;
 
@@ -113,6 +114,29 @@ export async function isCardRateDataStale(
     activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshMinutes));
 
   return !cardFullyFresh;
+}
+
+/** Cards linked to NoOnes that need a refresh (checked in small batches). */
+export async function listStaleCardTypeIds(
+  refreshMinutes: number
+): Promise<{ id: string; name: string }[]> {
+  const { staleCheckBatchSize, staleCheckPauseMs } = getNoOnesSyncLimits();
+
+  const cards = await prisma.cardType.findMany({
+    where: { noonesPaymentMethod: { not: null } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+
+  const stale: { id: string; name: string }[] = [];
+  for (let i = 0; i < cards.length; i += staleCheckBatchSize) {
+    const batch = cards.slice(i, i + staleCheckBatchSize);
+    for (const card of batch) {
+      if (await isCardRateDataStale(card.id, refreshMinutes)) stale.push(card);
+    }
+    if (i + staleCheckBatchSize < cards.length) await sleep(staleCheckPauseMs);
+  }
+  return stale;
 }
 
 /** Build user-facing rate freshness from stored rate rows (no live API calls). */

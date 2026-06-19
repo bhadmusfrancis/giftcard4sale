@@ -17,6 +17,7 @@ import { adminRouter } from "./routes/admin";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
 import { repairManualRateCatalog, syncNoOnesCatalogVisibilityFromStored } from "./services/cardVisibility";
+import { repairCardSlugSuffixes } from "./services/cardTypeDedup";
 
 const app = express();
 
@@ -75,6 +76,11 @@ app.listen(env.port, () => {
       if (n > 0) console.log(`Reactivated ${n} manually imported rate row(s).`);
     })
     .catch((e) => console.warn("Manual rate repair:", (e as Error).message))
+    .then(() => repairCardSlugSuffixes())
+    .then((n) => {
+      if (n > 0) console.log(`Repaired ${n} card/landing slug(s) with duplicate gift-card suffix.`);
+    })
+    .catch((e) => console.warn("Card slug repair:", (e as Error).message))
     .then(() => syncNoOnesCatalogVisibilityFromStored())
     .then(({ published, drafted }) => {
       if (published || drafted) {

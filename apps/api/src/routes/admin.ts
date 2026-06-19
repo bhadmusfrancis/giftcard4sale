@@ -21,6 +21,13 @@ import {
   registerNoOnesWebhooks,
   reapplyCountryTierVisibility,
 } from "../services/noones";
+import {
+  completeNoOnesSyncRun,
+  failNoOnesSyncRun,
+  getNoOnesSyncStatusResponse,
+  isNoOnesSyncActive,
+  tryStartNoOnesSyncRun,
+} from "../services/noones/syncStatus";
 import { publicUser } from "./auth";
 import { serializeTrade, serializeMessage } from "./trades";
 import { rejectTradeWithBadScore } from "../services/tradeRejection";
@@ -511,6 +518,28 @@ adminRouter.patch(
   })
 );
 
+adminRouter.delete(
+  "/cards/:id",
+  asyncHandler(async (req, res) => {
+    const card = await prisma.cardType.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { trades: true } } },
+    });
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    if (card._count.trades > 0) {
+      return res.status(400).json({
+        error: `Cannot delete "${card.name}" — ${card._count.trades} trade(s) use this card. Deactivate it instead.`,
+      });
+    }
+    await prisma.landingPage.updateMany({
+      where: { cardTypeId: card.id },
+      data: { cardTypeId: null },
+    });
+    await prisma.cardType.delete({ where: { id: card.id } });
+    res.json({ ok: true });
+  })
+);
+
 adminRouter.get(
   "/cards/:id/rates",
   asyncHandler(async (req, res) => {
@@ -721,12 +750,36 @@ adminRouter.get(
   })
 );
 
+adminRouter.get(
+  "/noones/sync-status",
+  asyncHandler(async (req, res) => {
+    const light = req.query.light === "1" || req.query.light === "true";
+    res.json(await getNoOnesSyncStatusResponse(isNoOnesConfigured(), { skipDb: light }));
+  })
+);
+
 adminRouter.post(
   "/noones/sync-rates",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
-    const summary = await syncRatesFromNoOnes();
-    res.json(summary);
+    if (isNoOnesSyncActive()) {
+      return res.status(409).json({
+        error: "A NoOnes sync is already in progress",
+        status: await getNoOnesSyncStatusResponse(true),
+      });
+    }
+
+    const force = Boolean(req.body?.force);
+    tryStartNoOnesSyncRun({ scope: "full", force, trigger: "admin" });
+
+    void syncRatesFromNoOnes({ force })
+      .then((summary) => completeNoOnesSyncRun(summary))
+      .catch((err) => failNoOnesSyncRun((err as Error).message));
+
+    res.status(202).json({
+      started: true,
+      status: await getNoOnesSyncStatusResponse(true),
+    });
   })
 );
 
@@ -739,8 +792,30 @@ adminRouter.post(
     if (!card.noonesPaymentMethod) {
       return res.status(400).json({ error: "This card has no NoOnes payment method mapped" });
     }
-    const summary = await syncCardRatesFromNoOnes(card.id, { force: true });
-    res.json(summary);
+    if (isNoOnesSyncActive()) {
+      return res.status(409).json({
+        error: "A NoOnes sync is already in progress",
+        status: await getNoOnesSyncStatusResponse(true),
+      });
+    }
+
+    tryStartNoOnesSyncRun({
+      scope: "card",
+      force: true,
+      trigger: "admin",
+      cardTypeId: card.id,
+      cardName: card.name,
+      totalCards: 1,
+    });
+
+    void syncCardRatesFromNoOnes(card.id, { force: true })
+      .then((summary) => completeNoOnesSyncRun(summary))
+      .catch((err) => failNoOnesSyncRun((err as Error).message));
+
+    res.status(202).json({
+      started: true,
+      status: await getNoOnesSyncStatusResponse(true),
+    });
   })
 );
 

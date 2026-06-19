@@ -1,9 +1,4 @@
-import dotenv from "dotenv";
-import path from "path";
-
-// Load apps/api/.env first, then fall back to repo-root .env
-dotenv.config();
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+import "./loadDbEnv";
 
 function num(v: string | undefined, d: number): number {
   const n = Number(v);
@@ -97,6 +92,12 @@ export const env = {
     cryptoCurrency: (process.env.NOONES_CRYPTO_CURRENCY || "USDT").toUpperCase(),
     rateSyncMinutes: num(process.env.NOONES_RATE_SYNC_MINUTES, 15),
     tradePollMinutes: num(process.env.NOONES_TRADE_POLL_MINUTES, 2),
+    syncBatchSize: num(process.env.NOONES_SYNC_BATCH_SIZE, 3),
+    syncBatchPauseMs: num(process.env.NOONES_SYNC_BATCH_PAUSE_MS, 3000),
+    syncCardPauseMs: num(process.env.NOONES_SYNC_CARD_PAUSE_MS, 400),
+    syncTargetPauseMs: num(process.env.NOONES_SYNC_TARGET_PAUSE_MS, 200),
+    staleCheckPauseMs: num(process.env.NOONES_STALE_CHECK_PAUSE_MS, 50),
+    staleCheckBatchSize: num(process.env.NOONES_STALE_CHECK_BATCH_SIZE, 5),
     /** When NoOnes has no separate e-code offers, ECODE rate = PHYSICAL × this factor. */
     ecodeRateFactor: num(process.env.NOONES_ECODE_RATE_FACTOR, 0.88),
     webhookPublicKey:

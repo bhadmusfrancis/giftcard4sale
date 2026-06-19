@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { fixDuplicateSellSlug } from "@gc4s/shared";
 import { apiServer } from "@/lib/api";
 import { CardRatePanel } from "@/components/CardRatePanel";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -43,8 +44,9 @@ async function load(slug: string) {
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const { landing, card } = await load(params.slug);
-  const canonical = `/${params.slug}`;
+  const slug = fixDuplicateSellSlug(params.slug);
+  const { landing, card } = await load(slug);
+  const canonical = `/${slug}`;
   if (landing) {
     return {
       title: landing.page.metaTitle || landing.page.title,
@@ -68,7 +70,10 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 export default async function SlugPage({ params }: { params: { slug: string } }) {
-  const { landing, card } = await load(params.slug);
+  const fixedSlug = fixDuplicateSellSlug(params.slug);
+  if (fixedSlug !== params.slug) redirect(`/${fixedSlug}`);
+
+  const { landing, card } = await load(fixedSlug);
   if (!landing && !card) notFound();
 
   const title = landing?.page.title || `Sell ${card?.card.name} Gift Card`;

@@ -15,11 +15,27 @@ import "dotenv/config";
 import { prisma } from "../src/prisma";
 import { isNoOnesConfigured } from "../src/services/noones/client";
 import { syncCardRatesFromNoOnes, syncRatesFromNoOnes } from "../src/services/noones/rateSync";
+import {
+  completeNoOnesSyncRun,
+  failNoOnesSyncRun,
+  tryStartNoOnesSyncRun,
+} from "../src/services/noones/syncStatus";
 
 const args = process.argv.slice(2);
 const force = args.includes("--force");
 const cardArg = args.find((a) => a.startsWith("--card="));
 const cardTypeId = cardArg?.split("=")[1];
+
+function isDbConnectionError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  return (
+    e.code === "P1001" ||
+    e.code === "P1017" ||
+    /connection|Can't reach database|closed/i.test(e.message ?? "")
+  );
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   if (!isNoOnesConfigured()) {
@@ -36,9 +52,39 @@ async function main() {
   );
 
   const started = Date.now();
-  const summary = cardTypeId
-    ? await syncCardRatesFromNoOnes(cardTypeId, { force: true })
-    : await syncRatesFromNoOnes(force ? { force: true } : undefined);
+  const scope = cardTypeId ? "card" : "full";
+  tryStartNoOnesSyncRun({
+    scope,
+    force: force || Boolean(cardTypeId),
+    trigger: "cli",
+    cardTypeId,
+    totalCards: scope === "card" ? 1 : undefined,
+  });
+
+  let summary;
+  try {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        summary = cardTypeId
+          ? await syncCardRatesFromNoOnes(cardTypeId, { force: true })
+          : await syncRatesFromNoOnes(force ? { force: true } : undefined);
+        break;
+      } catch (err) {
+        if (attempt < 3 && isDbConnectionError(err)) {
+          console.warn(`Database connection lost (attempt ${attempt}/3), retrying in 5s…`);
+          await prisma.$disconnect();
+          await sleep(5000);
+          continue;
+        }
+        throw err;
+      }
+    }
+    if (!summary) throw new Error("Sync did not produce a summary");
+    completeNoOnesSyncRun(summary);
+  } catch (err) {
+    failNoOnesSyncRun((err as Error).message);
+    throw err;
+  }
 
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   console.log(`\n--- NoOnes sync complete (${elapsed}s) ---`);

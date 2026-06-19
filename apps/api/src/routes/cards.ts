@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateRateQuote, PayoutCurrency, ReceiptType } from "@gc4s/shared";
+import { calculateRateQuote, fixDuplicateSellSlug, PayoutCurrency, ReceiptType } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { catalogCardWhere } from "../services/cardVisibility";
@@ -14,18 +14,26 @@ import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } f
 export const cardsRouter = Router();
 
 async function loadCardBySlug(slug: string) {
-  const card = await prisma.cardType.findFirst({
-    where: {
-      AND: [{ OR: [{ slug }, { sellSlug: slug }] }, catalogCardWhere()],
-    },
-    include: {
-      rates: {
-        where: { active: true },
-        orderBy: [{ countryOfferCount: "desc" }, { country: "asc" }, { minDenom: "asc" }],
+  const candidates = slug.endsWith("-gift-card-gift-card")
+    ? [slug, fixDuplicateSellSlug(slug)]
+    : [slug];
+
+  let card = null;
+  for (const candidate of candidates) {
+    card = await prisma.cardType.findFirst({
+      where: {
+        AND: [{ OR: [{ slug: candidate }, { sellSlug: candidate }] }, catalogCardWhere()],
       },
-      landingPage: true,
-    },
-  });
+      include: {
+        rates: {
+          where: { active: true },
+          orderBy: [{ countryOfferCount: "desc" }, { country: "asc" }, { minDenom: "asc" }],
+        },
+        landingPage: true,
+      },
+    });
+    if (card) break;
+  }
   if (!card) return null;
 
   const regionLock = resolveCardRegionLock(card.slug, card.name, card.noonesPaymentMethod);
@@ -109,7 +117,7 @@ cardsRouter.post(
     });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
-    if (rate.minDenom == null && rate.maxDenom == null) {
+    if (rate.minDenom == null && rate.maxDenom == null && rate.country !== "Other") {
       return res.status(400).json({ error: "Rate tier bounds are not available yet for this currency" });
     }
 

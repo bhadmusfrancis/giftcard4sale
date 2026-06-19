@@ -79,6 +79,10 @@ export const OTHER_COUNTRY_TIER = {
   sampleAmount: 100,
 } as const;
 
+export function isOtherCountryTier(country: string): boolean {
+  return country === OTHER_COUNTRY_TIER.country;
+}
+
 const MEDIUMS: CardMedium[] = ["PHYSICAL", "ECODE"];
 
 export interface RateSyncTarget {
