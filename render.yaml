@@ -29,8 +29,6 @@ services:
         sync: false
       - key: DIRECT_URL
         sync: false
-      - key: BREVO_API_KEY
-        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -43,6 +41,8 @@ services:
         value: "false"
       - key: MAIL_FROM
         value: GiftCard4Sale <no-reply@giftcard4sale.com>
+      - key: BREVO_API_KEY
+        sync: false
       - key: SUPPORT_EMAIL
         sync: false
       - key: VAPID_PUBLIC_KEY
