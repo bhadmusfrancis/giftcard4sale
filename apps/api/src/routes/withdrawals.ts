@@ -78,21 +78,22 @@ withdrawalsRouter.post(
         return w;
       });
 
-      await notifyAdmins({
+      res.status(201).json({ withdrawal: { id: withdrawal.id, status: withdrawal.status } });
+
+      void notifyAdmins({
         title: "New withdrawal request",
         body: `${data.amount} ${data.currency} requested.`,
         link: `/admin/withdrawals`,
-      });
-      await notify({
+      }).catch((err) => console.error("[notify] withdrawal admin notify failed:", (err as Error).message));
+
+      void notify({
         userId: req.userId!,
         title: "Withdrawal request received",
         body: `Your withdrawal of ${data.amount} ${data.currency} is pending approval.`,
         link: `/dashboard/wallet`,
         push: true,
         email: true,
-      });
-
-      res.status(201).json({ withdrawal: { id: withdrawal.id, status: withdrawal.status } });
+      }).catch((err) => console.error("[notify] withdrawal user notify failed:", (err as Error).message));
     } catch (err) {
       if (err instanceof InsufficientFundsError) {
         return res.status(400).json({ error: "Insufficient wallet balance" });

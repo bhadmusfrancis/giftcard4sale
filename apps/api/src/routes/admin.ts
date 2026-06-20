@@ -604,19 +604,19 @@ adminRouter.post(
       );
     }
 
-    await notify({
-      userId: data.userId,
-      title: "Trade opened on your account",
-      body: `An administrator opened trade ${tradeNumber} on your behalf.`,
-      link: `/dashboard/trades/${trade.id}`,
-      emailDetail: `Trade ID: ${tradeNumber}`,
-    });
-
     const out = await prisma.trade.findUnique({
       where: { id: trade.id },
       include: { cardType: true, attachments: true },
     });
     res.status(201).json({ trade: serializeTrade(out) });
+
+    void notify({
+      userId: data.userId,
+      title: "Trade opened on your account",
+      body: `An administrator opened trade ${tradeNumber} on your behalf.`,
+      link: `/dashboard/trades/${trade.id}`,
+      emailDetail: `Trade ID: ${tradeNumber}`,
+    }).catch((err) => console.error("[notify] admin trade notify failed:", (err as Error).message));
   })
 );
 

@@ -135,11 +135,18 @@ export async function isCardRateDataStale(
   return (await getCardRateStalenessInfo(cardTypeId, refreshHours)).stale;
 }
 
+function recentlySyncedNoOnes(
+  noonesSyncedAt: Date | null | undefined,
+  refreshHours: number
+): boolean {
+  return noonesSyncedAt != null && isRateSyncFresh(noonesSyncedAt, refreshHours);
+}
+
 export async function getCardRateStalenessInfo(
   cardTypeId: string,
   refreshHours: number
 ): Promise<{ stale: boolean; oldestAt: number }> {
-  const [existingNoones, currencyMetaRows] = await Promise.all([
+  const [existingNoones, currencyMetaRows, cardType] = await Promise.all([
     prisma.rate.findMany({
       where: { cardTypeId, speed: "NOONES" },
       select: {
@@ -155,9 +162,18 @@ export async function getCardRateStalenessInfo(
       where: { cardTypeId },
       select: { currency: true, syncedAt: true },
     }),
+    prisma.cardType.findUnique({
+      where: { id: cardTypeId },
+      select: { noonesSyncedAt: true },
+    }),
   ]);
 
+  const syncCooldownAt = cardType?.noonesSyncedAt?.getTime() ?? 0;
+
   if (!existingNoones.length && !currencyMetaRows.length) {
+    if (recentlySyncedNoOnes(cardType?.noonesSyncedAt, refreshHours)) {
+      return { stale: false, oldestAt: syncCooldownAt };
+    }
     return { stale: true, oldestAt: 0 };
   }
 
@@ -170,6 +186,9 @@ export async function getCardRateStalenessInfo(
   );
   const activeNoones = existingNoones.filter((r) => r.active);
   if (!activeNoones.length) {
+    if (recentlySyncedNoOnes(cardType?.noonesSyncedAt, refreshHours)) {
+      return { stale: false, oldestAt: syncCooldownAt };
+    }
     const oldestAt = existingNoones.length
       ? Math.min(...existingNoones.map((r) => r.updatedAt.getTime()))
       : currencyMetaRows.length
@@ -215,7 +234,15 @@ export async function getCardRateStalenessInfo(
   }
   if (oldestAt === Infinity) oldestAt = Date.now();
 
-  return { stale: !cardFullyFresh, oldestAt };
+  if (cardFullyFresh) {
+    return { stale: false, oldestAt };
+  }
+
+  if (recentlySyncedNoOnes(cardType?.noonesSyncedAt, refreshHours)) {
+    return { stale: false, oldestAt: syncCooldownAt };
+  }
+
+  return { stale: true, oldestAt };
 }
 
 /** Drop cards whose NoOnes data is still within the refresh window. */

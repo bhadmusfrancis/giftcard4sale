@@ -143,6 +143,8 @@ model CardType {
   offerCount  Int      @default(0)
   // Sum of completed trades across NoOnes offers (catalog tie-breaker).
   tradeVolume Int      @default(0)
+  // Last completed NoOnes rate sync attempt (cooldown when tiers stay inactive).
+  noonesSyncedAt DateTime?
   rates       Rate[]
   currencyMeta CardCurrencyMeta[]
   trades      Trade[]

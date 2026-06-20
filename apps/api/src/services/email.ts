@@ -6,6 +6,9 @@ const transporter = nodemailer.createTransport({
   port: env.smtp.port,
   secure: env.smtp.secure,
   auth: env.smtp.user ? { user: env.smtp.user, pass: env.smtp.pass } : undefined,
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 15_000,
 });
 
 export function escapeHtml(value: string): string {

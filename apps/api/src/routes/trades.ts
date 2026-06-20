@@ -169,14 +169,16 @@ tradesRouter.post(
     });
 
     // Notify admins of a new pending trade.
-    await notifyAdmins({
+    res.status(201).json({ trade: serializeTrade(trade) });
+
+    void notifyAdmins({
       title: "New trade submitted",
       body: `${trade.tradeNumber}: ${rate.cardType.name} ${rate.country} ${data.cardAmount} ${rate.currency} → ${quote.payoutAmount} ${data.payoutCurrency}`,
       link: `/admin/trades/${trade.id}`,
       emailDetail: `Trade ID: ${trade.tradeNumber}`,
-    });
+    }).catch((err) => console.error("[notify] trade admin notify failed:", (err as Error).message));
 
-    await notify({
+    void notify({
       userId: req.userId!,
       title: isNoOnesConfigured() ? "Trade received — processing" : "Trade received — pending review",
       body: isNoOnesConfigured()
@@ -184,7 +186,7 @@ tradesRouter.post(
         : `Your ${rate.cardType.name} trade (${trade.tradeNumber}) is pending review. Only submit cards you legally own with accurate details.`,
       link: `/dashboard/trades/${trade.id}`,
       emailDetail: `Trade ID: ${trade.tradeNumber}`,
-    });
+    }).catch((err) => console.error("[notify] trade user notify failed:", (err as Error).message));
 
     // Auto-resell on NoOnes in the background (hidden from user).
     if (isNoOnesConfigured()) {
@@ -192,8 +194,6 @@ tradesRouter.post(
         console.error(`NoOnes resell background error (${trade.id}):`, err.message)
       );
     }
-
-    res.status(201).json({ trade: serializeTrade(trade) });
   })
 );
 

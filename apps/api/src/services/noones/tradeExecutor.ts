@@ -333,7 +333,7 @@ export async function handleNoOnesTradeStatus(
     normalized.includes("expired") ||
     normalized.includes("dispute wins buyer")
   ) {
-    await finalizeFailedResell(internalTradeId, noonesTradeHash, "Trade could not be completed on the marketplace");
+    await finalizeFailedResell(internalTradeId, noonesTradeHash, "Trade was rejected on the marketplace");
     return;
   }
 

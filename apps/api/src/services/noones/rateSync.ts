@@ -292,6 +292,7 @@ async function syncCardTypeRates(
   }
 
   try {
+  try {
     const { offerCount, tradeVolume } = await fetchNoOnesCardStats(paymentMethod, statsCurrency);
     const { publishable, drafted } = await applyNoOnesPublishState(card.id, offerCount, true, tradeVolume);
 
@@ -646,6 +647,12 @@ async function syncCardTypeRates(
 
   const visible = await refreshCardCatalogVisibility(card.id);
   if (!visible) summary.drafted++;
+  } finally {
+    await prisma.cardType.update({
+      where: { id: card.id },
+      data: { noonesSyncedAt: new Date() },
+    });
+  }
 }
 
 /** Re-apply active flags on stored NoOnes tiers after admin changes the minimum offer threshold. */
@@ -751,11 +758,14 @@ export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<Ra
 
   if (isNoOnesSyncActive()) setNoOnesSyncPhase("discovering");
 
-  try {
-    await ensureCardTypesFromNoOnes();
-  } catch (err) {
-    summary.errors.push(`Card type discovery: ${(err as Error).message}`);
-    if (isNoOnesSyncActive()) addNoOnesSyncErrors([summary.errors[summary.errors.length - 1]]);
+  const scopedSync = Boolean(options?.cardTypeIds?.length);
+  if (!scopedSync) {
+    try {
+      await ensureCardTypesFromNoOnes();
+    } catch (err) {
+      summary.errors.push(`Card type discovery: ${(err as Error).message}`);
+      if (isNoOnesSyncActive()) addNoOnesSyncErrors([summary.errors[summary.errors.length - 1]]);
+    }
   }
 
   let cardTypes = await prisma.cardType.findMany({

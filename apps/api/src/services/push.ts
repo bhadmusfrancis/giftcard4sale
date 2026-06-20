@@ -19,10 +19,13 @@ export async function sendPushToUser(
   await Promise.all(
     subs.map(async (s) => {
       try {
-        await webpush.sendNotification(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify(payload)
-        );
+        await Promise.race([
+          webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+            JSON.stringify(payload)
+          ),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("push timeout")), 5000)),
+        ]);
       } catch (err: any) {
         // Subscription expired/invalid -> clean up.
         if (err?.statusCode === 404 || err?.statusCode === 410) {
