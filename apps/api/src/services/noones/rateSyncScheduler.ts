@@ -95,7 +95,7 @@ async function onSchedulerWake(): Promise<void> {
       `NoOnes scheduled sync done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped`
     );
 
-    await planNextWake({ remainingStale: remainingStale > 0 ? remainingStale : undefined });
+    await planNextWake();
   } catch (err) {
     failNoOnesSyncRun((err as Error).message);
     console.error("NoOnes scheduled rate sync error:", (err as Error).message);

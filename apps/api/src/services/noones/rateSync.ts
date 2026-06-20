@@ -3,7 +3,7 @@ import { canonicalCardSlug, sellSlug } from "@gc4s/shared";
 import { prisma } from "../../prisma";
 import { findExistingCardType } from "../cardTypeDedup";
 import { applyNoOnesPublishState, ensureCardSeoLandingPagesPublished, isManualRateSpeed, MANUAL_RATE_WHERE, refreshCardCatalogVisibility } from "../cardVisibility";
-import { getRateConfig, isRateSyncFresh, cardTypePopularityOrder } from "../rateConfig";
+import { getRateConfig, getCardRateStalenessInfo, isRateSyncFresh, cardTypePopularityOrder } from "../rateConfig";
 import { isNoOnesConfigured, noonesPost } from "./client";
 import { resolvePaymentMethodSlug } from "./paymentMethods";
 import { buildSyncTargets, paymentMethodToCardName, RateSyncTarget, OTHER_COUNTRY_TIER, GENERIC_EURO_TIER, isOtherCountryTier, isEuroTier, isOpenEndedCountryTier, appendDiscoveredCurrencyTargets, expandTargetsFromOfferRanges, ensureTargetsForCurrencyMeta, currencyTierFromCode } from "./rateCatalog";
@@ -283,30 +283,12 @@ async function syncCardTypeRates(
 
   const { noonesRateRefreshHours, minCountryOffersForDisplay } = await getRateConfig();
 
-  const existingNoones = await prisma.rate.findMany({
-    where: { cardTypeId: card.id, speed: "NOONES" },
-    select: { updatedAt: true, minDenom: true, maxDenom: true, active: true, country: true },
-  });
-  const currencyMetaRows = await prisma.cardCurrencyMeta.findMany({
-    where: { cardTypeId: card.id },
-    select: { syncedAt: true },
-  });
-  const hasOpenEnded = existingNoones.some(
-    (r) => r.active && r.minDenom == null && r.maxDenom == null && !isOpenEndedCountryTier(r.country)
-  );
-  const activeNoones = existingNoones.filter((r) => r.active);
-  const metaFresh =
-    currencyMetaRows.length > 0 &&
-    currencyMetaRows.every((m) => isRateSyncFresh(m.syncedAt, noonesRateRefreshHours));
-  const cardFullyFresh =
-    activeNoones.length > 0 &&
-    !hasOpenEnded &&
-    metaFresh &&
-    activeNoones.every((r) => isRateSyncFresh(r.updatedAt, noonesRateRefreshHours));
-
-  if (!options?.force && cardFullyFresh) {
-    summary.skipped++;
-    return;
+  if (!options?.force) {
+    const { stale } = await getCardRateStalenessInfo(card.id, noonesRateRefreshHours);
+    if (!stale) {
+      summary.skipped++;
+      return;
+    }
   }
 
   try {

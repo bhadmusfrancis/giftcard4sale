@@ -29,8 +29,11 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => {
-    load();
-  }, [statusFilter]);
+    const t = setTimeout(() => {
+      void load();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, statusFilter]);
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -73,8 +76,12 @@ export default function AdminUsersPage() {
       </div>
 
       <div className="flex gap-2">
-        <input className="input" placeholder="Search by email or name" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()} />
-        <button onClick={load} className="btn-ghost">Search</button>
+        <input
+          className="input max-w-md"
+          placeholder="Search by email, name, referral code, or ID"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
       </div>
 
       <div className="card overflow-x-auto">
@@ -126,7 +133,11 @@ export default function AdminUsersPage() {
             ))}
           </tbody>
         </table>
-        {users.length === 0 && <p className="p-6 text-sm text-slate-400">No users found.</p>}
+        {users.length === 0 && (
+          <p className="p-6 text-sm text-slate-400">
+            {q.trim() ? "No users match your search." : "No users found."}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -25,8 +25,8 @@ export function CardRatePanel({
       <div className="card p-6">
         <h3 className="text-lg font-bold">Rate not available yet</h3>
         <p className="mt-2 text-sm text-slate-600">
-          Rates for this card are not in our database yet. They are refreshed automatically from our
-          marketplace partners — check back shortly or browse another card.
+          Rates for this card are not in our database yet. They are refreshed automatically when
+          available — check back shortly or browse another card.
         </p>
       </div>
     );

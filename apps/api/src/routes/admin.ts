@@ -67,7 +67,7 @@ adminRouter.get(
 adminRouter.get(
   "/users",
   asyncHandler(async (req, res) => {
-    const q = (req.query.q as string) || "";
+    const q = ((req.query.q as string) || "").trim();
     const status = req.query.status as string | undefined;
     const users = await prisma.user.findMany({
       where: {
@@ -76,6 +76,8 @@ adminRouter.get(
               OR: [
                 { email: { contains: q, mode: "insensitive" } },
                 { displayName: { contains: q, mode: "insensitive" } },
+                { referralCode: { contains: q, mode: "insensitive" } },
+                { id: { contains: q, mode: "insensitive" } },
               ],
             }
           : {}),
@@ -967,8 +969,24 @@ adminRouter.put(
 // ---------------------------------------------------------------- Landing pages
 adminRouter.get(
   "/landing",
-  asyncHandler(async (_req, res) => {
-    const pages = await prisma.landingPage.findMany({ orderBy: { updatedAt: "desc" } });
+  asyncHandler(async (req, res) => {
+    const q = ((req.query.q as string) || "").trim();
+    const pages = await prisma.landingPage.findMany({
+      where: q
+        ? {
+            OR: [
+              { slug: { contains: q, mode: "insensitive" } },
+              { title: { contains: q, mode: "insensitive" } },
+              { metaTitle: { contains: q, mode: "insensitive" } },
+              { metaDesc: { contains: q, mode: "insensitive" } },
+              { cardType: { name: { contains: q, mode: "insensitive" } } },
+            ],
+          }
+        : undefined,
+      include: { cardType: { select: { id: true, name: true, slug: true } } },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    });
     res.json({ pages });
   })
 );

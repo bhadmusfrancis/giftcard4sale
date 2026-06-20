@@ -17,18 +17,27 @@ const EMPTY = {
 export default function AdminLandingPage() {
   const [pages, setPages] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
+  const [q, setQ] = useState("");
   const [form, setForm] = useState<any>(EMPTY);
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function load() {
-    const [p, c] = await Promise.all([api("/admin/landing"), api("/admin/cards")]);
+  async function loadPages() {
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    const p = await api(`/admin/landing${params.toString() ? `?${params}` : ""}`);
     setPages(p.pages);
-    setCards(c.cards);
   }
 
   useEffect(() => {
-    load();
+    void api("/admin/cards").then((c) => setCards(c.cards));
   }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void loadPages();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -36,7 +45,7 @@ export default function AdminLandingPage() {
     await api("/admin/landing", { body });
     setMsg("Saved.");
     setForm(EMPTY);
-    load();
+    loadPages();
   }
 
   async function edit(slug: string) {
@@ -48,7 +57,7 @@ export default function AdminLandingPage() {
   async function del(slug: string) {
     if (!confirm("Delete this landing page?")) return;
     await api(`/admin/landing/${slug}`, { method: "DELETE" });
-    load();
+    loadPages();
   }
 
   return (
@@ -108,12 +117,24 @@ export default function AdminLandingPage() {
         </div>
       </form>
 
+      <div className="flex gap-2">
+        <input
+          className="input max-w-md"
+          placeholder="Search by slug, title, meta, or linked card"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+
       <div className="card divide-y divide-slate-100">
         {pages.map((p) => (
           <div key={p.slug} className="flex items-center justify-between p-4">
             <div>
               <a href={`/${p.slug}`} target="_blank" rel="noreferrer" className="font-medium text-brand-700 hover:underline">/{p.slug}</a>
               <div className="text-sm text-slate-500">{p.title}</div>
+              {p.cardType?.name && (
+                <div className="mt-1 text-xs text-slate-400">Card: {p.cardType.name}</div>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={() => edit(p.slug)} className="btn-ghost text-xs">Edit</button>
@@ -121,7 +142,11 @@ export default function AdminLandingPage() {
             </div>
           </div>
         ))}
-        {pages.length === 0 && <p className="p-6 text-sm text-slate-400">No landing pages yet.</p>}
+        {pages.length === 0 && (
+          <p className="p-6 text-sm text-slate-400">
+            {q.trim() ? "No landing pages match your search." : "No landing pages yet."}
+          </p>
+        )}
       </div>
     </div>
   );

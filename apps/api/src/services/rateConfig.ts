@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { env } from "../env";
 import { getNoOnesSyncLimits, sleep } from "./noones/syncLimits";
 import { noonesLinkedCardWhere } from "./noones/exclusions";
+import { isOpenEndedCountryTier } from "./noones/rateCatalog";
 
 const DEFAULT_NOONES_RATE_REFRESH_HOURS = 1;
 const DEFAULT_NOONES_TOP_OFFERS_FOR_RATE = 3;
@@ -134,7 +135,7 @@ export async function isCardRateDataStale(
   return (await getCardRateStalenessInfo(cardTypeId, refreshHours)).stale;
 }
 
-async function getCardRateStalenessInfo(
+export async function getCardRateStalenessInfo(
   cardTypeId: string,
   refreshHours: number
 ): Promise<{ stale: boolean; oldestAt: number }> {
@@ -154,7 +155,11 @@ async function getCardRateStalenessInfo(
   }
 
   const hasOpenEnded = existingNoones.some(
-    (r) => r.active && r.minDenom == null && r.maxDenom == null && r.country !== "Other"
+    (r) =>
+      r.active &&
+      r.minDenom == null &&
+      r.maxDenom == null &&
+      !isOpenEndedCountryTier(r.country)
   );
   const activeNoones = existingNoones.filter((r) => r.active);
   if (!activeNoones.length) {
@@ -167,7 +172,7 @@ async function getCardRateStalenessInfo(
   }
 
   const metaFresh =
-    currencyMetaRows.length === 0 ||
+    currencyMetaRows.length > 0 &&
     currencyMetaRows.every((m) => isRateSyncFresh(m.syncedAt, refreshHours));
   const ratesFresh = activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshHours));
   const cardFullyFresh = !hasOpenEnded && metaFresh && ratesFresh;
@@ -186,7 +191,11 @@ async function getCardRateStalenessInfo(
   }
   if (hasOpenEnded) {
     for (const r of activeNoones) {
-      if (r.minDenom == null && r.maxDenom == null && r.country !== "Other") {
+      if (
+        r.minDenom == null &&
+        r.maxDenom == null &&
+        !isOpenEndedCountryTier(r.country)
+      ) {
         oldestAt = Math.min(oldestAt, r.updatedAt.getTime());
       }
     }
