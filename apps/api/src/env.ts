@@ -107,6 +107,8 @@ export const env = {
     syncTargetPauseMs: num(process.env.NOONES_SYNC_TARGET_PAUSE_MS, 200),
     staleCheckPauseMs: num(process.env.NOONES_STALE_CHECK_PAUSE_MS, 50),
     staleCheckBatchSize: num(process.env.NOONES_STALE_CHECK_BATCH_SIZE, 5),
+    /** Max stale cards synced per scheduled cron wake (remaining stale cards run on later wakes). */
+    scheduledStaleCardsPerRun: num(process.env.NOONES_SCHEDULED_STALE_CARDS_PER_RUN, 5),
     /** When NoOnes has no separate e-code offers, ECODE rate = PHYSICAL × this factor. */
     ecodeRateFactor: num(process.env.NOONES_ECODE_RATE_FACTOR, 0.88),
     webhookPublicKey:

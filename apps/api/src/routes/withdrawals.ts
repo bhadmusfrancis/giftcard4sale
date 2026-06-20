@@ -3,9 +3,10 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
-import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
+import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
 import { applyWalletChange, InsufficientFundsError } from "../services/wallet";
 import { notify, notifyAdmins } from "../services/notify";
+import { getRateConfig, minWithdrawalForCurrency } from "../services/rateConfig";
 
 export const withdrawalsRouter = Router();
 
@@ -30,6 +31,7 @@ withdrawalsRouter.post(
   "/",
   requireAuth,
   requireVerified(),
+  requireActiveAccount(),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = validate(createSchema, req.body);
 
@@ -45,6 +47,14 @@ withdrawalsRouter.post(
       if (!account || account.userId !== req.userId) {
         return res.status(400).json({ error: "MoMo account not found" });
       }
+    }
+
+    const config = await getRateConfig();
+    const minAmount = minWithdrawalForCurrency(data.currency, config);
+    if (data.amount < minAmount) {
+      return res.status(400).json({
+        error: `Minimum withdrawal for ${data.currency} is ${minAmount}`,
+      });
     }
 
     try {
@@ -96,12 +106,16 @@ withdrawalsRouter.get(
   "/",
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const withdrawals = await prisma.withdrawal.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: "desc" },
-      include: { bankAccount: true, momoAccount: true },
-    });
+    const [withdrawals, config] = await Promise.all([
+      prisma.withdrawal.findMany({
+        where: { userId: req.userId },
+        orderBy: { createdAt: "desc" },
+        include: { bankAccount: true, momoAccount: true },
+      }),
+      getRateConfig(),
+    ]);
     res.json({
+      minWithdrawals: config.minWithdrawals,
       withdrawals: withdrawals.map((w) => ({
         id: w.id,
         currency: w.currency,

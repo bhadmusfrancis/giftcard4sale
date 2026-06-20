@@ -7,6 +7,13 @@ import { noonesLinkedCardWhere } from "./noones/exclusions";
 const DEFAULT_NOONES_RATE_REFRESH_HOURS = 1;
 const DEFAULT_NOONES_TOP_OFFERS_FOR_RATE = 3;
 const DEFAULT_MIN_COUNTRY_OFFERS_FOR_DISPLAY = 5;
+const DEFAULT_MIN_WITHDRAWAL_NGN = 5000;
+const DEFAULT_MIN_WITHDRAWAL_GHS = 50;
+const DEFAULT_MIN_WITHDRAWAL_USDT = 5;
+
+export type WithdrawalCurrency = "USDT" | "NGN" | "GHS";
+
+export type PlatformConfig = Awaited<ReturnType<typeof getRateConfig>>;
 
 /** Order card types by catalog popularity (offer count, then trade volume). */
 export const cardTypePopularityOrder = [
@@ -22,6 +29,11 @@ export async function getRateConfig(): Promise<{
   noonesRateRefreshHours: number;
   noonesTopOffersForRate: number;
   minCountryOffersForDisplay: number;
+  defaultMaxConcurrentTrades: number;
+  autoSuspendRejectThreshold: number;
+  autoSuspendRejectWindowDays: number;
+  autoSuspendDurationDays: number;
+  minWithdrawals: Record<WithdrawalCurrency, number>;
 }> {
   let cfg = await prisma.rateConfig.findFirst({ orderBy: { updatedAt: "desc" } });
   if (!cfg) {
@@ -36,6 +48,13 @@ export async function getRateConfig(): Promise<{
         noonesRateRefreshHours: DEFAULT_NOONES_RATE_REFRESH_HOURS,
         noonesTopOffersForRate: DEFAULT_NOONES_TOP_OFFERS_FOR_RATE,
         minCountryOffersForDisplay: DEFAULT_MIN_COUNTRY_OFFERS_FOR_DISPLAY,
+        defaultMaxConcurrentTrades: 5,
+        autoSuspendRejectThreshold: 5,
+        autoSuspendRejectWindowDays: 30,
+        autoSuspendDurationDays: 7,
+        minWithdrawalNgn: DEFAULT_MIN_WITHDRAWAL_NGN,
+        minWithdrawalGhs: DEFAULT_MIN_WITHDRAWAL_GHS,
+        minWithdrawalUsdt: DEFAULT_MIN_WITHDRAWAL_USDT,
       },
     });
   }
@@ -53,7 +72,23 @@ export async function getRateConfig(): Promise<{
     noonesRateRefreshHours: cfg.noonesRateRefreshHours,
     noonesTopOffersForRate: cfg.noonesTopOffersForRate,
     minCountryOffersForDisplay: cfg.minCountryOffersForDisplay,
+    defaultMaxConcurrentTrades: cfg.defaultMaxConcurrentTrades,
+    autoSuspendRejectThreshold: cfg.autoSuspendRejectThreshold,
+    autoSuspendRejectWindowDays: cfg.autoSuspendRejectWindowDays,
+    autoSuspendDurationDays: cfg.autoSuspendDurationDays,
+    minWithdrawals: {
+      NGN: Number(cfg.minWithdrawalNgn),
+      GHS: Number(cfg.minWithdrawalGhs),
+      USDT: Number(cfg.minWithdrawalUsdt),
+    },
   };
+}
+
+export function minWithdrawalForCurrency(
+  currency: WithdrawalCurrency,
+  config: Pick<PlatformConfig, "minWithdrawals">
+): number {
+  return config.minWithdrawals[currency];
 }
 
 /** True when a stored rate row was updated within the configured refresh window. */
@@ -96,6 +131,13 @@ export async function isCardRateDataStale(
   cardTypeId: string,
   refreshHours: number
 ): Promise<boolean> {
+  return (await getCardRateStalenessInfo(cardTypeId, refreshHours)).stale;
+}
+
+async function getCardRateStalenessInfo(
+  cardTypeId: string,
+  refreshHours: number
+): Promise<{ stale: boolean; oldestAt: number }> {
   const [existingNoones, currencyMetaRows] = await Promise.all([
     prisma.rate.findMany({
       where: { cardTypeId, speed: "NOONES" },
@@ -107,26 +149,54 @@ export async function isCardRateDataStale(
     }),
   ]);
 
-  if (!existingNoones.length && !currencyMetaRows.length) return true;
+  if (!existingNoones.length && !currencyMetaRows.length) {
+    return { stale: true, oldestAt: 0 };
+  }
 
   const hasOpenEnded = existingNoones.some(
     (r) => r.active && r.minDenom == null && r.maxDenom == null && r.country !== "Other"
   );
   const activeNoones = existingNoones.filter((r) => r.active);
-  if (!activeNoones.length) return true;
+  if (!activeNoones.length) {
+    const oldestAt = existingNoones.length
+      ? Math.min(...existingNoones.map((r) => r.updatedAt.getTime()))
+      : currencyMetaRows.length
+        ? Math.min(...currencyMetaRows.map((m) => m.syncedAt.getTime()))
+        : 0;
+    return { stale: true, oldestAt };
+  }
 
   const metaFresh =
-    currencyMetaRows.length > 0 &&
+    currencyMetaRows.length === 0 ||
     currencyMetaRows.every((m) => isRateSyncFresh(m.syncedAt, refreshHours));
-  const cardFullyFresh =
-    !hasOpenEnded &&
-    metaFresh &&
-    activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshHours));
+  const ratesFresh = activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshHours));
+  const cardFullyFresh = !hasOpenEnded && metaFresh && ratesFresh;
 
-  return !cardFullyFresh;
+  // Sort priority: oldest stale *component* (expired rate/meta), not newest display timestamp.
+  let oldestAt = Infinity;
+  for (const r of activeNoones) {
+    if (!isRateSyncFresh(r.updatedAt, refreshHours)) {
+      oldestAt = Math.min(oldestAt, r.updatedAt.getTime());
+    }
+  }
+  for (const m of currencyMetaRows) {
+    if (!isRateSyncFresh(m.syncedAt, refreshHours)) {
+      oldestAt = Math.min(oldestAt, m.syncedAt.getTime());
+    }
+  }
+  if (hasOpenEnded) {
+    for (const r of activeNoones) {
+      if (r.minDenom == null && r.maxDenom == null && r.country !== "Other") {
+        oldestAt = Math.min(oldestAt, r.updatedAt.getTime());
+      }
+    }
+  }
+  if (oldestAt === Infinity) oldestAt = Date.now();
+
+  return { stale: !cardFullyFresh, oldestAt };
 }
 
-/** Cards linked to NoOnes that need a refresh (checked in small batches). */
+/** Cards linked to NoOnes that need a refresh, oldest stale data first (not by popularity). */
 export async function listStaleCardTypeIds(
   refreshHours: number
 ): Promise<{ id: string; name: string }[]> {
@@ -135,18 +205,21 @@ export async function listStaleCardTypeIds(
   const cards = await prisma.cardType.findMany({
     where: noonesLinkedCardWhere(),
     select: { id: true, name: true },
-    orderBy: cardTypePopularityOrder,
+    orderBy: { name: "asc" },
   });
 
-  const stale: { id: string; name: string }[] = [];
+  const stale: { id: string; name: string; oldestAt: number }[] = [];
   for (let i = 0; i < cards.length; i += staleCheckBatchSize) {
     const batch = cards.slice(i, i + staleCheckBatchSize);
     for (const card of batch) {
-      if (await isCardRateDataStale(card.id, refreshHours)) stale.push(card);
+      const info = await getCardRateStalenessInfo(card.id, refreshHours);
+      if (info.stale) stale.push({ ...card, oldestAt: info.oldestAt });
     }
     if (i + staleCheckBatchSize < cards.length) await sleep(staleCheckPauseMs);
   }
-  return stale;
+
+  stale.sort((a, b) => a.oldestAt - b.oldestAt || a.name.localeCompare(b.name));
+  return stale.map(({ id, name }) => ({ id, name }));
 }
 
 /** Build user-facing rate freshness from stored rate rows (no live API calls). */

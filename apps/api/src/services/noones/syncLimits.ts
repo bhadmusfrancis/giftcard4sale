@@ -15,6 +15,8 @@ export function getNoOnesSyncLimits() {
     staleCheckPauseMs: env.noones.staleCheckPauseMs,
     /** Cards checked per stale-scan batch before a short pause. */
     staleCheckBatchSize: env.noones.staleCheckBatchSize,
+    /** Stale cards processed per scheduler wake (popular fresh cards are skipped automatically). */
+    scheduledStaleCardsPerRun: env.noones.scheduledStaleCardsPerRun,
   };
 }
 

@@ -16,7 +16,11 @@ import { landingRouter } from "./routes/landing";
 import { adminRouter } from "./routes/admin";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
-import { repairManualRateCatalog, syncNoOnesCatalogVisibilityFromStored } from "./services/cardVisibility";
+import {
+  ensureCardSeoLandingPagesPublished,
+  repairManualRateCatalog,
+  syncNoOnesCatalogVisibilityFromStored,
+} from "./services/cardVisibility";
 import { repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
 
 const app = express();
@@ -93,5 +97,10 @@ app.listen(env.port, () => {
       }
     })
     .catch((e) => console.warn("NoOnes catalog visibility:", (e as Error).message))
+    .then(() => ensureCardSeoLandingPagesPublished())
+    .then((n) => {
+      if (n > 0) console.log(`Re-published ${n} SEO landing page(s) for inactive cards.`);
+    })
+    .catch((e) => console.warn("SEO landing publish:", (e as Error).message))
     .finally(() => startNoOnesJobs());
 });

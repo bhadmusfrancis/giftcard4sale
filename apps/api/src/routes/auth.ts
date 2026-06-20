@@ -163,6 +163,11 @@ authRouter.post(
     if (!user || !(await verifyPassword(data.password, user.passwordHash))) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
+    const { getUserRestriction } = await import("../services/userModeration");
+    const restriction = await getUserRestriction(user.id);
+    if (restriction.blocked) {
+      return res.status(403).json({ error: restriction.reason || "Account restricted" });
+    }
     const token = signToken(user);
     res.json({ token, user: publicUser(user) });
   })
@@ -277,6 +282,23 @@ export function publicUser(u: any) {
     balanceUsdt: Number(u.balanceUsdt),
     balanceNgn: Number(u.balanceNgn),
     balanceGhs: Number(u.balanceGhs),
+    accountStatus: u.accountStatus ?? "ACTIVE",
+    suspendedUntil: u.suspendedUntil ?? null,
+    suspensionReason: u.suspensionReason ?? null,
+    maxConcurrentTrades: u.maxConcurrentTrades ?? null,
+    adminNotes: u.adminNotes ?? null,
     createdAt: u.createdAt,
+  };
+}
+
+export function adminUserListItem(
+  u: any,
+  stats?: { activeTrades: number; recentRejections: number; tradeLimit: number }
+) {
+  return {
+    ...publicUser(u),
+    activeTrades: stats?.activeTrades ?? 0,
+    recentRejections: stats?.recentRejections ?? 0,
+    tradeLimit: stats?.tradeLimit ?? null,
   };
 }

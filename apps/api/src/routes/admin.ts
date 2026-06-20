@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
+import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
-import { requireAuth, requireAdmin, hashPassword, generateReferralCode, randomToken } from "../lib/auth";
+import { requireAuth, requireAdmin, hashPassword, generateReferralCode, randomToken, AuthedRequest } from "../lib/auth";
 import { applyWalletChange } from "../services/wallet";
 import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
@@ -28,13 +28,23 @@ import {
   isNoOnesSyncActive,
   tryStartNoOnesSyncRun,
 } from "../services/noones/syncStatus";
-import { publicUser } from "./auth";
+import { publicUser, adminUserListItem } from "./auth";
 import { serializeTrade, serializeMessage } from "./trades";
 import { rejectTradeWithBadScore } from "../services/tradeRejection";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
 import { generateTradeNumber } from "../services/tradeNumber";
 import { env } from "../env";
 import { sendTransactionalEmail } from "../services/email";
+import {
+  ACTIVE_TRADE_STATUSES,
+  applyUserModeration,
+  countActiveTrades,
+  countRecentRejections,
+  getUserModerationSummary,
+  getUserTradeLimit,
+} from "../services/userModeration";
+import { storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
+import { parseStoredQuotes } from "../services/noones";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -58,14 +68,38 @@ adminRouter.get(
   "/users",
   asyncHandler(async (req, res) => {
     const q = (req.query.q as string) || "";
+    const status = req.query.status as string | undefined;
     const users = await prisma.user.findMany({
-      where: q
-        ? { OR: [{ email: { contains: q, mode: "insensitive" } }, { displayName: { contains: q, mode: "insensitive" } }] }
-        : undefined,
+      where: {
+        ...(q
+          ? {
+              OR: [
+                { email: { contains: q, mode: "insensitive" } },
+                { displayName: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+        ...(status && status !== "ALL" ? { accountStatus: status as any } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
-    res.json({ users: users.map(publicUser) });
+    const config = await getRateConfig();
+    const activeCounts = await prisma.trade.groupBy({
+      by: ["userId"],
+      where: { status: { in: ACTIVE_TRADE_STATUSES } },
+      _count: { _all: true },
+    });
+    const activeMap = new Map(activeCounts.map((r) => [r.userId, r._count._all]));
+    res.json({
+      users: users.map((u) =>
+        adminUserListItem(u, {
+          activeTrades: activeMap.get(u.id) ?? 0,
+          recentRejections: 0,
+          tradeLimit: u.maxConcurrentTrades ?? config.defaultMaxConcurrentTrades,
+        })
+      ),
+    });
   })
 );
 
@@ -106,11 +140,83 @@ adminRouter.patch(
         role: z.enum(["USER", "ADMIN"]).optional(),
         trustLevel: z.number().int().min(0).max(10).optional(),
         emailVerified: z.boolean().optional(),
+        maxConcurrentTrades: z.number().int().min(1).max(50).nullable().optional(),
+        adminNotes: z.string().max(5000).nullable().optional(),
       }),
       req.body
     );
     const user = await prisma.user.update({ where: { id: req.params.id }, data });
     res.json({ user: publicUser(user) });
+  })
+);
+
+adminRouter.get(
+  "/users/:id",
+  asyncHandler(async (req, res) => {
+    const summary = await getUserModerationSummary(req.params.id);
+    const tradeLimit = await getUserTradeLimit(req.params.id);
+    res.json({
+      user: adminUserListItem(summary.user, {
+        activeTrades: summary.activeTrades,
+        recentRejections: summary.recentRejections,
+        tradeLimit,
+      }),
+      stats: {
+        activeTrades: summary.activeTrades,
+        tradeLimit,
+        recentRejections: summary.recentRejections,
+        totalTrades: summary.totalTrades,
+        autoSuspendThreshold: summary.autoSuspendThreshold,
+        autoSuspendWindowDays: summary.autoSuspendWindowDays,
+      },
+      events: summary.events.map((e) => ({
+        id: e.id,
+        action: e.action,
+        reason: e.reason,
+        suspendedUntil: e.suspendedUntil,
+        createdAt: e.createdAt,
+        admin: e.admin ? { id: e.admin.id, email: e.admin.email, displayName: e.admin.displayName } : null,
+      })),
+    });
+  })
+);
+
+adminRouter.post(
+  "/users/:id/moderate",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = validate(
+      z.object({
+        action: z.enum(["ban", "suspend", "unsuspend", "lift_ban", "set_limits"]),
+        reason: z.string().max(2000).optional(),
+        suspendDays: z.number().int().min(1).max(365).optional(),
+        maxConcurrentTrades: z.number().int().min(1).max(50).nullable().optional(),
+        adminNotes: z.string().max(5000).nullable().optional(),
+      }),
+      req.body
+    );
+    await applyUserModeration(req.params.id, data.action, {
+      adminId: req.userId,
+      reason: data.reason,
+      suspendDays: data.suspendDays,
+      maxConcurrentTrades: data.maxConcurrentTrades,
+      adminNotes: data.adminNotes,
+    });
+    const summary = await getUserModerationSummary(req.params.id);
+    await notify({
+      userId: summary.user.id,
+      title:
+        data.action === "ban"
+          ? "Account banned"
+          : data.action === "suspend"
+            ? "Account suspended"
+            : data.action === "lift_ban" || data.action === "unsuspend"
+              ? "Account restriction lifted"
+              : "Account limits updated",
+      body: data.reason || "An administrator updated your account status. Contact support if you have questions.",
+      link: "/dashboard",
+      email: data.action === "ban" || data.action === "suspend",
+    });
+    res.json({ user: publicUser(summary.user) });
   })
 );
 
@@ -366,48 +472,148 @@ adminRouter.patch(
   })
 );
 
-// Admin creates a trade transaction on behalf of a user.
+// Admin creates a trade on behalf of a user (optional custom rates).
 adminRouter.post(
   "/trades",
   asyncHandler(async (req, res) => {
     const data = validate(
-      z.object({
-        userId: z.string(),
-        cardTypeId: z.string(),
-        country: z.string(),
-        currency: z.string(),
-        medium: z.enum(["PHYSICAL", "ECODE"]),
-        cardAmount: z.number().positive(),
-        payoutCurrency: z.enum(["USDT", "NGN", "GHS"]),
-        nairaPerUnit: z.number().positive(),
-        finalPayout: z.number().positive(),
-        markPaid: z.boolean().default(false),
-        notes: z.string().optional(),
-      }),
+      z
+        .object({
+          userId: z.string(),
+          rateId: z.string().optional(),
+          cardTypeId: z.string().optional(),
+          country: z.string().optional(),
+          currency: z.string().optional(),
+          medium: z.enum(["PHYSICAL", "ECODE"]).optional(),
+          receiptType: z.enum(["NONE", "CASH", "DEBIT"]).default("NONE"),
+          cardAmount: z.number().positive(),
+          payoutCurrency: z.enum(["USDT", "NGN", "GHS"]),
+          nairaPerUnit: z.number().positive().optional(),
+          effectiveRate: z.number().positive().optional(),
+          quotedPayout: z.number().positive().optional(),
+          finalPayout: z.number().positive().optional(),
+          markPaid: z.boolean().default(false),
+          startNoOnes: z.boolean().default(false),
+          status: z.enum(["PENDING", "PROCESSING"]).default("PENDING"),
+          notes: z.string().optional(),
+          ecodes: z.string().optional(),
+          cardDenominations: z.string().optional(),
+          otherCountryName: z.string().optional(),
+        })
+        .refine((d) => d.rateId || (d.cardTypeId && d.country && d.currency && d.medium), {
+          message: "Provide rateId or cardTypeId + country + currency + medium",
+        }),
       req.body
     );
+
+    const user = await prisma.user.findUnique({ where: { id: data.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    let cardTypeId = data.cardTypeId!;
+    let country = data.country!;
+    let currency = data.currency!;
+    let medium = data.medium!;
+    let rateRow: { nairaPerUnit: any; storedQuotes: unknown; cardTypeId: string; country: string; currency: string; medium: string } | null = null;
+
+    if (data.rateId) {
+      const rate = await prisma.rate.findUnique({
+        where: { id: data.rateId },
+        include: { cardType: true },
+      });
+      if (!rate) return res.status(404).json({ error: "Rate not found" });
+      cardTypeId = rate.cardTypeId;
+      country = rate.country;
+      currency = rate.currency;
+      medium = rate.medium;
+      rateRow = rate;
+    }
+
     const config = await getRateConfig();
+    const receiptType = receiptTypeForQuote({
+      receiptType: data.receiptType,
+      preferNoReceipt: data.receiptType === "NONE",
+    });
+
+    let nairaPerUnit = data.nairaPerUnit;
+    if (nairaPerUnit == null && rateRow) {
+      const ecodeSibling =
+        rateRow.medium === "PHYSICAL"
+          ? await prisma.rate.findFirst({
+              where: {
+                cardTypeId: rateRow.cardTypeId,
+                country: rateRow.country,
+                medium: "ECODE",
+                minDenom: (rateRow as any).minDenom ?? null,
+                maxDenom: (rateRow as any).maxDenom ?? null,
+                active: true,
+              },
+            })
+          : null;
+      nairaPerUnit = storedNairaFromRate(rateRow as any, receiptType, {
+        ecodeRate: ecodeSibling
+          ? { nairaPerUnit: Number(ecodeSibling.nairaPerUnit), storedQuotes: ecodeSibling.storedQuotes }
+          : null,
+      });
+    }
+    if (nairaPerUnit == null) {
+      return res.status(400).json({ error: "nairaPerUnit is required when rateId is not provided" });
+    }
+
+    const quote = calculateRateQuote({
+      nairaPerUnit,
+      cardAmount: data.cardAmount,
+      payoutCurrency: data.payoutCurrency as PayoutCurrency,
+      medium: medium as "PHYSICAL" | "ECODE",
+      rates: config.rates,
+      reductions: config.reductions,
+    });
+
+    const quotedPayout = data.quotedPayout ?? data.finalPayout ?? quote.payoutAmount;
+    const effectiveRate = data.effectiveRate ?? quote.effectiveNairaPerUnit;
     const tradeNumber = await generateTradeNumber();
+
     const trade = await prisma.trade.create({
       data: {
         tradeNumber,
         userId: data.userId,
-        cardTypeId: data.cardTypeId,
-        country: data.country,
-        currency: data.currency,
-        medium: data.medium,
+        cardTypeId,
+        country,
+        currency,
+        medium: medium as any,
+        receiptType: data.receiptType,
         cardAmount: new Prisma.Decimal(data.cardAmount),
+        cardDenominations: data.cardDenominations?.trim() || null,
+        otherCountryName: data.otherCountryName?.trim() || null,
         payoutCurrency: data.payoutCurrency,
-        nairaPerUnit: new Prisma.Decimal(data.nairaPerUnit),
-        effectiveRate: new Prisma.Decimal(data.nairaPerUnit),
-        quotedPayout: new Prisma.Decimal(data.finalPayout),
-        finalPayout: new Prisma.Decimal(data.finalPayout),
-        status: data.markPaid ? "APPROVED" : "PROCESSING",
-        notes: data.notes,
+        nairaPerUnit: new Prisma.Decimal(nairaPerUnit),
+        effectiveRate: new Prisma.Decimal(effectiveRate),
+        quotedPayout: new Prisma.Decimal(quotedPayout),
+        finalPayout: data.finalPayout != null ? new Prisma.Decimal(data.finalPayout) : null,
+        ecodes: data.ecodes,
+        notes: data.notes ? `[Admin] ${data.notes}` : "[Admin] Trade opened on behalf of user",
+        status: data.markPaid ? "APPROVED" : data.status,
       },
     });
+
     if (data.markPaid) await payTrade(trade.id);
-    const out = await prisma.trade.findUnique({ where: { id: trade.id }, include: { cardType: true, attachments: true } });
+    else if (data.startNoOnes && isNoOnesConfigured()) {
+      executeNoOnesResell(trade.id).catch((err) =>
+        console.error(`NoOnes resell background error (${trade.id}):`, err.message)
+      );
+    }
+
+    await notify({
+      userId: data.userId,
+      title: "Trade opened on your account",
+      body: `An administrator opened trade ${tradeNumber} on your behalf.`,
+      link: `/dashboard/trades/${trade.id}`,
+      emailDetail: `Trade ID: ${tradeNumber}`,
+    });
+
+    const out = await prisma.trade.findUnique({
+      where: { id: trade.id },
+      include: { cardType: true, attachments: true },
+    });
     res.status(201).json({ trade: serializeTrade(out) });
   })
 );
@@ -722,6 +928,13 @@ adminRouter.put(
         noonesRateRefreshHours: z.number().int().min(1).max(168),
         noonesTopOffersForRate: z.number().int().min(1).max(50),
         minCountryOffersForDisplay: z.number().int().min(1).max(100),
+        defaultMaxConcurrentTrades: z.number().int().min(1).max(50),
+        autoSuspendRejectThreshold: z.number().int().min(0).max(100),
+        autoSuspendRejectWindowDays: z.number().int().min(1).max(365),
+        autoSuspendDurationDays: z.number().int().min(1).max(365),
+        minWithdrawalNgn: z.number().positive(),
+        minWithdrawalGhs: z.number().positive(),
+        minWithdrawalUsdt: z.number().positive(),
       }),
       req.body
     );
@@ -736,6 +949,13 @@ adminRouter.put(
         noonesRateRefreshHours: data.noonesRateRefreshHours,
         noonesTopOffersForRate: data.noonesTopOffersForRate,
         minCountryOffersForDisplay: data.minCountryOffersForDisplay,
+        defaultMaxConcurrentTrades: data.defaultMaxConcurrentTrades,
+        autoSuspendRejectThreshold: data.autoSuspendRejectThreshold,
+        autoSuspendRejectWindowDays: data.autoSuspendRejectWindowDays,
+        autoSuspendDurationDays: data.autoSuspendDurationDays,
+        minWithdrawalNgn: new Prisma.Decimal(data.minWithdrawalNgn),
+        minWithdrawalGhs: new Prisma.Decimal(data.minWithdrawalGhs),
+        minWithdrawalUsdt: new Prisma.Decimal(data.minWithdrawalUsdt),
       },
     });
     const tiersUpdated = await reapplyCountryTierVisibility(data.minCountryOffersForDisplay);

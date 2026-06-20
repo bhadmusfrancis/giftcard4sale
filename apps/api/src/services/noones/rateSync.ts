@@ -2,7 +2,7 @@ import { CardMedium, Prisma } from "@prisma/client";
 import { canonicalCardSlug, sellSlug } from "@gc4s/shared";
 import { prisma } from "../../prisma";
 import { findExistingCardType } from "../cardTypeDedup";
-import { applyNoOnesPublishState, isManualRateSpeed, MANUAL_RATE_WHERE, refreshCardCatalogVisibility } from "../cardVisibility";
+import { applyNoOnesPublishState, ensureCardSeoLandingPagesPublished, isManualRateSpeed, MANUAL_RATE_WHERE, refreshCardCatalogVisibility } from "../cardVisibility";
 import { getRateConfig, isRateSyncFresh, cardTypePopularityOrder } from "../rateConfig";
 import { isNoOnesConfigured, noonesPost } from "./client";
 import { resolvePaymentMethodSlug } from "./paymentMethods";
@@ -747,8 +747,10 @@ export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<Ra
   });
 
   if (options?.cardTypeIds?.length) {
-    const allowed = new Set(options.cardTypeIds);
-    cardTypes = cardTypes.filter((c) => allowed.has(c.id));
+    const order = new Map(options.cardTypeIds.map((id, index) => [id, index]));
+    cardTypes = cardTypes
+      .filter((c) => order.has(c.id))
+      .sort((a, b) => order.get(a.id)! - order.get(b.id)!);
   }
 
   summary.cardTypes = cardTypes.length;
@@ -759,6 +761,8 @@ export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<Ra
   }
 
   await syncCardsInBatches(cardTypes, summary, options);
+
+  await ensureCardSeoLandingPagesPublished();
 
   return summary;
 }
@@ -802,6 +806,7 @@ export async function syncCardRatesFromNoOnes(
       const newErrors = summary.errors.slice(errorsBefore);
       if (newErrors.length) addNoOnesSyncErrors(newErrors);
     }
+    await ensureCardSeoLandingPagesPublished();
     return summary;
   })().finally(() => cardSyncInFlight.delete(cardTypeId));
 

@@ -87,3 +87,18 @@ export function requireVerified() {
     next();
   };
 }
+
+export function requireActiveAccount() {
+  return async (req: AuthedRequest, res: Response, next: NextFunction) => {
+    try {
+      const { getUserRestriction } = await import("../services/userModeration");
+      const restriction = await getUserRestriction(req.userId!);
+      if (restriction.blocked) {
+        return res.status(403).json({ error: restriction.reason || "Account restricted" });
+      }
+      next();
+    } catch {
+      return res.status(403).json({ error: "Account restricted" });
+    }
+  };
+}

@@ -1,23 +1,36 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { money } from "@/lib/format";
+import { money, date } from "@/lib/format";
+
+const STATUS_FILTERS = ["ALL", "ACTIVE", "SUSPENDED", "BANNED"] as const;
+
+function statusBadge(status: string) {
+  if (status === "BANNED") return "bg-red-100 text-red-800";
+  if (status === "SUSPENDED") return "bg-amber-100 text-amber-900";
+  return "bg-emerald-100 text-emerald-800";
+}
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ email: "", password: "", displayName: "", role: "USER" });
 
   async function load() {
-    const d = await api(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (statusFilter !== "ALL") params.set("status", statusFilter);
+    const d = await api(`/admin/users${params.toString() ? `?${params}` : ""}`);
     setUsers(d.users);
   }
 
   useEffect(() => {
     load();
-  }, []);
+  }, [statusFilter]);
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -27,46 +40,9 @@ export default function AdminUsersPage() {
     load();
   }
 
-  async function score(id: string, kind: "good" | "bad") {
-    await api(`/admin/users/${id}/score`, { body: { kind, delta: 1 } });
-    load();
-  }
-
-  async function adjust(id: string) {
-    const currency = prompt("Currency (USDT/NGN/GHS)", "NGN");
-    if (!currency) return;
-    const amount = Number(prompt("Amount (negative to debit)", "0"));
-    if (!amount) return;
-    const description = prompt("Description", "Admin adjustment") || undefined;
-    await api(`/admin/users/${id}/adjust-balance`, { body: { currency, amount, description } });
-    load();
-  }
-
-  async function setRole(id: string, role: string) {
-    await api(`/admin/users/${id}`, { method: "PATCH", body: { role } });
-    load();
-  }
-
-  async function sendPasswordReset(id: string, email: string) {
-    if (!confirm(`Send a password reset email to ${email}?`)) return;
-    await api(`/admin/users/${id}/send-password-reset`, { method: "POST", body: {} });
-    alert("Password reset email sent.");
-  }
-
-  async function resetPassword(id: string, email: string) {
-    const password = prompt(`Set a new password for ${email} (min 8 characters):`);
-    if (!password) return;
-    if (password.length < 8) {
-      alert("Password must be at least 8 characters.");
-      return;
-    }
-    await api(`/admin/users/${id}/reset-password`, { method: "POST", body: { password } });
-    alert("Password updated.");
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold">Users</h2>
         <button onClick={() => setShowCreate((s) => !s)} className="btn-primary">New user</button>
       </div>
@@ -84,8 +60,20 @@ export default function AdminUsersPage() {
         </form>
       )}
 
+      <div className="flex flex-wrap gap-2">
+        {STATUS_FILTERS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`badge ${statusFilter === s ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
       <div className="flex gap-2">
-        <input className="input" placeholder="Search by email or name" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input" placeholder="Search by email or name" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()} />
         <button onClick={load} className="btn-ghost">Search</button>
       </div>
 
@@ -94,23 +82,37 @@ export default function AdminUsersPage() {
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
               <th className="p-3">User</th>
+              <th className="p-3">Status</th>
+              <th className="p-3">Trades</th>
               <th className="p-3">Scores</th>
               <th className="p-3">Wallets</th>
-              <th className="p-3">Role</th>
-              <th className="p-3">Actions</th>
+              <th className="p-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {users.map((u) => (
-              <tr key={u.id}>
+              <tr key={u.id} className="hover:bg-slate-50">
                 <td className="p-3">
                   <div className="font-medium">{u.displayName || "—"}</div>
                   <div className="text-slate-500">{u.email}</div>
-                  {!u.emailVerified && <span className="badge bg-amber-100 text-amber-800">unverified</span>}
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {!u.emailVerified && <span className="badge bg-amber-100 text-amber-800">unverified</span>}
+                    {u.role === "ADMIN" && <span className="badge bg-slate-800 text-white">admin</span>}
+                  </div>
                 </td>
                 <td className="p-3">
-                  <span className="text-emerald-600 font-semibold">+{u.goodScore}</span>{" "}
-                  <span className="text-red-600 font-semibold">-{u.badScore}</span>
+                  <span className={`badge ${statusBadge(u.accountStatus || "ACTIVE")}`}>{u.accountStatus || "ACTIVE"}</span>
+                  {u.suspendedUntil && (
+                    <div className="mt-1 text-xs text-slate-500">until {date(u.suspendedUntil)}</div>
+                  )}
+                </td>
+                <td className="p-3 text-xs">
+                  <div>{u.activeTrades ?? 0} / {u.tradeLimit ?? "—"} active</div>
+                  <div className="text-slate-500">bad: {u.badScore}</div>
+                </td>
+                <td className="p-3">
+                  <span className="font-semibold text-emerald-600">+{u.goodScore}</span>{" "}
+                  <span className="font-semibold text-red-600">-{u.badScore}</span>
                 </td>
                 <td className="p-3 text-xs">
                   <div>{money(u.balanceUsdt, "USDT")}</div>
@@ -118,24 +120,13 @@ export default function AdminUsersPage() {
                   <div>{money(u.balanceGhs, "GHS")}</div>
                 </td>
                 <td className="p-3">
-                  <select className="rounded border border-slate-300 px-2 py-1" value={u.role} onChange={(e) => setRole(u.id, e.target.value)}>
-                    <option value="USER">USER</option>
-                    <option value="ADMIN">ADMIN</option>
-                  </select>
-                </td>
-                <td className="p-3">
-                  <div className="flex flex-wrap gap-1">
-                    <button onClick={() => score(u.id, "good")} className="rounded bg-emerald-100 px-2 py-1 text-emerald-700">+Good</button>
-                    <button onClick={() => score(u.id, "bad")} className="rounded bg-red-100 px-2 py-1 text-red-700">+Bad</button>
-                    <button onClick={() => adjust(u.id)} className="rounded bg-slate-100 px-2 py-1">Adjust</button>
-                    <button onClick={() => sendPasswordReset(u.id, u.email)} className="rounded bg-blue-100 px-2 py-1 text-blue-800">Reset email</button>
-                    <button onClick={() => resetPassword(u.id, u.email)} className="rounded bg-violet-100 px-2 py-1 text-violet-800">Set password</button>
-                  </div>
+                  <Link href={`/admin/users/${u.id}`} className="btn-ghost text-brand-700">Manage</Link>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {users.length === 0 && <p className="p-6 text-sm text-slate-400">No users found.</p>}
       </div>
     </div>
   );

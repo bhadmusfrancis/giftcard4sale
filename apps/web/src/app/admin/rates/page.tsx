@@ -55,6 +55,13 @@ function ConfigSection() {
           noonesRateRefreshHours: Number(config.noonesRateRefreshHours ?? 1),
           noonesTopOffersForRate: Number(config.noonesTopOffersForRate ?? 3),
           minCountryOffersForDisplay: Number(config.minCountryOffersForDisplay ?? 5),
+          defaultMaxConcurrentTrades: Number(config.defaultMaxConcurrentTrades ?? 5),
+          autoSuspendRejectThreshold: Number(config.autoSuspendRejectThreshold ?? 5),
+          autoSuspendRejectWindowDays: Number(config.autoSuspendRejectWindowDays ?? 30),
+          autoSuspendDurationDays: Number(config.autoSuspendDurationDays ?? 7),
+          minWithdrawalNgn: Number(config.minWithdrawals?.NGN ?? 5000),
+          minWithdrawalGhs: Number(config.minWithdrawals?.GHS ?? 50),
+          minWithdrawalUsdt: Number(config.minWithdrawals?.USDT ?? 5),
         },
       });
       if (d.config) setConfig(d.config);
@@ -104,9 +111,60 @@ function ConfigSection() {
           value={config.minCountryOffersForDisplay ?? 5}
           onChange={(v) => setConfig({ ...config, minCountryOffersForDisplay: v })}
         />
+        <Field
+          label="Default max active trades"
+          value={config.defaultMaxConcurrentTrades ?? 5}
+          onChange={(v) => setConfig({ ...config, defaultMaxConcurrentTrades: v })}
+        />
+        <Field
+          label="Auto-suspend after rejections"
+          value={config.autoSuspendRejectThreshold ?? 5}
+          onChange={(v) => setConfig({ ...config, autoSuspendRejectThreshold: v })}
+        />
+        <Field
+          label="Rejection window (days)"
+          value={config.autoSuspendRejectWindowDays ?? 30}
+          onChange={(v) => setConfig({ ...config, autoSuspendRejectWindowDays: v })}
+        />
+        <Field
+          label="Auto-suspend duration (days)"
+          value={config.autoSuspendDurationDays ?? 7}
+          onChange={(v) => setConfig({ ...config, autoSuspendDurationDays: v })}
+        />
+        <Field
+          label="Min withdrawal — Naira (₦)"
+          value={config.minWithdrawals?.NGN ?? 5000}
+          onChange={(v) =>
+            setConfig({
+              ...config,
+              minWithdrawals: { ...(config.minWithdrawals ?? {}), NGN: v },
+            })
+          }
+        />
+        <Field
+          label="Min withdrawal — Cedi (GHS)"
+          value={config.minWithdrawals?.GHS ?? 50}
+          onChange={(v) =>
+            setConfig({
+              ...config,
+              minWithdrawals: { ...(config.minWithdrawals ?? {}), GHS: v },
+            })
+          }
+        />
+        <Field
+          label="Min withdrawal — USDT"
+          value={config.minWithdrawals?.USDT ?? 5}
+          onChange={(v) =>
+            setConfig({
+              ...config,
+              minWithdrawals: { ...(config.minWithdrawals ?? {}), USDT: v },
+            })
+          }
+        />
       </div>
       <p className="mt-2 text-xs text-slate-500">
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
+        Minimum withdrawal amounts apply to user wallet send/withdraw requests.
       </p>
       <div ref={statusRef} className="mt-4 space-y-3">
         {msg ? (

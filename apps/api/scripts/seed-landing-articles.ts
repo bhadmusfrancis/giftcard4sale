@@ -9,6 +9,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { resolveProfile, buildArticle } from "../src/content/profiles";
+import { ensureCardSeoLandingPagesPublished } from "../src/services/cardVisibility";
 
 const prisma = new PrismaClient();
 const MIN_WORDS = 600;
@@ -80,6 +81,11 @@ async function main() {
   console.log(`Updated:            ${updated}`);
   console.log(`Skipped (exists):   ${skipped}${force ? "" : " — use --force to overwrite"}`);
   console.log(`Below ${MIN_WORDS} words:  ${tooShort}`);
+
+  if (!dryRun) {
+    const republished = await ensureCardSeoLandingPagesPublished();
+    if (republished > 0) console.log(`Re-published:       ${republished}`);
+  }
 
   if (dryRun) console.log("\n(dry-run — no database changes made)");
 }

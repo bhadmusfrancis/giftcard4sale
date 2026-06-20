@@ -3,7 +3,7 @@ import { z } from "zod";
 import { calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
-import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
+import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
 import { upload, chatUpload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify, notifyAdmins } from "../services/notify";
@@ -13,6 +13,7 @@ import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } f
 import { generateTradeNumber } from "../services/tradeNumber";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
 import { canCancelTrade as canCancelTradeCheck } from "@gc4s/shared";
+import { assertUserCanTrade } from "../services/userModeration";
 
 export const tradesRouter = Router();
 
@@ -32,12 +33,20 @@ tradesRouter.post(
   "/",
   requireAuth,
   requireVerified(),
+  requireActiveAccount(),
   upload.fields([
     { name: "images", maxCount: 8 },
     { name: "receiptImages", maxCount: 4 },
   ]),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = validate(createSchema, req.body);
+
+    try {
+      await assertUserCanTrade(req.userId!);
+    } catch (err) {
+      return res.status(403).json({ error: (err as Error).message });
+    }
+
     const rate = await prisma.rate.findUnique({ where: { id: data.rateId }, include: { cardType: true } });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 

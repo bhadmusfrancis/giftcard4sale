@@ -13,6 +13,12 @@ enum UserRole {
   ADMIN
 }
 
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
 enum CardMedium {
   PHYSICAL
   ECODE
@@ -72,6 +78,12 @@ model User {
   resetTokenExp     DateTime?
   passwordChangedAt DateTime?
 
+  accountStatus     AccountStatus @default(ACTIVE)
+  suspendedUntil    DateTime?
+  suspensionReason  String?
+  maxConcurrentTrades Int?
+  adminNotes        String?
+
   // reputation
   goodScore         Int      @default(0)
   badScore          Int      @default(0)
@@ -100,6 +112,8 @@ model User {
   generatedEarnings ReferralEarning[]  @relation("Source")
   notifications     Notification[]
   sentMessages      TradeMessage[]
+  moderationEvents  UserModerationEvent[]
+  moderationActions UserModerationEvent[] @relation("ModerationAdmin")
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -184,6 +198,13 @@ model RateConfig {
   noonesRateRefreshHours   Int   @default(1)
   noonesTopOffersForRate   Int   @default(3)
   minCountryOffersForDisplay Int @default(5)
+  defaultMaxConcurrentTrades Int @default(5)
+  autoSuspendRejectThreshold Int @default(5)
+  autoSuspendRejectWindowDays Int @default(30)
+  autoSuspendDurationDays    Int @default(7)
+  minWithdrawalNgn          Decimal @default(5000) @db.Decimal(20, 2)
+  minWithdrawalGhs          Decimal @default(50) @db.Decimal(20, 2)
+  minWithdrawalUsdt         Decimal @default(5) @db.Decimal(20, 6)
   updatedAt             DateTime @updatedAt
   createdAt             DateTime @default(now())
 }
@@ -323,6 +344,21 @@ model Withdrawal {
   updatedAt      DateTime         @updatedAt
 
   @@index([userId, status])
+}
+
+model UserModerationEvent {
+  id             String   @id @default(cuid())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  admin          User?    @relation("ModerationAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+  adminId        String?
+  action         String
+  reason         String?
+  suspendedUntil DateTime?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model WalletTransaction {

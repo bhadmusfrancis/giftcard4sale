@@ -29,12 +29,9 @@ export async function cardHasQuotableRates(cardTypeId: string): Promise<boolean>
   return activeRates > 0;
 }
 
-/** Sync card.active and landing publish state from active rate rows. */
+/** Sync card.active from active rate rows. SEO landing pages stay published even when a card is inactive. */
 export async function refreshCardCatalogVisibility(cardTypeId: string): Promise<boolean> {
-  const [activeRates, manualActive] = await Promise.all([
-    prisma.rate.count({ where: { cardTypeId, active: true } }),
-    prisma.rate.count({ where: { cardTypeId, active: true, ...MANUAL_RATE_WHERE } }),
-  ]);
+  const activeRates = await prisma.rate.count({ where: { cardTypeId, active: true } });
 
   const visible = activeRates > 0;
   const card = await prisma.cardType.findUnique({
@@ -46,14 +43,16 @@ export async function refreshCardCatalogVisibility(cardTypeId: string): Promise<
     await prisma.cardType.update({ where: { id: cardTypeId }, data: { active: visible } });
   }
 
-  if (!visible && manualActive === 0) {
-    await prisma.landingPage.updateMany({
-      where: { cardTypeId },
-      data: { published: false },
-    });
-  }
-
   return visible;
+}
+
+/** SEO landing pages stay live for every card type, even when the trade catalog is inactive. */
+export async function ensureCardSeoLandingPagesPublished(): Promise<number> {
+  const result = await prisma.landingPage.updateMany({
+    where: { cardTypeId: { not: null }, published: false },
+    data: { published: true },
+  });
+  return result.count;
 }
 
 export function catalogCardWhere(search?: string): Prisma.CardTypeWhereInput {
@@ -107,12 +106,6 @@ export async function applyNoOnesPublishState(
       where: { cardTypeId, speed: "NOONES" },
       data: { active: false },
     });
-    if (manualActive === 0) {
-      await prisma.landingPage.updateMany({
-        where: { cardTypeId },
-        data: { published: false },
-      });
-    }
     return { publishable: manualActive > 0, drafted: true };
   }
 

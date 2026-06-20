@@ -7,6 +7,12 @@ import { money, date, STATUS_COLORS } from "@/lib/format";
 
 const MOMO_NETWORKS = ["MTN", "Vodafone", "AirtelTigo"] as const;
 
+const CURRENCY_LABELS: Record<"USDT" | "NGN" | "GHS", string> = {
+  USDT: "USDT",
+  NGN: "Naira",
+  GHS: "Cedi",
+};
+
 function withdrawalDestination(w: {
   bankAccount?: { bankName: string; accountNumber: string } | null;
   momoAccount?: { network: string; phoneNumber: string; accountName?: string } | null;
@@ -26,6 +32,11 @@ export default function WalletPage() {
   const [momoAccounts, setMomoAccounts] = useState<any[]>([]);
   const [txns, setTxns] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [minWithdrawals, setMinWithdrawals] = useState<Record<string, number>>({
+    NGN: 5000,
+    GHS: 50,
+    USDT: 5,
+  });
 
   // withdraw form
   const [currency, setCurrency] = useState<"USDT" | "NGN" | "GHS">("NGN");
@@ -57,6 +68,7 @@ export default function WalletPage() {
     setMomoAccounts(m.accounts);
     setTxns(t.transactions);
     setWithdrawals(w.withdrawals);
+    if (w.minWithdrawals) setMinWithdrawals(w.minWithdrawals);
   }
 
   useEffect(() => {
@@ -98,18 +110,27 @@ export default function WalletPage() {
   if (!user) return null;
 
   const balances: Record<string, number> = { USDT: user.balanceUsdt, NGN: user.balanceNgn, GHS: user.balanceGhs };
+  const minAmount = minWithdrawals[currency] ?? 0;
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Wallet</h1>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        {(["USDT", "NGN", "GHS"] as const).map((cur) => (
-          <div key={cur} className="card p-6">
-            <div className="text-sm text-slate-500">{cur} balance</div>
-            <div className="mt-1 text-2xl font-bold">{money(balances[cur], cur)}</div>
-          </div>
-        ))}
+        {(["USDT", "NGN", "GHS"] as const).map((cur) => {
+          const min = minWithdrawals[cur] ?? 0;
+          return (
+            <div key={cur} className="card p-6">
+              <div className="text-sm text-slate-500">{CURRENCY_LABELS[cur]} balance</div>
+              <div className="mt-1 text-2xl font-bold">{money(balances[cur], cur)}</div>
+              {min > 0 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Min withdrawal: {money(min, cur)}
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -119,14 +140,30 @@ export default function WalletPage() {
           <div>
             <label className="label">Currency</label>
             <select className="input" value={currency} onChange={(e) => setCurrency(e.target.value as any)}>
-              <option value="NGN">Naira → Nigerian bank</option>
-              <option value="GHS">Cedi → Mobile Money (MoMo)</option>
-              <option value="USDT">USDT → wallet address</option>
+              <option value="NGN">
+                Naira → Nigerian bank{minWithdrawals.NGN ? ` (min ${money(minWithdrawals.NGN, "NGN")})` : ""}
+              </option>
+              <option value="GHS">
+                Cedi → Mobile Money (MoMo){minWithdrawals.GHS ? ` (min ${money(minWithdrawals.GHS, "GHS")})` : ""}
+              </option>
+              <option value="USDT">
+                USDT → wallet address{minWithdrawals.USDT ? ` (min ${money(minWithdrawals.USDT, "USDT")})` : ""}
+              </option>
             </select>
           </div>
           <div>
             <label className="label">Amount</label>
-            <input type="number" className="input" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+            <input
+              type="number"
+              className="input"
+              min={minAmount || undefined}
+              step={currency === "USDT" ? "0.000001" : "0.01"}
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+            />
+            {minAmount > 0 && (
+              <p className="mt-1 text-xs text-slate-500">Minimum: {money(minAmount, currency)}</p>
+            )}
           </div>
 
           {currency === "NGN" ? (

@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { maybeAutoSuspendForRejections } from "./userModeration";
 
 /** Reject a trade once and add +1 bad score to the seller. */
 export async function rejectTradeWithBadScore(
@@ -24,6 +25,8 @@ export async function rejectTradeWithBadScore(
       data: { badScore: { increment: 1 } },
     }),
   ]);
+
+  await maybeAutoSuspendForRejections(trade.userId);
 
   return true;
 }

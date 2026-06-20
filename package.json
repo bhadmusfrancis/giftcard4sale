@@ -15,6 +15,7 @@
     "db:up": "docker compose up -d db",
     "db:migrate": "npm run prisma:migrate -w @gc4s/api",
     "db:seed": "npm run seed -w @gc4s/api",
+    "db:seed-landing": "npm run seed:landing -w @gc4s/api",
     "setup": "npm install && npm run build:shared && npm run db:up && npm run db:migrate && npm run db:seed",
     "sync:noones": "npm run sync:noones -w @gc4s/api --",
     "sync:noones-rates": "npm run sync:noones -w @gc4s/api --",
