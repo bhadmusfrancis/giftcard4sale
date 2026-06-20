@@ -131,7 +131,7 @@ export async function applyUserModeration(
     reason?: string;
     suspendDays?: number;
     maxConcurrentTrades?: number | null;
-    adminNotes?: string;
+    adminNotes?: string | null;
   } = {}
 ): Promise<void> {
   const user = await prisma.user.findUnique({ where: { id: userId } });

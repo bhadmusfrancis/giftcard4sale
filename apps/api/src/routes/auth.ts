@@ -13,6 +13,7 @@ import {
   AuthedRequest,
 } from "../lib/auth";
 import { sendTransactionalEmail } from "../services/email";
+import { getUserRestriction } from "../services/userModeration";
 import { authLimiter } from "../lib/rateLimit";
 
 export const authRouter = Router();
@@ -163,7 +164,6 @@ authRouter.post(
     if (!user || !(await verifyPassword(data.password, user.passwordHash))) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
-    const { getUserRestriction } = await import("../services/userModeration");
     const restriction = await getUserRestriction(user.id);
     if (restriction.blocked) {
       return res.status(403).json({ error: restriction.reason || "Account restricted" });
