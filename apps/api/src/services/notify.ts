@@ -50,6 +50,8 @@ export async function notify(opts: NotifyOptions): Promise<void> {
     ctaLabel: "View in GiftCard4Sale",
     ctaHref: fullLink,
     securityNote,
+  }).then((ok) => {
+    if (!ok) console.error(`[notify] email not sent for user ${userId} (${title})`);
   });
 }
 

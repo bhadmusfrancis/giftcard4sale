@@ -1,15 +1,61 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../env";
 
-const transporter = nodemailer.createTransport({
-  host: env.smtp.host,
-  port: env.smtp.port,
-  secure: env.smtp.secure,
-  auth: env.smtp.user ? { user: env.smtp.user, pass: env.smtp.pass } : undefined,
-  connectionTimeout: 10_000,
-  greetingTimeout: 10_000,
-  socketTimeout: 15_000,
-});
+/** True when pointing at a real provider (not local Mailpit). */
+export function isSmtpConfigured(): boolean {
+  const { host, user, pass } = env.smtp;
+  if (!host || host === "localhost" || host === "127.0.0.1") return false;
+  return Boolean(user && pass);
+}
+
+function buildTransportOptions() {
+  const port = env.smtp.port;
+  // Port 587 uses STARTTLS (secure=false + requireTLS). Port 465 uses implicit TLS.
+  const secure = port === 465 ? true : port === 587 ? false : env.smtp.secure;
+
+  return {
+    host: env.smtp.host,
+    port,
+    secure,
+    requireTLS: port === 587,
+    auth: env.smtp.user ? { user: env.smtp.user, pass: env.smtp.pass } : undefined,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
+  };
+}
+
+const transporter: Transporter = nodemailer.createTransport(buildTransportOptions());
+
+let smtpVerified = false;
+
+/** Call once at startup in production to surface SMTP misconfiguration early. */
+export async function verifySmtpConnection(): Promise<boolean> {
+  if (!isSmtpConfigured()) {
+    console.warn("[email] SMTP not configured — emails will fail (set SMTP_HOST/USER/PASS on the server).");
+    return false;
+  }
+  try {
+    await transporter.verify();
+    smtpVerified = true;
+    console.log(`[email] SMTP ready (${env.smtp.host}:${env.smtp.port})`);
+    return true;
+  } catch (err) {
+    smtpVerified = false;
+    const e = err as Error & { code?: string; response?: string };
+    console.error(
+      "[email] SMTP verify failed:",
+      e.message,
+      e.code ? `(${e.code})` : "",
+      e.response ? `— ${e.response}` : ""
+    );
+    return false;
+  }
+}
+
+export function isSmtpVerified(): boolean {
+  return smtpVerified;
+}
 
 export function escapeHtml(value: string): string {
   return value
@@ -73,9 +119,14 @@ export async function sendEmail(
   subject: string,
   html: string,
   text?: string
-): Promise<void> {
+): Promise<boolean> {
+  if (!isSmtpConfigured()) {
+    console.error(`[email] skipped (SMTP not configured) → ${to}: ${subject}`);
+    return false;
+  }
+
   try {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: env.smtp.from,
       to,
       subject: subject.startsWith("[GiftCard4Sale]") ? subject : `[GiftCard4Sale] ${subject}`,
@@ -86,8 +137,20 @@ export async function sendEmail(
         Precedence: "auto",
       },
     });
+    if (env.isProd) {
+      console.log(`[email] sent → ${to}: ${info.messageId || "ok"}`);
+    }
+    return true;
   } catch (err) {
-    console.error("[email] failed to send:", (err as Error).message);
+    const e = err as Error & { code?: string; response?: string; responseCode?: number };
+    console.error(
+      `[email] failed → ${to}:`,
+      e.message,
+      e.code ? `(${e.code})` : "",
+      e.responseCode ? `[${e.responseCode}]` : "",
+      e.response ? `— ${e.response}` : ""
+    );
+    return false;
   }
 }
 
@@ -95,9 +158,9 @@ export async function sendTransactionalEmail(
   to: string,
   subject: string,
   content: TransactionalEmailContent
-): Promise<void> {
+): Promise<boolean> {
   const { html, text } = buildTransactionalEmail(content);
-  await sendEmail(to, subject, html, text);
+  return sendEmail(to, subject, html, text);
 }
 
 export function layout(title: string, preheader: string, inner: string): string {

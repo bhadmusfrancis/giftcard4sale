@@ -22,6 +22,7 @@ import {
   syncNoOnesCatalogVisibilityFromStored,
 } from "./services/cardVisibility";
 import { repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
+import { isSmtpConfigured, isSmtpVerified, verifySmtpConnection } from "./services/email";
 
 const app = express();
 
@@ -48,7 +49,13 @@ app.use(express.json({ limit: "2mb" }));
 // Static uploads (only when using local disk storage).
 if (!useS3) app.use("/uploads", express.static(UPLOAD_DIR));
 
-app.get("/health", (_req, res) => res.json({ ok: true, service: "gc4s-api" }));
+app.get("/health", (_req, res) =>
+  res.json({
+    ok: true,
+    service: "gc4s-api",
+    email: isSmtpConfigured() ? (isSmtpVerified() ? "ready" : "configured") : "missing",
+  })
+);
 
 // Rate limiting
 app.use("/api", apiLimiter);
@@ -75,6 +82,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(env.port, () => {
   console.log(`GiftCard4Sale API listening on ${env.apiUrl} (port ${env.port})`);
+  void verifySmtpConnection();
   repairManualRateCatalog()
     .then((n) => {
       if (n > 0) console.log(`Reactivated ${n} manually imported rate row(s).`);
