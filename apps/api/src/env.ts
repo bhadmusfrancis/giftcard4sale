@@ -84,6 +84,8 @@ export const env = {
 
   referralPercent: num(process.env.REFERRAL_PERCENT, 1),
 
+  supportEmail: process.env.SUPPORT_EMAIL || process.env.ADMIN_EMAIL || "support@giftcard4sale.com",
+
   admin: {
     email: process.env.ADMIN_EMAIL || "admin@giftcard4sale.com",
     password: process.env.ADMIN_PASSWORD || "ChangeMe123!",

@@ -31,7 +31,7 @@ export function TradeChat({
   const fileRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const chatClosed = !isAdmin && tradeStatus === "REJECTED";
+  const chatClosed = !isAdmin && (tradeStatus === "REJECTED" || tradeStatus === "CANCELLED");
 
   async function load() {
     const d = await api(`/trades/${tradeId}`);

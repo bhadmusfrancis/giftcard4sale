@@ -1,6 +1,7 @@
 export * from "./types";
 export * from "./rateCalculator";
 export * from "./rateParser";
+export * from "./tradeCancel";
 
 export const SUPPORTED_PAYOUT_CURRENCIES = ["USDT", "NGN", "GHS"] as const;
 

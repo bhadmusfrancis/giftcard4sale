@@ -38,7 +38,7 @@ function NewTradeInner() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const needsReceiptUpload = medium !== "ECODE" && receiptType !== "NONE";
+  const needsReceiptUpload = receiptType !== "NONE";
 
   useEffect(() => {
     if (!rateId || !amount) {
@@ -97,7 +97,7 @@ function NewTradeInner() {
       return;
     }
     if (needsReceiptUpload && (!receiptFiles || receiptFiles.length === 0)) {
-      setError("Please upload a photo of your purchase receipt.");
+      setError("You indicated a purchase receipt is available — please upload receipt photo(s).");
       return;
     }
     if (rateInfo?.country === "Other" && !otherCountryName.trim()) {
@@ -110,6 +110,10 @@ function NewTradeInner() {
     }
     if (medium === "PHYSICAL" && !cardDenominations.trim()) {
       setError("Please enter card denominations (e.g. 200x1, 50x4).");
+      return;
+    }
+    if (medium === "PHYSICAL" && (!files || files.length === 0)) {
+      setError("Please upload at least one gift card photo.");
       return;
     }
     setBusy(true);
@@ -191,28 +195,20 @@ function NewTradeInner() {
         ) : null}
 
         {medium === "PHYSICAL" ? (
-          <>
-            <div>
-              <label className="label">Card denominations</label>
-              <input
-                type="text"
-                className="input"
-                placeholder="e.g. 200x1, 50x4, 100x2"
-                value={cardDenominations}
-                onChange={(e) => setCardDenominations(e.target.value)}
-                required
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                List each denomination and quantity (e.g. one $200 card = 200x1, four $50 cards = 50x4).
-              </p>
-            </div>
-
-            <div>
-              <label className="label">Upload gift card picture(s)</label>
-              <input type="file" accept="image/*" multiple className="input" onChange={(e) => setFiles(e.target.files)} />
-              <p className="mt-1 text-xs text-slate-500">Clear photos of the front and back of the card.</p>
-            </div>
-          </>
+          <div>
+            <label className="label">Card denominations</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g. 200x1, 50x4, 100x2"
+              value={cardDenominations}
+              onChange={(e) => setCardDenominations(e.target.value)}
+              required
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              List each denomination and quantity (e.g. one $200 card = 200x1, four $50 cards = 50x4).
+            </p>
+          </div>
         ) : (
           <div>
             <label className="label">Card denominations (optional)</label>
@@ -226,9 +222,28 @@ function NewTradeInner() {
           </div>
         )}
 
+        <div>
+          <label className="label">
+            {medium === "PHYSICAL" ? "Gift card photo(s)" : "Gift card screenshot(s) (optional)"}
+          </label>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            required={medium === "PHYSICAL"}
+            className="input"
+            onChange={(e) => setFiles(e.target.files)}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            {medium === "PHYSICAL"
+              ? "Upload clear photos of every card (front and back). You can select multiple files at once."
+              : "Optional screenshots of the e-code email or gift card page."}
+          </p>
+        </div>
+
         {needsReceiptUpload ? (
           <div>
-            <label className="label">Upload purchase receipt</label>
+            <label className="label">Purchase receipt (required)</label>
             <input
               type="file"
               accept="image/*"
@@ -238,10 +253,25 @@ function NewTradeInner() {
               onChange={(e) => setReceiptFiles(e.target.files)}
             />
             <p className="mt-1 text-xs text-slate-500">
-              A clear photo of the store receipt showing a {receiptType === "CASH" ? "cash" : "card"} purchase.
+              You confirmed a {receiptType === "CASH" ? "cash" : "debit/card"} receipt is available. Upload clear
+              photo(s) of the store receipt.
             </p>
           </div>
-        ) : null}
+        ) : (
+          <div>
+            <label className="label">Purchase receipt (optional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="input"
+              onChange={(e) => setReceiptFiles(e.target.files)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Upload receipt photo(s) if you have them — this can help verification even for e-codes.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="label">Notes (optional)</label>

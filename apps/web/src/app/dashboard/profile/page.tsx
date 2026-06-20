@@ -70,6 +70,72 @@ export default function ProfilePage() {
           <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Save changes"}</button>
         </form>
       </div>
+
+      <ChangePasswordSection />
+    </div>
+  );
+}
+
+function ChangePasswordSection() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    setError(null);
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/auth/change-password", {
+        method: "POST",
+        body: { currentPassword, newPassword },
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMsg("Password updated.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-6">
+      <h2 className="text-lg font-bold">Password</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Change your password here, or use{" "}
+        <a href="/forgot-password" className="text-brand-700 hover:underline">
+          forgot password
+        </a>{" "}
+        if you are logged out.
+      </p>
+      <form onSubmit={submit} className="mt-4 max-w-md space-y-4">
+        <div>
+          <label className="label">Current password</label>
+          <input className="input" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
+        </div>
+        <div>
+          <label className="label">New password</label>
+          <input className="input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} required />
+        </div>
+        <div>
+          <label className="label">Confirm new password</label>
+          <input className="input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={8} required />
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {msg && <p className="text-sm text-brand-700">{msg}</p>}
+        <button className="btn-primary" disabled={busy}>{busy ? "Updating…" : "Update password"}</button>
+      </form>
     </div>
   );
 }

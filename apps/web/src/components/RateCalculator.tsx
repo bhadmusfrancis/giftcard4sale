@@ -23,7 +23,7 @@ interface Rate {
 interface Config {
   rates: { ngnPerUsdt: number; ngnPerGhs: number };
   reductions: { nairaReductionPercent: number; usdtReductionPercent: number; ghsReductionPercent: number };
-  noonesRateRefreshMinutes?: number;
+  noonesRateRefreshHours?: number;
 }
 
 interface CurrencyMetaRow {
@@ -115,16 +115,15 @@ export function RateCalculator({
   );
 
   const receiptType: ReceiptType = useMemo(() => {
-    if (medium === "ECODE") return "NONE";
     if (hasReceipt !== true) return "NONE";
     if (isCashReceipt === true) return "CASH";
     if (isCashReceipt === false) return "DEBIT";
     return "NONE";
-  }, [medium, hasReceipt, isCashReceipt]);
+  }, [hasReceipt, isCashReceipt]);
 
   const amountOutOfRange = Boolean(rangesReady && amount > 0 && !boundedTier);
   const pricingReady = rangesReady && Boolean(boundedTier) && Boolean(matched);
-  const showReceiptPrompt = askReceipt && medium !== "ECODE" && !amountOutOfRange;
+  const showReceiptPrompt = askReceipt && !amountOutOfRange;
 
   const isOtherCountry = country === "Other";
   const otherCountryIncomplete = isOtherCountry && !otherCountryName.trim();
@@ -181,11 +180,11 @@ export function RateCalculator({
   }, [pricingReady, matched?.id, amount, payoutCurrency, hasReceipt, medium, receiptType]);
 
   useEffect(() => {
-    if (!askReceipt || medium === "ECODE") {
+    if (!askReceipt) {
       setHasReceipt(null);
       setIsCashReceipt(null);
     }
-  }, [askReceipt, medium]);
+  }, [askReceipt]);
 
   const receiptBlocked = showReceiptPrompt && requiresReceipt && hasReceipt === false;
   const receiptIncomplete =
@@ -387,7 +386,7 @@ export function RateCalculator({
             ) : null}
             <div className="mt-2 text-xs text-slate-400">
               Rate: {quote.effectiveNairaPerUnit.toLocaleString()} ₦/unit
-              {medium !== "ECODE" && hasReceipt === false ? " • No-receipt offer" : medium !== "ECODE" && hasReceipt === true ? ` • ${receiptType === "CASH" ? "Cash" : "Debit"} receipt offer` : ""}
+              {hasReceipt === false ? " • No-receipt offer" : hasReceipt === true ? ` • ${receiptType === "CASH" ? "Cash" : "Debit"} receipt offer` : ""}
               {matched && (matched.minDenom || matched.maxDenom)
                 ? ` • Tier ${matched.minDenom ?? "any"}–${matched.maxDenom ?? "any"}`
                 : ""}

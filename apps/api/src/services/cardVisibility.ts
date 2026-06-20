@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { isCardPublishable } from "./noones/publishPolicy";
+import { noonesLinkedCardWhere } from "./noones/exclusions";
 
 /** Rates imported from pasted rate text (not synced from NoOnes). */
 export const MANUAL_RATE_WHERE: Prisma.RateWhereInput = {
@@ -14,7 +15,7 @@ export function isManualRateSpeed(speed: string | null | undefined): boolean {
 /** Public catalog: NoOnes cards that have at least one quotable rate row. */
 export function noOnesCatalogWhere(): Prisma.CardTypeWhereInput {
   return {
-    noonesPaymentMethod: { not: null },
+    ...noonesLinkedCardWhere(),
     active: true,
     rates: { some: { active: true } },
   };
@@ -157,7 +158,7 @@ export async function syncNoOnesCatalogVisibilityFromStored(): Promise<{
   let drafted = 0;
 
   const cards = await prisma.cardType.findMany({
-    where: { noonesPaymentMethod: { not: null } },
+    where: noonesLinkedCardWhere(),
     select: { id: true, offerCount: true, active: true },
   });
 

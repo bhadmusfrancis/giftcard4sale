@@ -52,7 +52,7 @@ function ConfigSection() {
           usdtReductionPercent: Number(config.reductions.usdtReductionPercent),
           ghsReductionPercent: Number(config.reductions.ghsReductionPercent),
           referralPercent: Number(config.referralPercent),
-          noonesRateRefreshMinutes: Number(config.noonesRateRefreshMinutes ?? 15),
+          noonesRateRefreshHours: Number(config.noonesRateRefreshHours ?? 1),
           noonesTopOffersForRate: Number(config.noonesTopOffersForRate ?? 3),
           minCountryOffersForDisplay: Number(config.minCountryOffersForDisplay ?? 5),
         },
@@ -90,9 +90,9 @@ function ConfigSection() {
         <Field label="USDT deduction %" value={config.reductions.usdtReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, usdtReductionPercent: v } })} />
         <Field label="Cedi deduction %" value={config.reductions.ghsReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, ghsReductionPercent: v } })} />
         <Field
-          label="NoOnes rate staleness (minutes)"
-          value={config.noonesRateRefreshMinutes ?? 15}
-          onChange={(v) => setConfig({ ...config, noonesRateRefreshMinutes: v })}
+          label="NoOnes rate staleness (hours)"
+          value={config.noonesRateRefreshHours ?? 1}
+          onChange={(v) => setConfig({ ...config, noonesRateRefreshHours: v })}
         />
         <Field
           label="NoOnes offers to average"

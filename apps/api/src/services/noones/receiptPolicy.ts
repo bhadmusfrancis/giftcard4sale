@@ -105,10 +105,6 @@ export function receiptPolicyFromStored(params: {
   storedQuotes: StoredQuotes;
   medium?: CardMedium;
 }): { askReceipt: boolean; requiresReceipt: boolean } {
-  if (params.medium === "ECODE") {
-    return { askReceipt: false, requiresReceipt: false };
-  }
-
   const prone = params.paymentMethod ? paymentMethodUsuallyRequiresReceipt(params.paymentMethod) : false;
   const hasNone = params.storedQuotes.NONE != null;
   const hasReceiptRate = params.storedQuotes.CASH != null || params.storedQuotes.DEBIT != null;

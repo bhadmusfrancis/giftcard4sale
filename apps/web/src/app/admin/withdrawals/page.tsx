@@ -7,6 +7,20 @@ import { money, date, STATUS_COLORS } from "@/lib/format";
 
 const STATUSES = ["", "PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID"];
 
+function withdrawalDestination(w: {
+  bankAccount?: { bankName: string; accountNumber: string; accountName?: string } | null;
+  momoAccount?: { network: string; phoneNumber: string; accountName?: string } | null;
+  destinationAddress?: string | null;
+}) {
+  if (w.bankAccount) {
+    return `${w.bankAccount.bankName} ${w.bankAccount.accountNumber} (${w.bankAccount.accountName})`;
+  }
+  if (w.momoAccount) {
+    return `${w.momoAccount.network} ${w.momoAccount.phoneNumber} (${w.momoAccount.accountName})`;
+  }
+  return w.destinationAddress ?? "—";
+}
+
 function WithdrawalsInner() {
   const params = useSearchParams();
   const [status, setStatus] = useState(params.get("status") || "PENDING");
@@ -44,7 +58,7 @@ function WithdrawalsInner() {
             <div>
               <div className="font-semibold">{money(w.amount, w.currency)} · {w.user?.displayName || w.user?.email}</div>
               <div className="text-sm text-slate-500">
-                {w.bankAccount ? `${w.bankAccount.bankName} ${w.bankAccount.accountNumber} (${w.bankAccount.accountName})` : w.destinationAddress} · {date(w.createdAt)}
+                {withdrawalDestination(w)} · {date(w.createdAt)}
               </div>
             </div>
             <div className="flex items-center gap-2">

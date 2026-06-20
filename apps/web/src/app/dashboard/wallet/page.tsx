@@ -5,9 +5,25 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 
+const MOMO_NETWORKS = ["MTN", "Vodafone", "AirtelTigo"] as const;
+
+function withdrawalDestination(w: {
+  bankAccount?: { bankName: string; accountNumber: string } | null;
+  momoAccount?: { network: string; phoneNumber: string; accountName?: string } | null;
+  destinationAddress?: string | null;
+}) {
+  if (w.bankAccount) return `${w.bankAccount.bankName} ${w.bankAccount.accountNumber}`;
+  if (w.momoAccount) {
+    const name = w.momoAccount.accountName ? ` (${w.momoAccount.accountName})` : "";
+    return `${w.momoAccount.network} ${w.momoAccount.phoneNumber}${name}`;
+  }
+  return w.destinationAddress ?? "—";
+}
+
 export default function WalletPage() {
   const { user, refresh } = useAuth();
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [momoAccounts, setMomoAccounts] = useState<any[]>([]);
   const [txns, setTxns] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
 
@@ -15,6 +31,7 @@ export default function WalletPage() {
   const [currency, setCurrency] = useState<"USDT" | "NGN" | "GHS">("NGN");
   const [amount, setAmount] = useState<number>(0);
   const [bankAccountId, setBankAccountId] = useState("");
+  const [momoAccountId, setMomoAccountId] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -24,13 +41,20 @@ export default function WalletPage() {
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
 
+  // add MoMo form
+  const [momoNetwork, setMomoNetwork] = useState<(typeof MOMO_NETWORKS)[number]>("MTN");
+  const [momoPhone, setMomoPhone] = useState("");
+  const [momoName, setMomoName] = useState("");
+
   async function loadAll() {
-    const [a, t, w] = await Promise.all([
+    const [a, m, t, w] = await Promise.all([
       api("/me/bank-accounts"),
+      api("/me/momo-accounts"),
       api("/me/transactions"),
       api("/withdrawals"),
     ]);
     setAccounts(a.accounts);
+    setMomoAccounts(m.accounts);
     setTxns(t.transactions);
     setWithdrawals(w.withdrawals);
   }
@@ -46,12 +70,20 @@ export default function WalletPage() {
     loadAll();
   }
 
+  async function addMomo(e: React.FormEvent) {
+    e.preventDefault();
+    await api("/me/momo-accounts", { body: { network: momoNetwork, phoneNumber: momoPhone, accountName: momoName } });
+    setMomoPhone(""); setMomoName("");
+    loadAll();
+  }
+
   async function submitWithdraw(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null); setErr(null);
     try {
       const body: any = { currency, amount };
       if (currency === "NGN") body.bankAccountId = bankAccountId;
+      else if (currency === "GHS") body.momoAccountId = momoAccountId;
       else body.destinationAddress = destinationAddress;
       await api("/withdrawals", { body });
       setMsg("Withdrawal request submitted and pending approval.");
@@ -88,8 +120,8 @@ export default function WalletPage() {
             <label className="label">Currency</label>
             <select className="input" value={currency} onChange={(e) => setCurrency(e.target.value as any)}>
               <option value="NGN">Naira → Nigerian bank</option>
+              <option value="GHS">Cedi → Mobile Money (MoMo)</option>
               <option value="USDT">USDT → wallet address</option>
-              <option value="GHS">Cedi → mobile money / address</option>
             </select>
           </div>
           <div>
@@ -108,9 +140,20 @@ export default function WalletPage() {
               </select>
               {accounts.length === 0 && <p className="mt-1 text-xs text-amber-600">Add a bank account below first.</p>}
             </div>
+          ) : currency === "GHS" ? (
+            <div>
+              <label className="label">Destination MoMo account</label>
+              <select className="input" value={momoAccountId} onChange={(e) => setMomoAccountId(e.target.value)} required>
+                <option value="">Select MoMo details…</option>
+                {momoAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.network} — {a.phoneNumber} ({a.accountName})</option>
+                ))}
+              </select>
+              {momoAccounts.length === 0 && <p className="mt-1 text-xs text-amber-600">Add MoMo payment details below first.</p>}
+            </div>
           ) : (
             <div>
-              <label className="label">{currency === "USDT" ? "USDT (TRC20) address" : "Mobile money number / address"}</label>
+              <label className="label">USDT (TRC20) address</label>
               <input className="input" value={destinationAddress} onChange={(e) => setDestinationAddress(e.target.value)} required />
             </div>
           )}
@@ -120,29 +163,59 @@ export default function WalletPage() {
           <button className="btn-primary w-full">Submit request</button>
         </form>
 
-        {/* Bank accounts */}
-        <div className="card space-y-4 p-6">
-          <h2 className="text-lg font-bold">Naira bank accounts</h2>
-          <div className="space-y-2">
-            {accounts.map((a) => (
-              <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                <span>{a.bankName} — {a.accountNumber} ({a.accountName})</span>
-                <button
-                  className="text-red-600"
-                  onClick={async () => { await api(`/me/bank-accounts/${a.id}`, { method: "DELETE" }); loadAll(); }}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-            {accounts.length === 0 && <p className="text-sm text-slate-400">No saved accounts.</p>}
+        {/* Payout destinations */}
+        <div className="space-y-6">
+          <div className="card space-y-4 p-6">
+            <h2 className="text-lg font-bold">Naira bank accounts</h2>
+            <div className="space-y-2">
+              {accounts.map((a) => (
+                <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <span>{a.bankName} — {a.accountNumber} ({a.accountName})</span>
+                  <button
+                    className="text-red-600"
+                    onClick={async () => { await api(`/me/bank-accounts/${a.id}`, { method: "DELETE" }); loadAll(); }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              {accounts.length === 0 && <p className="text-sm text-slate-400">No saved accounts.</p>}
+            </div>
+            <form onSubmit={addBank} className="space-y-2 border-t border-slate-100 pt-3">
+              <input className="input" placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
+              <input className="input" placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
+              <input className="input" placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
+              <button className="btn-ghost w-full">Add account</button>
+            </form>
           </div>
-          <form onSubmit={addBank} className="space-y-2 border-t border-slate-100 pt-3">
-            <input className="input" placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
-            <input className="input" placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
-            <input className="input" placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
-            <button className="btn-ghost w-full">Add account</button>
-          </form>
+
+          <div className="card space-y-4 p-6">
+            <h2 className="text-lg font-bold">Cedi MoMo accounts</h2>
+            <div className="space-y-2">
+              {momoAccounts.map((a) => (
+                <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <span>{a.network} — {a.phoneNumber} ({a.accountName})</span>
+                  <button
+                    className="text-red-600"
+                    onClick={async () => { await api(`/me/momo-accounts/${a.id}`, { method: "DELETE" }); loadAll(); }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              {momoAccounts.length === 0 && <p className="text-sm text-slate-400">No saved MoMo details.</p>}
+            </div>
+            <form onSubmit={addMomo} className="space-y-2 border-t border-slate-100 pt-3">
+              <select className="input" value={momoNetwork} onChange={(e) => setMomoNetwork(e.target.value as typeof momoNetwork)} required>
+                {MOMO_NETWORKS.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <input className="input" placeholder="MoMo phone number" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} required />
+              <input className="input" placeholder="Registered name" value={momoName} onChange={(e) => setMomoName(e.target.value)} required />
+              <button className="btn-ghost w-full">Add MoMo account</button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -155,7 +228,7 @@ export default function WalletPage() {
               <div>
                 <div className="font-medium">{money(w.amount, w.currency)}</div>
                 <div className="text-slate-500">
-                  {w.bankAccount ? `${w.bankAccount.bankName} ${w.bankAccount.accountNumber}` : w.destinationAddress} · {date(w.createdAt)}
+                  {withdrawalDestination(w)} · {date(w.createdAt)}
                 </div>
               </div>
               <span className={`badge ${STATUS_COLORS[w.status]}`}>{w.status}</span>

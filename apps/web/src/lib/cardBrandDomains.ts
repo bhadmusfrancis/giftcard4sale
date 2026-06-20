@@ -57,7 +57,6 @@ export const CARD_BRAND_DOMAINS: Record<string, string> = {
   "fortnite-vbucks": "epicgames.com",
   gamestop: "gamestop.com",
   "gap-gift": "gap.com",
-  "gift-cards-miscellaneous-retailers": "giftcards.com",
   google: "google.com",
   "google-play-gift-card": "play.google.com",
   "grubhub-gift-card": "grubhub.com",

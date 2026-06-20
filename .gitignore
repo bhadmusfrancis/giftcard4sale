@@ -21,6 +21,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# build artifacts
+*.tsbuildinfo
+text.txt
+
 # prisma
 apps/api/prisma/*.db
 apps/api/prisma/migrations/dev.db*

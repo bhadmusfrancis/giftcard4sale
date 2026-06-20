@@ -2,8 +2,9 @@ import { ExchangeRates, RateReductions } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import { getNoOnesSyncLimits, sleep } from "./noones/syncLimits";
+import { noonesLinkedCardWhere } from "./noones/exclusions";
 
-const DEFAULT_NOONES_RATE_REFRESH_MINUTES = 15;
+const DEFAULT_NOONES_RATE_REFRESH_HOURS = 1;
 const DEFAULT_NOONES_TOP_OFFERS_FOR_RATE = 3;
 const DEFAULT_MIN_COUNTRY_OFFERS_FOR_DISPLAY = 5;
 
@@ -18,7 +19,7 @@ export async function getRateConfig(): Promise<{
   rates: ExchangeRates;
   reductions: RateReductions;
   referralPercent: number;
-  noonesRateRefreshMinutes: number;
+  noonesRateRefreshHours: number;
   noonesTopOffersForRate: number;
   minCountryOffersForDisplay: number;
 }> {
@@ -32,7 +33,7 @@ export async function getRateConfig(): Promise<{
         usdtReductionPercent: env.reductions.usdtReductionPercent,
         ghsReductionPercent: env.reductions.ghsReductionPercent,
         referralPercent: env.referralPercent,
-        noonesRateRefreshMinutes: DEFAULT_NOONES_RATE_REFRESH_MINUTES,
+        noonesRateRefreshHours: DEFAULT_NOONES_RATE_REFRESH_HOURS,
         noonesTopOffersForRate: DEFAULT_NOONES_TOP_OFFERS_FOR_RATE,
         minCountryOffersForDisplay: DEFAULT_MIN_COUNTRY_OFFERS_FOR_DISPLAY,
       },
@@ -49,20 +50,20 @@ export async function getRateConfig(): Promise<{
       ghsReductionPercent: cfg.ghsReductionPercent,
     },
     referralPercent: cfg.referralPercent,
-    noonesRateRefreshMinutes: cfg.noonesRateRefreshMinutes,
+    noonesRateRefreshHours: cfg.noonesRateRefreshHours,
     noonesTopOffersForRate: cfg.noonesTopOffersForRate,
     minCountryOffersForDisplay: cfg.minCountryOffersForDisplay,
   };
 }
 
 /** True when a stored rate row was updated within the configured refresh window. */
-export function isRateSyncFresh(updatedAt: Date, refreshMinutes: number): boolean {
-  return Date.now() - updatedAt.getTime() < refreshMinutes * 60_000;
+export function isRateSyncFresh(updatedAt: Date, refreshHours: number): boolean {
+  return Date.now() - updatedAt.getTime() < refreshHours * 3_600_000;
 }
 
 /** Ms until the next scheduled sync; 0 when refresh is overdue or no stored rates exist. */
-export async function getRateSyncDelayMs(refreshMinutes: number): Promise<number> {
-  const windowMs = refreshMinutes * 60_000;
+export async function getRateSyncDelayMs(refreshHours: number): Promise<number> {
+  const windowMs = refreshHours * 3_600_000;
 
   const latestRate = await prisma.rate.findFirst({
     where: { speed: "NOONES" },
@@ -86,14 +87,14 @@ export async function getRateSyncDelayMs(refreshMinutes: number): Promise<number
 export interface RateFreshnessMeta {
   lastUpdatedAt: string | null;
   nextRefreshAt: string | null;
-  refreshMinutes: number;
+  refreshHours: number;
   isStale: boolean;
 }
 
 /** True when a card's stored NoOnes rates or currency meta are missing or past the refresh window. */
 export async function isCardRateDataStale(
   cardTypeId: string,
-  refreshMinutes: number
+  refreshHours: number
 ): Promise<boolean> {
   const [existingNoones, currencyMetaRows] = await Promise.all([
     prisma.rate.findMany({
@@ -116,23 +117,23 @@ export async function isCardRateDataStale(
 
   const metaFresh =
     currencyMetaRows.length > 0 &&
-    currencyMetaRows.every((m) => isRateSyncFresh(m.syncedAt, refreshMinutes));
+    currencyMetaRows.every((m) => isRateSyncFresh(m.syncedAt, refreshHours));
   const cardFullyFresh =
     !hasOpenEnded &&
     metaFresh &&
-    activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshMinutes));
+    activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshHours));
 
   return !cardFullyFresh;
 }
 
 /** Cards linked to NoOnes that need a refresh (checked in small batches). */
 export async function listStaleCardTypeIds(
-  refreshMinutes: number
+  refreshHours: number
 ): Promise<{ id: string; name: string }[]> {
   const { staleCheckBatchSize, staleCheckPauseMs } = getNoOnesSyncLimits();
 
   const cards = await prisma.cardType.findMany({
-    where: { noonesPaymentMethod: { not: null } },
+    where: noonesLinkedCardWhere(),
     select: { id: true, name: true },
     orderBy: cardTypePopularityOrder,
   });
@@ -141,7 +142,7 @@ export async function listStaleCardTypeIds(
   for (let i = 0; i < cards.length; i += staleCheckBatchSize) {
     const batch = cards.slice(i, i + staleCheckBatchSize);
     for (const card of batch) {
-      if (await isCardRateDataStale(card.id, refreshMinutes)) stale.push(card);
+      if (await isCardRateDataStale(card.id, refreshHours)) stale.push(card);
     }
     if (i + staleCheckBatchSize < cards.length) await sleep(staleCheckPauseMs);
   }
@@ -151,7 +152,7 @@ export async function listStaleCardTypeIds(
 /** Build user-facing rate freshness from stored rate rows (no live API calls). */
 export function buildRateFreshnessMeta(
   rates: { updatedAt: Date; speed?: string | null }[],
-  refreshMinutes: number
+  refreshHours: number
 ): RateFreshnessMeta {
   const noonesRates = rates.filter((r) => r.speed === "NOONES");
   const source = noonesRates.length ? noonesRates : rates;
@@ -162,20 +163,20 @@ export function buildRateFreshnessMeta(
     if (ts > latest) latest = ts;
   }
 
-  if (!latest) {
+  if (!latest || !Number.isFinite(latest)) {
     return {
       lastUpdatedAt: null,
       nextRefreshAt: null,
-      refreshMinutes,
+      refreshHours,
       isStale: true,
     };
   }
 
-  const next = latest + refreshMinutes * 60_000;
+  const next = latest + refreshHours * 3_600_000;
   return {
     lastUpdatedAt: new Date(latest).toISOString(),
     nextRefreshAt: new Date(next).toISOString(),
-    refreshMinutes,
+    refreshHours,
     isStale: Date.now() >= next,
   };
 }

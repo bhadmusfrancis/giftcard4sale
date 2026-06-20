@@ -5,7 +5,7 @@ import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
 import { applyWalletChange, InsufficientFundsError } from "../services/wallet";
-import { notify } from "../services/notify";
+import { notify, notifyAdmins } from "../services/notify";
 
 export const withdrawalsRouter = Router();
 
@@ -14,11 +14,16 @@ const createSchema = z
     currency: z.enum(["USDT", "NGN", "GHS"]),
     amount: z.coerce.number().positive(),
     bankAccountId: z.string().optional(),
+    momoAccountId: z.string().optional(),
     destinationAddress: z.string().optional(),
   })
   .refine(
-    (d) => (d.currency === "NGN" ? !!d.bankAccountId : !!d.destinationAddress),
-    { message: "Naira requires a saved bank account; USDT/Cedi require a destination address" }
+    (d) => {
+      if (d.currency === "NGN") return !!d.bankAccountId;
+      if (d.currency === "GHS") return !!d.momoAccountId;
+      return !!d.destinationAddress;
+    },
+    { message: "Naira requires a saved bank account; Cedi requires saved MoMo details; USDT requires a wallet address" }
   );
 
 withdrawalsRouter.post(
@@ -35,6 +40,13 @@ withdrawalsRouter.post(
       }
     }
 
+    if (data.currency === "GHS" && data.momoAccountId) {
+      const account = await prisma.momoAccount.findUnique({ where: { id: data.momoAccountId } });
+      if (!account || account.userId !== req.userId) {
+        return res.status(400).json({ error: "MoMo account not found" });
+      }
+    }
+
     try {
       const withdrawal = await prisma.$transaction(async (tx) => {
         const w = await tx.withdrawal.create({
@@ -43,7 +55,8 @@ withdrawalsRouter.post(
             currency: data.currency,
             amount: new Prisma.Decimal(data.amount),
             bankAccountId: data.currency === "NGN" ? data.bankAccountId : null,
-            destinationAddress: data.currency !== "NGN" ? data.destinationAddress : null,
+            momoAccountId: data.currency === "GHS" ? data.momoAccountId : null,
+            destinationAddress: data.currency === "USDT" ? data.destinationAddress : null,
             status: "PENDING",
           },
         });
@@ -55,17 +68,11 @@ withdrawalsRouter.post(
         return w;
       });
 
-      const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-      await Promise.all(
-        admins.map((a) =>
-          notify({
-            userId: a.id,
-            title: "New withdrawal request",
-            body: `${data.amount} ${data.currency} requested.`,
-            link: `/admin/withdrawals`,
-          })
-        )
-      );
+      await notifyAdmins({
+        title: "New withdrawal request",
+        body: `${data.amount} ${data.currency} requested.`,
+        link: `/admin/withdrawals`,
+      });
       await notify({
         userId: req.userId!,
         title: "Withdrawal request received",
@@ -92,7 +99,7 @@ withdrawalsRouter.get(
     const withdrawals = await prisma.withdrawal.findMany({
       where: { userId: req.userId },
       orderBy: { createdAt: "desc" },
-      include: { bankAccount: true },
+      include: { bankAccount: true, momoAccount: true },
     });
     res.json({
       withdrawals: withdrawals.map((w) => ({
@@ -103,6 +110,9 @@ withdrawalsRouter.get(
         destinationAddress: w.destinationAddress,
         bankAccount: w.bankAccount
           ? { bankName: w.bankAccount.bankName, accountNumber: w.bankAccount.accountNumber }
+          : null,
+        momoAccount: w.momoAccount
+          ? { network: w.momoAccount.network, phoneNumber: w.momoAccount.phoneNumber, accountName: w.momoAccount.accountName }
           : null,
         adminNote: w.adminNote,
         createdAt: w.createdAt,

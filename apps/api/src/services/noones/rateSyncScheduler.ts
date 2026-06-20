@@ -21,7 +21,7 @@ async function planNextWake(): Promise<void> {
   let wakeMs = 60_000;
   try {
     const config = await getRateConfig();
-    const delayMs = await getRateSyncDelayMs(config.noonesRateRefreshMinutes);
+    const delayMs = await getRateSyncDelayMs(config.noonesRateRefreshHours);
     wakeMs = delayMs <= 0 ? 5_000 : Math.min(delayMs, 60_000);
   } catch (err) {
     console.warn("NoOnes rate sync scheduler: could not plan next wake:", (err as Error).message);
@@ -45,13 +45,7 @@ async function onSchedulerWake(): Promise<void> {
 
   try {
     const config = await getRateConfig();
-    const delayMs = await getRateSyncDelayMs(config.noonesRateRefreshMinutes);
-    if (delayMs > 0) {
-      await planNextWake();
-      return;
-    }
-
-    const staleCards = await listStaleCardTypeIds(config.noonesRateRefreshMinutes);
+    const staleCards = await listStaleCardTypeIds(config.noonesRateRefreshHours);
     if (!staleCards.length) {
       await planNextWake();
       return;

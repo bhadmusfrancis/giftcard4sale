@@ -37,6 +37,7 @@ enum TradeStatus {
   APPROVED
   REJECTED
   PAID
+  CANCELLED
 }
 
 enum WithdrawalStatus {
@@ -69,6 +70,7 @@ model User {
   verifyTokenExp    DateTime?
   resetToken        String?
   resetTokenExp     DateTime?
+  passwordChangedAt DateTime?
 
   // reputation
   goodScore         Int      @default(0)
@@ -90,6 +92,7 @@ model User {
   pushSubscriptions PushSubscription[]
 
   bankAccounts      BankAccount[]
+  momoAccounts      MomoAccount[]
   trades            Trade[]
   withdrawals       Withdrawal[]
   transactions      WalletTransaction[]
@@ -178,7 +181,7 @@ model RateConfig {
   usdtReductionPercent  Int      @default(30)
   ghsReductionPercent   Int      @default(30)
   referralPercent       Int      @default(1)
-  noonesRateRefreshMinutes Int   @default(15)
+  noonesRateRefreshHours   Int   @default(1)
   noonesTopOffersForRate   Int   @default(3)
   minCountryOffersForDisplay Int @default(5)
   updatedAt             DateTime @updatedAt
@@ -187,6 +190,7 @@ model RateConfig {
 
 model Trade {
   id              String         @id @default(cuid())
+  tradeNumber     String         @unique // Human-readable ID, e.g. GC4S-20260620-A1B2C3
   user            User           @relation(fields: [userId], references: [id])
   userId          String
   cardType        CardType       @relation(fields: [cardTypeId], references: [id])
@@ -283,6 +287,20 @@ model BankAccount {
   @@index([userId])
 }
 
+model MomoAccount {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+  network       String
+  phoneNumber   String
+  accountName   String
+  withdrawals   Withdrawal[]
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@map("MoMoAccount")
+}
+
 model Withdrawal {
   id             String           @id @default(cuid())
   user           User             @relation(fields: [userId], references: [id])
@@ -290,9 +308,11 @@ model Withdrawal {
   currency       PayoutCurrency
   amount         Decimal          @db.Decimal(20, 6)
 
-  // Destination: for NGN -> bank account; for USDT -> wallet address
+  // Destination: NGN -> bank account; GHS -> MoMo; USDT -> wallet address
   bankAccountId  String?
   bankAccount    BankAccount? @relation(fields: [bankAccountId], references: [id])
+  momoAccountId  String?
+  momoAccount    MomoAccount? @relation(fields: [momoAccountId], references: [id])
   destinationAddress String?
 
   status         WithdrawalStatus @default(PENDING)

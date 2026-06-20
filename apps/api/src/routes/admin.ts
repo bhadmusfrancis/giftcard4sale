@@ -4,13 +4,13 @@ import { Prisma } from "@prisma/client";
 import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
-import { requireAuth, requireAdmin, hashPassword, generateReferralCode } from "../lib/auth";
+import { requireAuth, requireAdmin, hashPassword, generateReferralCode, randomToken } from "../lib/auth";
 import { applyWalletChange } from "../services/wallet";
 import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
 import { payoutNgnToBank } from "../services/payoutProvider";
-import { notify } from "../services/notify";
-import { getRateConfig } from "../services/rateConfig";
+import { notify, notifyAdmins } from "../services/notify";
+import { getRateConfig, listStaleCardTypeIds } from "../services/rateConfig";
 import {
   executeNoOnesResell,
   isNoOnesConfigured,
@@ -31,6 +31,10 @@ import {
 import { publicUser } from "./auth";
 import { serializeTrade, serializeMessage } from "./trades";
 import { rejectTradeWithBadScore } from "../services/tradeRejection";
+import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
+import { generateTradeNumber } from "../services/tradeNumber";
+import { env } from "../env";
+import { sendTransactionalEmail } from "../services/email";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -110,6 +114,62 @@ adminRouter.patch(
   })
 );
 
+adminRouter.post(
+  "/users/:id/send-password-reset",
+  asyncHandler(async (req, res) => {
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const resetToken = randomToken();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken, resetTokenExp: new Date(Date.now() + 60 * 60 * 1000) },
+    });
+    const url = `${env.webUrl}/reset-password?token=${resetToken}`;
+    await sendTransactionalEmail(user.email, "Reset your password", {
+      title: "Reset your password",
+      paragraphs: [
+        "An administrator requested a password reset for your GiftCard4Sale account.",
+        "This link expires in 1 hour. If you did not expect this, contact support immediately.",
+      ],
+      ctaLabel: "Reset password",
+      ctaHref: url,
+      securityNote: "Never share this link with anyone.",
+    });
+    res.json({ ok: true });
+  })
+);
+
+adminRouter.post(
+  "/users/:id/reset-password",
+  asyncHandler(async (req, res) => {
+    const { password } = validate(z.object({ password: z.string().min(8) }), req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await hashPassword(password),
+        resetToken: null,
+        resetTokenExp: null,
+        passwordChangedAt: new Date(),
+      },
+    });
+    await sendTransactionalEmail(user.email, "Your password was changed", {
+      title: "Password changed",
+      paragraphs: [
+        "Your GiftCard4Sale password was updated by an administrator.",
+        "If you did not request this change, contact support immediately.",
+      ],
+      ctaLabel: "Sign in",
+      ctaHref: `${env.webUrl}/login`,
+      securityNote: "GiftCard4Sale will never ask for your password by email or chat.",
+    });
+    res.json({ ok: true });
+  })
+);
+
 // Mark a good (+green) or bad (+red) transaction score.
 adminRouter.post(
   "/users/:id/score",
@@ -153,6 +213,16 @@ adminRouter.post(
       });
     });
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (user) {
+      const sign = data.amount >= 0 ? "+" : "";
+      await notify({
+        userId: user.id,
+        title: "Wallet balance adjusted",
+        body: `An administrator adjusted your ${data.currency} balance by ${sign}${data.amount}.`,
+        link: "/dashboard/wallet",
+        emailDetail: data.description || undefined,
+      });
+    }
     res.json({ user: publicUser(user) });
   })
 );
@@ -220,7 +290,7 @@ adminRouter.patch(
   asyncHandler(async (req, res) => {
     const data = validate(
       z.object({
-        status: z.enum(["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID"]).optional(),
+        status: z.enum(["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID", "CANCELLED"]).optional(),
         finalPayout: z.number().optional(),
         rejectionReason: z.string().optional(),
       }),
@@ -233,13 +303,17 @@ adminRouter.patch(
     const patch: Prisma.TradeUpdateInput = {};
     if (data.finalPayout != null) patch.finalPayout = new Prisma.Decimal(data.finalPayout);
 
-    if (data.status === "REJECTED" && trade.status !== "REJECTED") {
+    if (data.status === "CANCELLED" && trade.status !== "CANCELLED") {
+      const check = canCancelTrade(trade, true);
+      if (!check.ok) return res.status(400).json({ error: check.error });
+      await cancelTrade(trade.id, { byAdmin: true, reason: data.rejectionReason });
+    } else if (data.status === "REJECTED" && trade.status !== "REJECTED") {
       await rejectTradeWithBadScore(trade.id, {
         rejectionReason: data.rejectionReason ?? trade.rejectionReason ?? undefined,
       });
     } else {
       if (data.rejectionReason != null) patch.rejectionReason = data.rejectionReason;
-      if (data.status && data.status !== "PAID") patch.status = data.status;
+      if (data.status && data.status !== "PAID" && data.status !== "CANCELLED") patch.status = data.status;
     }
 
     if (data.status === "PAID") {
@@ -254,6 +328,15 @@ adminRouter.patch(
         title: "Trade rejected",
         body: data.rejectionReason || "Your trade was rejected. Please contact support for details.",
         link: `/dashboard/trades/${trade.id}`,
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+      });
+    } else if (data.status === "CANCELLED" && trade.status !== "CANCELLED") {
+      await notify({
+        userId: trade.userId,
+        title: "Trade cancelled",
+        body: data.rejectionReason || "Your trade was cancelled.",
+        link: `/dashboard/trades/${trade.id}`,
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
       });
     } else if (data.status === "INFO_REQUESTED") {
       await notify({
@@ -261,14 +344,17 @@ adminRouter.patch(
         title: "More info needed for your trade",
         body: "An admin needs more information. Please open the trade chat to respond.",
         link: `/dashboard/trades/${trade.id}`,
+        emailSubject: "Action required on your trade",
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
       });
-    } else if (data.status) {
+    } else if (data.status && data.status !== "PROCESSING" && data.status !== "PENDING") {
       await notify({
         userId: trade.userId,
-        title: `Trade ${data.status.toLowerCase()}`,
-        body: `Your trade status is now ${data.status}.`,
+        title: `Trade ${data.status.toLowerCase().replace("_", " ")}`,
+        body: `Your trade status is now ${data.status.replace("_", " ")}.`,
         link: `/dashboard/trades/${trade.id}`,
-        email: false,
+        email: data.status === "APPROVED",
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
       });
     }
 
@@ -301,8 +387,10 @@ adminRouter.post(
       req.body
     );
     const config = await getRateConfig();
+    const tradeNumber = await generateTradeNumber();
     const trade = await prisma.trade.create({
       data: {
+        tradeNumber,
         userId: data.userId,
         cardTypeId: data.cardTypeId,
         country: data.country,
@@ -333,7 +421,7 @@ adminRouter.get(
       where: status ? { status: status as any } : undefined,
       orderBy: { createdAt: "desc" },
       take: 200,
-      include: { user: true, bankAccount: true },
+      include: { user: true, bankAccount: true, momoAccount: true },
     });
     res.json({
       withdrawals: withdrawals.map((w) => ({
@@ -343,6 +431,7 @@ adminRouter.get(
         status: w.status,
         destinationAddress: w.destinationAddress,
         bankAccount: w.bankAccount,
+        momoAccount: w.momoAccount,
         adminNote: w.adminNote,
         createdAt: w.createdAt,
         user: { id: w.user.id, displayName: w.user.displayName, email: w.user.email },
@@ -630,7 +719,7 @@ adminRouter.put(
         usdtReductionPercent: z.number().int().min(0).max(100),
         ghsReductionPercent: z.number().int().min(0).max(100),
         referralPercent: z.number().int().min(0).max(100),
-        noonesRateRefreshMinutes: z.number().int().min(1).max(1440),
+        noonesRateRefreshHours: z.number().int().min(1).max(168),
         noonesTopOffersForRate: z.number().int().min(1).max(50),
         minCountryOffersForDisplay: z.number().int().min(1).max(100),
       }),
@@ -644,7 +733,7 @@ adminRouter.put(
         usdtReductionPercent: data.usdtReductionPercent,
         ghsReductionPercent: data.ghsReductionPercent,
         referralPercent: data.referralPercent,
-        noonesRateRefreshMinutes: data.noonesRateRefreshMinutes,
+        noonesRateRefreshHours: data.noonesRateRefreshHours,
         noonesTopOffersForRate: data.noonesTopOffersForRate,
         minCountryOffersForDisplay: data.minCountryOffersForDisplay,
       },
@@ -774,9 +863,32 @@ adminRouter.post(
     const force = Boolean(req.body?.force);
     tryStartNoOnesSyncRun({ scope: "full", force, trigger: "admin" });
 
-    void syncRatesFromNoOnes({ force })
-      .then((summary) => completeNoOnesSyncRun(summary))
-      .catch((err) => failNoOnesSyncRun((err as Error).message));
+    void (async () => {
+      try {
+        let syncOptions: { force: boolean; cardTypeIds?: string[] } = { force };
+        if (!force) {
+          const config = await getRateConfig();
+          const staleCards = await listStaleCardTypeIds(config.noonesRateRefreshHours);
+          if (!staleCards.length) {
+            completeNoOnesSyncRun({
+              created: 0,
+              updated: 0,
+              skipped: 0,
+              drafted: 0,
+              published: 0,
+              cardTypes: 0,
+              errors: [],
+            });
+            return;
+          }
+          syncOptions = { force: false, cardTypeIds: staleCards.map((c) => c.id) };
+        }
+        const summary = await syncRatesFromNoOnes(syncOptions);
+        completeNoOnesSyncRun(summary);
+      } catch (err) {
+        failNoOnesSyncRun((err as Error).message);
+      }
+    })();
 
     res.status(202).json({
       started: true,

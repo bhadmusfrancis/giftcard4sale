@@ -1,5 +1,6 @@
 import { prisma } from "../../prisma";
 import { getRateConfig, isCardRateDataStale } from "../rateConfig";
+import { noonesLinkedCardWhere } from "./exclusions";
 import type { RateSyncSummary } from "./rateSync";
 
 export type NoOnesSyncPhase = "idle" | "discovering" | "syncing" | "completed" | "failed";
@@ -31,7 +32,7 @@ export interface NoOnesSyncDbStats {
   activeNoonesRates: number;
   latestRateUpdate: string | null;
   staleCards: number;
-  refreshMinutes: number;
+  refreshHours: number;
 }
 
 export interface NoOnesSyncStatusResponse {
@@ -233,10 +234,10 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
   dbStatsInFlight = (async () => {
     try {
       const config = await getRateConfig();
-      const refreshMinutes = config.noonesRateRefreshMinutes;
+      const refreshHours = config.noonesRateRefreshHours;
 
       const noonesCards = await prisma.cardType.count({
-        where: { noonesPaymentMethod: { not: null } },
+        where: noonesLinkedCardWhere(),
       });
       const noonesRates = await prisma.rate.count({ where: { speed: "NOONES" } });
       const activeNoones = await prisma.rate.count({
@@ -251,11 +252,11 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
       let staleCards = 0;
       if (!isNoOnesSyncActive()) {
         const linkedCards = await prisma.cardType.findMany({
-          where: { noonesPaymentMethod: { not: null } },
+          where: noonesLinkedCardWhere(),
           select: { id: true },
         });
         for (const c of linkedCards) {
-          if (await isCardRateDataStale(c.id, refreshMinutes)) staleCards++;
+          if (await isCardRateDataStale(c.id, refreshHours)) staleCards++;
         }
       }
 
@@ -265,7 +266,7 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
         activeNoonesRates: activeNoones,
         latestRateUpdate: latestRate?.updatedAt.toISOString() ?? null,
         staleCards,
-        refreshMinutes,
+        refreshHours,
       };
 
       cachedDbStats = stats;
@@ -293,7 +294,7 @@ export async function getNoOnesSyncStatusResponse(
             activeNoonesRates: 0,
             latestRateUpdate: null,
             staleCards: 0,
-            refreshMinutes: 15,
+            refreshHours: 1,
           }
         : await getNoOnesSyncDbStats({ force: options?.skipDb ? false : undefined });
 

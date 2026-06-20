@@ -42,7 +42,7 @@ interface SyncStatus {
     activeNoonesRates: number;
     latestRateUpdate: string | null;
     staleCards: number;
-    refreshMinutes: number;
+    refreshHours: number;
   };
 }
 
@@ -175,7 +175,7 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
         <Stat
           label="Stale cards"
           value={active.running ? "…" : database.staleCards}
-          hint={`>${database.refreshMinutes}m old`}
+          hint={`>${database.refreshHours}h old`}
         />
       </div>
 

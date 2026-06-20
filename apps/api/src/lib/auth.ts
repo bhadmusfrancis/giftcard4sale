@@ -8,6 +8,12 @@ import { prisma } from "../prisma";
 export interface JwtPayload {
   sub: string;
   role: "USER" | "ADMIN";
+  /** Unix seconds; tokens issued before the latest password change are rejected. */
+  pwdAt?: number;
+}
+
+export function passwordTokenVersion(user: { passwordChangedAt?: Date | null }): number {
+  return user.passwordChangedAt ? Math.floor(user.passwordChangedAt.getTime() / 1000) : 0;
 }
 
 export async function hashPassword(pw: string): Promise<string> {
@@ -18,7 +24,12 @@ export async function verifyPassword(pw: string, hash: string): Promise<boolean>
   return bcrypt.compare(pw, hash);
 }
 
-export function signToken(payload: JwtPayload): string {
+export function signToken(user: { id: string; role: "USER" | "ADMIN"; passwordChangedAt?: Date | null }): string {
+  const payload: JwtPayload = {
+    sub: user.id,
+    role: user.role,
+    pwdAt: passwordTokenVersion(user),
+  };
   return jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn } as jwt.SignOptions);
 }
 
@@ -45,6 +56,13 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     const decoded = jwt.verify(token, env.jwtSecret) as JwtPayload;
     const user = await prisma.user.findUnique({ where: { id: decoded.sub } });
     if (!user) return res.status(401).json({ error: "User not found" });
+
+    const currentPwdAt = passwordTokenVersion(user);
+    const tokenPwdAt = decoded.pwdAt ?? 0;
+    if (tokenPwdAt < currentPwdAt) {
+      return res.status(401).json({ error: "Session expired — please sign in again" });
+    }
+
     req.userId = user.id;
     req.userRole = user.role;
     next();

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 
-const STATUSES = ["", "PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID"];
+const STATUSES = ["", "PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID", "CANCELLED"];
 
 function TradesInner() {
   const params = useSearchParams();
@@ -43,7 +43,7 @@ function TradesInner() {
             <div>
               <div className="font-semibold">{t.cardType?.name} · {t.country} · {t.medium}</div>
               <div className="text-sm text-slate-500">
-                {t.user?.displayName || t.user?.email} · {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)} · {date(t.createdAt)}
+                <span className="font-mono">{t.tradeNumber}</span> · {t.user?.displayName || t.user?.email} · {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)} · {date(t.createdAt)}
               </div>
             </div>
             <span className={`badge ${STATUS_COLORS[t.status]}`}>{t.status}</span>

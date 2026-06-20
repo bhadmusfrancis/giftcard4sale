@@ -299,7 +299,8 @@ export type TradeStatus =
   | "INFO_REQUESTED"
   | "APPROVED"
   | "REJECTED"
-  | "PAID";
+  | "PAID"
+  | "CANCELLED";
 
 export type WithdrawalStatus =
   | "PENDING"

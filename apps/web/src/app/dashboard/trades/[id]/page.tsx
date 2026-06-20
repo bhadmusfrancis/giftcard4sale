@@ -12,29 +12,60 @@ export default function TradeDetailPage() {
   const { user } = useAuth();
   const [trade, setTrade] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     api(`/trades/${id}`).then((d) => setTrade(d.trade)).finally(() => setLoading(false));
   }, [id]);
 
+  async function cancel() {
+    if (!trade || !confirm("Cancel this trade? This cannot be undone.")) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const d = await api(`/trades/${trade.id}/cancel`, { method: "POST", body: {} });
+      setTrade(d.trade);
+    } catch (err) {
+      setCancelError((err as Error).message);
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (loading) return <p className="text-slate-500">Loading…</p>;
   if (!trade) return <p className="text-slate-500">Trade not found.</p>;
 
+  const cancelCheck = trade.canCancel ? { ok: true as const } : { ok: false as const, error: "This trade cannot be cancelled" };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{trade.cardType?.name} trade</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">{trade.cardType?.name} trade</h1>
+          <p className="mt-1 font-mono text-sm text-slate-500">{trade.tradeNumber}</p>
+        </div>
         <span className={`badge ${STATUS_COLORS[trade.status]}`}>{trade.status}</span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card space-y-3 p-6">
+          <Row label="Trade ID" value={trade.tradeNumber} />
           <Row label="Card" value={`${trade.cardType?.name} · ${trade.country} · ${trade.medium}`} />
           <Row label="Amount" value={`${trade.cardAmount} ${trade.currency}`} />
           <Row label="Payout" value={money(trade.finalPayout ?? trade.quotedPayout, trade.payoutCurrency)} />
           <Row label="Receipt" value={trade.receiptType} />
           <Row label="Submitted" value={date(trade.createdAt)} />
-          {trade.rejectionReason && <Row label="Rejection reason" value={trade.rejectionReason} />}
+          {trade.rejectionReason && <Row label="Reason" value={trade.rejectionReason} />}
+
+          {cancelCheck.ok && (
+            <div className="border-t border-slate-100 pt-4">
+              <button type="button" onClick={cancel} className="btn-ghost text-red-700" disabled={cancelling}>
+                {cancelling ? "Cancelling…" : "Cancel trade"}
+              </button>
+              {cancelError && <p className="mt-2 text-sm text-red-600">{cancelError}</p>}
+            </div>
+          )}
 
           {trade.ecodes && (
             <div>

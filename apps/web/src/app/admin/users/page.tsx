@@ -47,6 +47,23 @@ export default function AdminUsersPage() {
     load();
   }
 
+  async function sendPasswordReset(id: string, email: string) {
+    if (!confirm(`Send a password reset email to ${email}?`)) return;
+    await api(`/admin/users/${id}/send-password-reset`, { method: "POST", body: {} });
+    alert("Password reset email sent.");
+  }
+
+  async function resetPassword(id: string, email: string) {
+    const password = prompt(`Set a new password for ${email} (min 8 characters):`);
+    if (!password) return;
+    if (password.length < 8) {
+      alert("Password must be at least 8 characters.");
+      return;
+    }
+    await api(`/admin/users/${id}/reset-password`, { method: "POST", body: { password } });
+    alert("Password updated.");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -111,6 +128,8 @@ export default function AdminUsersPage() {
                     <button onClick={() => score(u.id, "good")} className="rounded bg-emerald-100 px-2 py-1 text-emerald-700">+Good</button>
                     <button onClick={() => score(u.id, "bad")} className="rounded bg-red-100 px-2 py-1 text-red-700">+Bad</button>
                     <button onClick={() => adjust(u.id)} className="rounded bg-slate-100 px-2 py-1">Adjust</button>
+                    <button onClick={() => sendPasswordReset(u.id, u.email)} className="rounded bg-blue-100 px-2 py-1 text-blue-800">Reset email</button>
+                    <button onClick={() => resetPassword(u.id, u.email)} className="rounded bg-violet-100 px-2 py-1 text-violet-800">Set password</button>
                   </div>
                 </td>
               </tr>

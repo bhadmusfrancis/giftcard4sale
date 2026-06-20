@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 import { TradeChat } from "@/components/TradeChat";
 
-const STATUSES = ["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID"];
+const STATUSES = ["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID", "CANCELLED"];
 
 export default function AdminTradeDetail() {
   const { id } = useParams<{ id: string }>();
@@ -42,14 +42,18 @@ export default function AdminTradeDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Trade · {trade.cardType?.name}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold">Trade · {trade.cardType?.name}</h2>
+          <p className="mt-1 font-mono text-sm text-slate-500">{trade.tradeNumber}</p>
+        </div>
         <span className={`badge ${STATUS_COLORS[trade.status]}`}>{trade.status}</span>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
           <div className="card space-y-2 p-6 text-sm">
+            <Row label="Trade ID" value={trade.tradeNumber} />
             <Row label="Seller" value={`${trade.user?.displayName || ""} (${trade.user?.email})`} />
             <Row label="Seller scores" value={`+${trade.user?.goodScore} good / ${trade.user?.badScore} bad`} />
             <Row label="Card" value={`${trade.cardType?.name} · ${trade.country} · ${trade.medium}`} />
@@ -81,13 +85,13 @@ export default function AdminTradeDetail() {
               <input className="input" value={finalPayout} onChange={(e) => setFinalPayout(e.target.value)} />
             </div>
             <div>
-              <label className="label">Rejection reason (if rejecting)</label>
+              <label className="label">Reason (reject / cancel)</label>
               <input className="input" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
             </div>
             <div className="flex flex-wrap gap-2">
               {STATUSES.map((s) => (
                 <button key={s} onClick={() => update(s)} className="btn-ghost text-xs">
-                  {s === "PAID" ? "Approve & Pay" : `Set ${s}`}
+                  {s === "PAID" ? "Approve & Pay" : s === "CANCELLED" ? "Cancel trade" : `Set ${s}`}
                 </button>
               ))}
             </div>

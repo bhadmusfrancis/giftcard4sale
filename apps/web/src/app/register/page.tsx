@@ -14,6 +14,7 @@ function RegisterInner() {
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +28,13 @@ function RegisterInner() {
     setBusy(true);
     setError(null);
     try {
-      await register({ email, password, displayName: displayName || undefined, referralCode: referralCode || undefined });
+      await register({
+        email,
+        password,
+        displayName: displayName || undefined,
+        referralCode: referralCode || undefined,
+        acceptTerms: true,
+      });
       router.push("/dashboard?welcome=1");
     } catch (err: any) {
       setError(err.message);
@@ -58,8 +65,28 @@ function RegisterInner() {
             <label className="label">Referral code (optional)</label>
             <input className="input" value={referralCode} onChange={(e) => setReferralCode(e.target.value)} />
           </div>
+          <label className="flex items-start gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={acceptTerms}
+              onChange={(e) => setAcceptTerms(e.target.checked)}
+              required
+            />
+            <span>
+              I agree to the{" "}
+              <Link href="/terms" className="text-brand-700 hover:underline" target="_blank">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="text-brand-700 hover:underline" target="_blank">
+                Privacy Policy
+              </Link>
+              .
+            </span>
+          </label>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <button className="btn-primary w-full" disabled={busy}>{busy ? "Creating…" : "Create account"}</button>
+          <button className="btn-primary w-full" disabled={busy || !acceptTerms}>{busy ? "Creating…" : "Create account"}</button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-500">
           Already have an account? <Link href="/login" className="text-brand-700 hover:underline">Log in</Link>

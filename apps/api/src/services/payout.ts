@@ -14,6 +14,7 @@ export async function payTrade(tradeId: string): Promise<void> {
   const result = await prisma.$transaction(async (tx) => {
     const trade = await tx.trade.findUnique({ where: { id: tradeId } });
     if (!trade) throw new Error("Trade not found");
+    if (trade.status === "CANCELLED" || trade.status === "REJECTED") return { alreadyPaid: true, trade };
 
     const existing = await tx.walletTransaction.findUnique({ where: { tradeId } });
     if (existing) return { alreadyPaid: true, trade };
@@ -56,6 +57,7 @@ export async function payTrade(tradeId: string): Promise<void> {
       title: "Trade paid",
       body: `Your wallet has been credited ${Number(t.finalPayout ?? t.quotedPayout)} ${t.payoutCurrency}.`,
       link: `/dashboard/wallet`,
+      emailDetail: t.tradeNumber ? `Trade ID: ${t.tradeNumber}` : undefined,
     });
     if ((result as any).referredById) {
       await notify({
@@ -63,7 +65,6 @@ export async function payTrade(tradeId: string): Promise<void> {
         title: "Referral bonus earned",
         body: `You earned a referral bonus in ${t.payoutCurrency} from your referral's successful trade.`,
         link: `/dashboard/referrals`,
-        email: false,
       });
     }
   }

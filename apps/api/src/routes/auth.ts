@@ -12,7 +12,7 @@ import {
   requireAuth,
   AuthedRequest,
 } from "../lib/auth";
-import { sendEmail, layout, button } from "../services/email";
+import { sendTransactionalEmail } from "../services/email";
 import { authLimiter } from "../lib/rateLimit";
 
 export const authRouter = Router();
@@ -22,6 +22,9 @@ const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   displayName: z.string().min(2).max(40).optional(),
   referralCode: z.string().optional(),
+  acceptTerms: z.literal(true, {
+    errorMap: () => ({ message: "You must accept the Terms of Service and Privacy Policy" }),
+  }),
 });
 
 async function uniqueReferralCode(): Promise<string> {
@@ -31,6 +34,34 @@ async function uniqueReferralCode(): Promise<string> {
     if (!existing) return code;
   }
   return generateReferralCode() + Date.now().toString(36).toUpperCase();
+}
+
+async function sendVerifyEmail(email: string, verifyUrl: string): Promise<void> {
+  await sendTransactionalEmail(email, "Verify your email address", {
+    title: "Confirm your email",
+    preheader: "Verify your email to start selling gift cards on GiftCard4Sale.",
+    paragraphs: [
+      "Welcome to GiftCard4Sale! Please verify your email address to submit trades and withdraw payouts.",
+      "This verification link expires in 24 hours.",
+    ],
+    ctaLabel: "Verify email address",
+    ctaHref: verifyUrl,
+    securityNote: "If you did not create this account, you can ignore this email.",
+  });
+}
+
+async function sendPasswordChangedEmail(email: string): Promise<void> {
+  await sendTransactionalEmail(email, "Your password was changed", {
+    title: "Password changed",
+    preheader: "Your GiftCard4Sale password was updated.",
+    paragraphs: [
+      "Your account password was changed successfully.",
+      "If you did not make this change, reset your password immediately and contact support.",
+    ],
+    ctaLabel: "Open GiftCard4Sale",
+    ctaHref: `${env.webUrl}/login`,
+    securityNote: "GiftCard4Sale will never ask for your password by email or chat.",
+  });
 }
 
 authRouter.post(
@@ -65,18 +96,9 @@ authRouter.post(
     });
 
     const verifyUrl = `${env.webUrl}/verify-email?token=${verifyToken}`;
-    await sendEmail(
-      email,
-      "Verify your email - GiftCard4Sale",
-      layout(
-        "Confirm your email",
-        `<p>Welcome to GiftCard4Sale! Please verify your email address to start selling gift cards.</p>
-         <p>${button("Verify Email", verifyUrl)}</p>
-         <p style="color:#64748b;font-size:13px">This link expires in 24 hours.</p>`
-      )
-    );
+    await sendVerifyEmail(email, verifyUrl);
 
-    const token = signToken({ sub: user.id, role: user.role });
+    const token = signToken(user);
     res.status(201).json({ token, user: publicUser(user), needsVerification: true });
   })
 );
@@ -93,6 +115,19 @@ authRouter.post(
       where: { id: user.id },
       data: { emailVerified: true, verifyToken: null, verifyTokenExp: null },
     });
+
+    await sendTransactionalEmail(user.email, "Welcome to GiftCard4Sale", {
+      title: "You're all set",
+      preheader: "Your email is verified. You can now sell gift cards on GiftCard4Sale.",
+      paragraphs: [
+        "Thanks for verifying your email address.",
+        "You can browse rates, submit trades, and withdraw to USDT, Naira, or Cedi from your dashboard.",
+        "Only submit gift cards you legally own, with accurate photos and denominations.",
+      ],
+      ctaLabel: "Go to dashboard",
+      ctaHref: `${env.webUrl}/dashboard`,
+    });
+
     res.json({ ok: true });
   })
 );
@@ -111,11 +146,7 @@ authRouter.post(
       data: { verifyToken, verifyTokenExp: new Date(Date.now() + 24 * 60 * 60 * 1000) },
     });
     const verifyUrl = `${env.webUrl}/verify-email?token=${verifyToken}`;
-    await sendEmail(
-      user.email,
-      "Verify your email - GiftCard4Sale",
-      layout("Confirm your email", `<p>${button("Verify Email", verifyUrl)}</p>`)
-    );
+    await sendVerifyEmail(user.email, verifyUrl);
     res.json({ ok: true });
   })
 );
@@ -132,7 +163,7 @@ authRouter.post(
     if (!user || !(await verifyPassword(data.password, user.passwordHash))) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
-    const token = signToken({ sub: user.id, role: user.role });
+    const token = signToken(user);
     res.json({ token, user: publicUser(user) });
   })
 );
@@ -150,13 +181,18 @@ authRouter.post(
         data: { resetToken, resetTokenExp: new Date(Date.now() + 60 * 60 * 1000) },
       });
       const url = `${env.webUrl}/reset-password?token=${resetToken}`;
-      await sendEmail(
-        user.email,
-        "Reset your password",
-        layout("Reset password", `<p>${button("Reset Password", url)}</p><p>Expires in 1 hour.</p>`)
-      );
+      await sendTransactionalEmail(user.email, "Reset your password", {
+        title: "Reset your password",
+        preheader: "Use this link to choose a new GiftCard4Sale password.",
+        paragraphs: [
+          "We received a request to reset your password.",
+          "This link expires in 1 hour. If you did not request a reset, you can safely ignore this email.",
+        ],
+        ctaLabel: "Reset password",
+        ctaHref: url,
+        securityNote: "Never share this link with anyone.",
+      });
     }
-    // Always 200 to avoid leaking which emails exist.
     res.json({ ok: true });
   })
 );
@@ -179,8 +215,39 @@ authRouter.post(
         passwordHash: await hashPassword(password),
         resetToken: null,
         resetTokenExp: null,
+        passwordChangedAt: new Date(),
       },
     });
+    await sendPasswordChangedEmail(user.email);
+    res.json({ ok: true });
+  })
+);
+
+authRouter.post(
+  "/change-password",
+  requireAuth,
+  authLimiter,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { currentPassword, newPassword } = validate(
+      z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8, "Password must be at least 8 characters"),
+      }),
+      req.body
+    );
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await hashPassword(newPassword),
+        passwordChangedAt: new Date(),
+      },
+    });
+    await sendPasswordChangedEmail(user.email);
     res.json({ ok: true });
   })
 );

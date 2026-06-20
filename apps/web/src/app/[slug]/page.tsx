@@ -24,7 +24,7 @@ interface CardResp {
   rateMeta?: {
     lastUpdatedAt: string | null;
     nextRefreshAt: string | null;
-    refreshMinutes: number;
+    refreshHours: number;
     isStale: boolean;
   };
   currencyMeta?: {

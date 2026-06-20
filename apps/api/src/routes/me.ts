@@ -100,3 +100,46 @@ meRouter.delete(
     res.json({ ok: true });
   })
 );
+
+// ---- MoMo accounts (for Cedi withdrawals) ----
+const MOMO_NETWORKS = ["MTN", "Vodafone", "AirtelTigo"] as const;
+
+meRouter.get(
+  "/momo-accounts",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const accounts = await prisma.momoAccount.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ accounts });
+  })
+);
+
+meRouter.post(
+  "/momo-accounts",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = validate(
+      z.object({
+        network: z.enum(MOMO_NETWORKS),
+        phoneNumber: z.string().min(9).max(15),
+        accountName: z.string().min(2),
+      }),
+      req.body
+    );
+    const account = await prisma.momoAccount.create({ data: { ...data, userId: req.userId! } });
+    res.status(201).json({ account });
+  })
+);
+
+meRouter.delete(
+  "/momo-accounts/:id",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const account = await prisma.momoAccount.findUnique({ where: { id: req.params.id } });
+    if (!account || account.userId !== req.userId) return res.status(404).json({ error: "Not found" });
+    await prisma.momoAccount.delete({ where: { id: account.id } });
+    res.json({ ok: true });
+  })
+);

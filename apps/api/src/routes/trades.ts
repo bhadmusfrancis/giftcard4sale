@@ -6,10 +6,13 @@ import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, AuthedRequest } from "../lib/auth";
 import { upload, chatUpload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
-import { notify } from "../services/notify";
+import { notify, notifyAdmins } from "../services/notify";
 import { executeNoOnesResell, isNoOnesConfigured, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
 import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
+import { generateTradeNumber } from "../services/tradeNumber";
+import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
+import { canCancelTrade as canCancelTradeCheck } from "@gc4s/shared";
 
 export const tradesRouter = Router();
 
@@ -92,13 +95,13 @@ tradesRouter.post(
       medium: data.medium,
     });
 
-    if (data.medium !== "ECODE" && requiresReceipt && data.receiptType === "NONE") {
+    if (requiresReceipt && data.receiptType === "NONE") {
       return res.status(400).json({
         error: "This card requires a purchase receipt. Go back and confirm you have a receipt, or choose a different offer.",
       });
     }
 
-    if (data.medium !== "ECODE" && data.receiptType !== "NONE" && receiptFiles.length === 0) {
+    if (data.receiptType !== "NONE" && receiptFiles.length === 0) {
       return res.status(400).json({ error: "Please upload a photo of your purchase receipt" });
     }
 
@@ -120,8 +123,10 @@ tradesRouter.post(
       reductions: config.reductions,
     });
 
+    const tradeNumber = await generateTradeNumber();
     const trade = await prisma.trade.create({
       data: {
+        tradeNumber,
         userId: req.userId!,
         cardTypeId: rate.cardTypeId,
         country: rate.country,
@@ -155,26 +160,21 @@ tradesRouter.post(
     });
 
     // Notify admins of a new pending trade.
-    const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-    await Promise.all(
-      admins.map((a) =>
-        notify({
-          userId: a.id,
-          title: "New trade submitted",
-          body: `${rate.cardType.name} ${rate.country} ${data.cardAmount} ${rate.currency} -> ${quote.payoutAmount} ${data.payoutCurrency}`,
-          link: `/admin/trades/${trade.id}`,
-        })
-      )
-    );
+    await notifyAdmins({
+      title: "New trade submitted",
+      body: `${trade.tradeNumber}: ${rate.cardType.name} ${rate.country} ${data.cardAmount} ${rate.currency} → ${quote.payoutAmount} ${data.payoutCurrency}`,
+      link: `/admin/trades/${trade.id}`,
+      emailDetail: `Trade ID: ${trade.tradeNumber}`,
+    });
 
-    // Confirm to the user.
     await notify({
       userId: req.userId!,
-      title: isNoOnesConfigured() ? "Trade received — processing" : "Trade received - pending review",
+      title: isNoOnesConfigured() ? "Trade received — processing" : "Trade received — pending review",
       body: isNoOnesConfigured()
-        ? `Your ${rate.cardType.name} trade is being processed. We'll credit your wallet once verification completes.`
-        : `Your ${rate.cardType.name} trade is pending. We'll review your card shortly. Note: uploading used/invalid cards harms your trust score.`,
+        ? `Your ${rate.cardType.name} trade (${trade.tradeNumber}) is being processed. We'll credit your wallet once verification completes.`
+        : `Your ${rate.cardType.name} trade (${trade.tradeNumber}) is pending review. Only submit cards you legally own with accurate details.`,
       link: `/dashboard/trades/${trade.id}`,
+      emailDetail: `Trade ID: ${trade.tradeNumber}`,
     });
 
     // Auto-resell on NoOnes in the background (hidden from user).
@@ -240,8 +240,8 @@ tradesRouter.post(
     }
 
     const isOwner = trade.userId === req.userId;
-    if (isOwner && trade.status === "REJECTED") {
-      return res.status(403).json({ error: "This trade was rejected. Chat is closed." });
+    if (isOwner && (trade.status === "REJECTED" || trade.status === "CANCELLED")) {
+      return res.status(403).json({ error: "This trade is closed. Chat is no longer available." });
     }
 
     const message = await prisma.tradeMessage.create({
@@ -270,29 +270,62 @@ tradesRouter.post(
         title: "New message on your trade",
         body: notifyBody,
         link: `/dashboard/trades/${trade.id}`,
+        emailSubject: "New reply on your trade",
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
       });
     } else {
-      const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-      await Promise.all(
-        admins.map((a) =>
-          notify({
-            userId: a.id,
-            title: "Trade chat reply",
-            body: notifyBody,
-            link: `/admin/trades/${trade.id}`,
-            email: false,
-          })
-        )
-      );
+      await notifyAdmins({
+        title: "Trade chat reply",
+        body: notifyBody,
+        link: `/admin/trades/${trade.id}`,
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+      });
     }
 
     res.status(201).json({ message: serializeMessage(message) });
   })
 );
 
+tradesRouter.post(
+  "/:id/cancel",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const trade = await prisma.trade.findUnique({ where: { id: req.params.id } });
+    if (!trade) return res.status(404).json({ error: "Trade not found" });
+    if (trade.userId !== req.userId) return res.status(403).json({ error: "Forbidden" });
+
+    const check = canCancelTrade(trade, false);
+    if (!check.ok) return res.status(400).json({ error: check.error });
+
+    const { reason } = validate(z.object({ reason: z.string().max(500).optional() }), req.body ?? {});
+    await cancelTrade(trade.id, { reason });
+
+    await notify({
+      userId: trade.userId,
+      title: "Trade cancelled",
+      body: `Your trade ${trade.tradeNumber} has been cancelled.`,
+      link: `/dashboard/trades/${trade.id}`,
+      emailDetail: reason ? `Reason: ${reason}` : undefined,
+    });
+
+    await notifyAdmins({
+      title: "Trade cancelled by user",
+      body: `${trade.tradeNumber} was cancelled by the seller.`,
+      link: `/admin/trades/${trade.id}`,
+    });
+
+    const updated = await prisma.trade.findUnique({
+      where: { id: trade.id },
+      include: { cardType: true, attachments: true },
+    });
+    res.json({ trade: serializeTrade(updated) });
+  })
+);
+
 export function serializeTrade(t: any) {
   return {
     id: t.id,
+    tradeNumber: t.tradeNumber,
     cardType: t.cardType ? { id: t.cardType.id, name: t.cardType.name, slug: t.cardType.slug } : undefined,
     country: t.country,
     otherCountryName: t.otherCountryName,
@@ -307,6 +340,10 @@ export function serializeTrade(t: any) {
     quotedPayout: Number(t.quotedPayout),
     finalPayout: t.finalPayout != null ? Number(t.finalPayout) : null,
     status: t.status,
+    canCancel: canCancelTradeCheck(
+      { status: t.status, noonesTradeHash: t.noonesTradeHash ?? null },
+      false
+    ).ok,
     ecodes: t.ecodes,
     notes: t.notes,
     rejectionReason: t.rejectionReason,

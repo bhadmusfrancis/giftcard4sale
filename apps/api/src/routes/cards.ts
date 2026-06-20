@@ -43,7 +43,7 @@ async function loadCardBySlug(slug: string, opts: { catalogOnly?: boolean } = {}
     : card.rates;
 
   const config = await getRateConfig();
-  const rateMeta = buildRateFreshnessMeta(visibleRates, config.noonesRateRefreshMinutes);
+  const rateMeta = buildRateFreshnessMeta(visibleRates, config.noonesRateRefreshHours);
   const currencyMeta = await listCardCurrencyMetaForDisplay(card.id);
 
   return {
@@ -178,7 +178,7 @@ cardsRouter.post(
       receiptPolicy,
       quoteSource: "stored",
       storedQuotes,
-      rateMeta: buildRateFreshnessMeta([rate], config.noonesRateRefreshMinutes),
+      rateMeta: buildRateFreshnessMeta([rate], config.noonesRateRefreshHours),
     });
   })
 );

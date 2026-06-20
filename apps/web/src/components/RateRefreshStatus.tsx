@@ -5,7 +5,7 @@ import { date } from "@/lib/format";
 export interface RateFreshnessMeta {
   lastUpdatedAt: string | null;
   nextRefreshAt: string | null;
-  refreshMinutes: number;
+  refreshHours: number;
   isStale: boolean;
 }
 

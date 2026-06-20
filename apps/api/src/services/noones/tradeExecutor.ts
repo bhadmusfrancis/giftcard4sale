@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import { env } from "../../env";
 import { UPLOAD_DIR } from "../../lib/upload";
-import { notify } from "../notify";
+import { notify, notifyAdmins } from "../notify";
 import { payTrade } from "../payout";
 import { rejectTradeWithBadScore } from "../tradeRejection";
 import { getRateConfig } from "../rateConfig";
@@ -112,7 +112,7 @@ async function deliverCardToPartner(tradeId: string, tradeHash: string): Promise
     where: { id: tradeId },
     include: { attachments: true },
   });
-  if (!trade || !trade.noonesAwaitingSend) return;
+  if (!trade || !trade.noonesAwaitingSend || trade.status === "CANCELLED") return;
 
   if (trade.ecodes?.trim()) {
     await noonesPost("trade-chat/post", {
@@ -154,7 +154,7 @@ export async function executeNoOnesResell(tradeId: string): Promise<void> {
   });
   if (!trade) return;
   if (trade.noonesTradeHash && !trade.noonesAwaitingSend) return;
-  if (trade.status === "REJECTED" || trade.status === "PAID") return;
+  if (trade.status === "REJECTED" || trade.status === "PAID" || trade.status === "CANCELLED") return;
 
   const cardAmount = Number(trade.cardAmount);
 
@@ -193,8 +193,8 @@ export async function executeNoOnesResell(tradeId: string): Promise<void> {
 
       tradeHash = start.trade_hash;
 
-      await prisma.trade.update({
-        where: { id: trade.id },
+      const claimed = await prisma.trade.updateMany({
+        where: { id: trade.id, status: { notIn: ["CANCELLED", "REJECTED", "PAID"] } },
         data: {
           noonesTradeHash: tradeHash,
           noonesOfferHash: market.offerHash,
@@ -203,6 +203,7 @@ export async function executeNoOnesResell(tradeId: string): Promise<void> {
           noonesAwaitingSend: true,
         },
       });
+      if (claimed.count === 0) return;
 
       const greeting = buildGreetingMessage(trade);
       await noonesPost("trade-chat/post", {
@@ -221,7 +222,7 @@ export async function executeNoOnesResell(tradeId: string): Promise<void> {
       title: "Trade processing",
       body: `Your ${trade.cardType.name} trade is being verified. We'll credit your wallet once complete.`,
       link: `/dashboard/trades/${trade.id}`,
-      email: false,
+      emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
     });
   } catch (err) {
     const msg = err instanceof NoOnesApiError ? err.message : (err as Error).message;
@@ -255,8 +256,8 @@ export async function pollAwaitingSendTrades(): Promise<void> {
 }
 
 async function markNoOnesError(tradeId: string, message: string): Promise<void> {
-  const trade = await prisma.trade.update({
-    where: { id: tradeId },
+  const updated = await prisma.trade.updateMany({
+    where: { id: tradeId, status: { notIn: ["CANCELLED", "REJECTED", "PAID"] } },
     data: {
       noonesError: message.slice(0, 2000),
       noonesStatus: "ERROR",
@@ -264,18 +265,16 @@ async function markNoOnesError(tradeId: string, message: string): Promise<void> 
       noonesAwaitingSend: false,
     },
   });
+  if (updated.count === 0) return;
 
-  const admins = await prisma.user.findMany({ where: { role: "ADMIN" } });
-  await Promise.all(
-    admins.map((a) =>
-      notify({
-        userId: a.id,
-        title: "NoOnes resell needs attention",
-        body: `Trade ${tradeId}: ${message}`,
-        link: `/admin/trades/${tradeId}`,
-      })
-    )
-  );
+  const trade = await prisma.trade.findUnique({ where: { id: tradeId } });
+  if (!trade) return;
+
+  await notifyAdmins({
+    title: "NoOnes resell needs attention",
+    body: `${trade.tradeNumber}: ${message}`,
+    link: `/admin/trades/${tradeId}`,
+  });
 }
 
 /** Poll open NoOnes trades and finalize if released (webhook backup). */
@@ -308,7 +307,7 @@ export async function pollActiveNoOnesTrades(): Promise<void> {
 /** Called from webhooks when partner sends a chat message. */
 export async function handleNoOnesChatMessage(tradeHash: string): Promise<void> {
   const trade = await prisma.trade.findUnique({ where: { noonesTradeHash: tradeHash } });
-  if (!trade?.noonesAwaitingSend) return;
+  if (!trade?.noonesAwaitingSend || trade.status === "CANCELLED") return;
 
   const messages = await fetchTradeChatMessages(tradeHash);
   if (partnerSaidSend(messages)) {
@@ -350,7 +349,7 @@ async function finalizeSuccessfulResell(
   remoteTrade?: { crypto_amount?: number; crypto_amount_total?: number; crypto_currency_code?: string }
 ): Promise<void> {
   const trade = await prisma.trade.findUnique({ where: { id: tradeId } });
-  if (!trade || trade.status === "PAID") return;
+  if (!trade || trade.status === "PAID" || trade.status === "CANCELLED") return;
 
   const cryptoRaw = remoteTrade?.crypto_amount_total ?? remoteTrade?.crypto_amount;
   const cryptoCurrency = remoteTrade?.crypto_currency_code || env.noones.cryptoCurrency;
@@ -387,5 +386,6 @@ async function finalizeFailedResell(tradeId: string, noonesTradeHash: string, re
     title: "Trade rejected",
     body: reason,
     link: `/dashboard/trades/${trade.id}`,
+    emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
   });
 }

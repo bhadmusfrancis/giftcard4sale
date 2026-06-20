@@ -33,7 +33,7 @@ export default function TradesPage() {
               <div>
                 <div className="font-semibold">{t.cardType?.name} · {t.country} · {t.medium}</div>
                 <div className="text-sm text-slate-500">
-                  {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)} · {date(t.createdAt)}
+                  <span className="font-mono">{t.tradeNumber}</span> · {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)} · {date(t.createdAt)}
                 </div>
               </div>
               <span className={`badge ${STATUS_COLORS[t.status]}`}>{t.status}</span>
