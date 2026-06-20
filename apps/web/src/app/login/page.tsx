@@ -45,7 +45,7 @@ function LoginInner() {
             <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <button className="btn-primary w-full" disabled={busy}>{busy ? "Logging in…" : "Log in"}</button>
+          <button type="submit" className="btn-primary w-full" disabled={busy}>{busy ? "Logging in…" : "Log in"}</button>
         </form>
         <div className="mt-4 flex justify-between text-sm">
           <Link href="/forgot-password" className="text-slate-500 hover:text-brand-700">Forgot password?</Link>

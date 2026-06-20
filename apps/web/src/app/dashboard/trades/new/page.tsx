@@ -4,6 +4,8 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money } from "@/lib/format";
 import { ReceiptType } from "@gc4s/shared";
 
@@ -36,7 +38,7 @@ function NewTradeInner() {
   const [receiptFiles, setReceiptFiles] = useState<FileList | null>(null);
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { busy, status, run, statusRef } = useAsyncAction();
 
   const needsReceiptUpload = receiptType !== "NONE";
 
@@ -116,8 +118,8 @@ function NewTradeInner() {
       setError("Please upload at least one gift card photo.");
       return;
     }
-    setBusy(true);
-    try {
+
+    const result = await run(async () => {
       const fd = new FormData();
       fd.append("rateId", rateId);
       fd.append("cardAmount", String(amount));
@@ -131,12 +133,11 @@ function NewTradeInner() {
       if (files) Array.from(files).forEach((f) => fd.append("images", f));
       if (receiptFiles) Array.from(receiptFiles).forEach((f) => fd.append("receiptImages", f));
 
-      const { trade } = await api<{ trade: any }>("/trades", { body: fd, isForm: true });
-      router.push(`/dashboard/trades/${trade.id}`);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
+      return api<{ trade: { id: string } }>("/trades", { body: fd, isForm: true });
+    }, () => "Trade submitted successfully. Redirecting…");
+
+    if (result?.trade?.id) {
+      router.push(`/dashboard/trades/${result.trade.id}`);
     }
   }
 
@@ -180,7 +181,7 @@ function NewTradeInner() {
         </div>
       </div>
 
-      <form onSubmit={submit} className="card space-y-5 p-6">
+      <form onSubmit={submit} noValidate className="card space-y-5 p-6">
         {medium === "ECODE" ? (
           <div>
             <label className="label">E-code(s)</label>
@@ -189,7 +190,6 @@ function NewTradeInner() {
               placeholder="Paste your gift card code(s) here, one per line"
               value={ecodes}
               onChange={(e) => setEcodes(e.target.value)}
-              required
             />
           </div>
         ) : null}
@@ -203,7 +203,6 @@ function NewTradeInner() {
               placeholder="e.g. 200x1, 50x4, 100x2"
               value={cardDenominations}
               onChange={(e) => setCardDenominations(e.target.value)}
-              required
             />
             <p className="mt-1 text-xs text-slate-500">
               List each denomination and quantity (e.g. one $200 card = 200x1, four $50 cards = 50x4).
@@ -230,7 +229,6 @@ function NewTradeInner() {
             type="file"
             accept="image/*"
             multiple
-            required={medium === "PHYSICAL"}
             className="input"
             onChange={(e) => setFiles(e.target.files)}
           />
@@ -248,7 +246,6 @@ function NewTradeInner() {
               type="file"
               accept="image/*"
               multiple
-              required
               className="input"
               onChange={(e) => setReceiptFiles(e.target.files)}
             />
@@ -287,7 +284,12 @@ function NewTradeInner() {
         </label>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button className="btn-primary w-full" disabled={busy || quoteLoading || !quoteReady}>
+        <FormFeedback status={status} anchorRef={statusRef} />
+        <button
+          type="submit"
+          className="btn-primary w-full"
+          disabled={busy || quoteLoading || !quoteReady}
+        >
           {busy ? "Submitting…" : quoteLoading || !quoteReady ? "Calculating payout…" : "Submit trade"}
         </button>
       </form>

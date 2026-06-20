@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { date } from "@/lib/format";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 
 type ChatMessage = {
   id: string;
@@ -27,7 +29,7 @@ export function TradeChat({
   const [tradeStatus, setTradeStatus] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
+  const sendAction = useAsyncAction();
   const fileRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -53,8 +55,7 @@ export function TradeChat({
     e.preventDefault();
     if (chatClosed) return;
     if (!body.trim() && !file) return;
-    setBusy(true);
-    try {
+    await sendAction.run(async () => {
       const form = new FormData();
       if (body.trim()) form.append("body", body.trim());
       if (file) form.append("file", file);
@@ -63,9 +64,7 @@ export function TradeChat({
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
       await load();
-    } finally {
-      setBusy(false);
-    }
+    }, "Message sent.");
   }
 
   return (
@@ -128,10 +127,11 @@ export function TradeChat({
               value={body}
               onChange={(e) => setBody(e.target.value)}
             />
-            <button className="btn-primary shrink-0" disabled={busy || (!body.trim() && !file)}>
-              Send
+            <button type="submit" className="btn-primary shrink-0" disabled={sendAction.busy || (!body.trim() && !file)}>
+              {sendAction.busy ? "Sending…" : "Send"}
             </button>
           </div>
+          <FormFeedback status={sendAction.status} anchorRef={sendAction.statusRef} />
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <input
               ref={fileRef}

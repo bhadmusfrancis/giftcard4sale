@@ -37,7 +37,7 @@ function ResetInner() {
             <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Reset password"}</button>
+          <button type="submit" className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Reset password"}</button>
         </form>
         <p className="mt-4 text-center text-sm">
           <Link href="/login" className="text-brand-700 hover:underline">Back to login</Link>

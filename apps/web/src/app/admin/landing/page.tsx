@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 
 const EMPTY = {
   slug: "",
@@ -19,7 +21,7 @@ export default function AdminLandingPage() {
   const [cards, setCards] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [form, setForm] = useState<any>(EMPTY);
-  const [msg, setMsg] = useState<string | null>(null);
+  const saveAction = useAsyncAction();
 
   async function loadPages() {
     const params = new URLSearchParams();
@@ -41,11 +43,12 @@ export default function AdminLandingPage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const body = { ...form, cardTypeId: form.cardTypeId || undefined };
-    await api("/admin/landing", { body });
-    setMsg("Saved.");
-    setForm(EMPTY);
-    loadPages();
+    await saveAction.run(async () => {
+      const body = { ...form, cardTypeId: form.cardTypeId || undefined };
+      await api("/admin/landing", { body });
+      setForm(EMPTY);
+      await loadPages();
+    }, "Landing page saved.");
   }
 
   async function edit(slug: string) {
@@ -111,10 +114,12 @@ export default function AdminLandingPage() {
           Published
         </label>
         <div className="flex items-center gap-3">
-          <button className="btn-primary">Save page</button>
+          <button type="submit" className="btn-primary" disabled={saveAction.busy}>
+            {saveAction.busy ? "Saving…" : "Save page"}
+          </button>
           {form.slug && <button type="button" onClick={() => setForm(EMPTY)} className="btn-ghost">Clear</button>}
-          {msg && <span className="text-sm text-brand-700">{msg}</span>}
         </div>
+        <FormFeedback status={saveAction.status} anchorRef={saveAction.statusRef} className="mt-2" />
       </form>
 
       <div className="flex gap-2">
@@ -137,8 +142,8 @@ export default function AdminLandingPage() {
               )}
             </div>
             <div className="flex gap-2">
-              <button onClick={() => edit(p.slug)} className="btn-ghost text-xs">Edit</button>
-              <button onClick={() => del(p.slug)} className="btn-danger text-xs">Delete</button>
+              <button type="button" onClick={() => edit(p.slug)} className="btn-ghost text-xs">Edit</button>
+              <button type="button" onClick={() => del(p.slug)} className="btn-danger text-xs">Delete</button>
             </div>
           </div>
         ))}

@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { calculateRateQuote } from "@gc4s/shared";
 import { api } from "@/lib/api";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money, date } from "@/lib/format";
 
 export default function AdminUserDetailPage() {
@@ -16,6 +18,7 @@ export default function AdminUserDetailPage() {
   const [platformConfig, setPlatformConfig] = useState<any>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const tradeAction = useAsyncAction();
 
   const [modReason, setModReason] = useState("");
   const [suspendDays, setSuspendDays] = useState(7);
@@ -172,7 +175,7 @@ export default function AdminUserDetailPage() {
       return;
     }
 
-    try {
+    const result = await tradeAction.run(async () => {
       const body: Record<string, unknown> = {
         userId: id,
         cardAmount: tradeForm.cardAmount,
@@ -197,11 +200,11 @@ export default function AdminUserDetailPage() {
       if (tradeForm.effectiveRate) body.effectiveRate = Number(tradeForm.effectiveRate);
       if (tradeForm.quotedPayout) body.quotedPayout = Number(tradeForm.quotedPayout);
 
-      const res = await api("/admin/trades", { body });
-      setMsg(`Trade ${res.trade.tradeNumber} created.`);
-      router.push(`/admin/trades/${res.trade.id}`);
-    } catch (e: any) {
-      setErr(e.message);
+      return api("/admin/trades", { body });
+    }, (res) => `Trade ${res.trade.tradeNumber} created. Redirecting…`);
+
+    if (result?.trade?.id) {
+      router.push(`/admin/trades/${result.trade.id}`);
     }
   }
 
@@ -222,6 +225,7 @@ export default function AdminUserDetailPage() {
 
       {msg && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{msg}</p>}
       {err && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-900">{err}</p>}
+      <FormFeedback status={tradeAction.status} anchorRef={tradeAction.statusRef} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Active trades" value={`${stats.activeTrades} / ${stats.tradeLimit}`} />
@@ -440,7 +444,9 @@ export default function AdminUserDetailPage() {
             <input type="checkbox" checked={tradeForm.markPaid} onChange={(e) => setTradeForm({ ...tradeForm, markPaid: e.target.checked })} />
             Mark paid immediately
           </label>
-          <button className="btn-primary w-full">Create trade</button>
+          <button type="submit" className="btn-primary w-full" disabled={tradeAction.busy}>
+            {tradeAction.busy ? "Creating…" : "Create trade"}
+          </button>
         </form>
       </div>
 

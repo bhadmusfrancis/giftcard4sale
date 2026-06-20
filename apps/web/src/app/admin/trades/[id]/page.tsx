@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 import { TradeChat } from "@/components/TradeChat";
 
@@ -15,7 +17,7 @@ export default function AdminTradeDetail() {
   const [trade, setTrade] = useState<any>(null);
   const [finalPayout, setFinalPayout] = useState<string>("");
   const [rejectionReason, setRejectionReason] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
+  const updateAction = useAsyncAction();
 
   async function load() {
     const d = await api(`/admin/trades/${id}`);
@@ -28,14 +30,14 @@ export default function AdminTradeDetail() {
   }, [id]);
 
   async function update(status?: string) {
-    setMsg(null);
-    const body: any = {};
-    if (status) body.status = status;
-    if (finalPayout) body.finalPayout = Number(finalPayout);
-    if (rejectionReason) body.rejectionReason = rejectionReason;
-    await api(`/admin/trades/${id}`, { method: "PATCH", body });
-    setMsg("Updated.");
-    load();
+    await updateAction.run(async () => {
+      const body: any = {};
+      if (status) body.status = status;
+      if (finalPayout) body.finalPayout = Number(finalPayout);
+      if (rejectionReason) body.rejectionReason = rejectionReason;
+      await api(`/admin/trades/${id}`, { method: "PATCH", body });
+      await load();
+    }, status ? `Trade updated to ${status}.` : "Final payout saved.");
   }
 
   if (!trade) return <p className="text-slate-500">Loading…</p>;
@@ -90,13 +92,15 @@ export default function AdminTradeDetail() {
             </div>
             <div className="flex flex-wrap gap-2">
               {STATUSES.map((s) => (
-                <button key={s} onClick={() => update(s)} className="btn-ghost text-xs">
-                  {s === "PAID" ? "Approve & Pay" : s === "CANCELLED" ? "Cancel trade" : `Set ${s}`}
+                <button key={s} type="button" onClick={() => update(s)} disabled={updateAction.busy} className="btn-ghost text-xs">
+                  {updateAction.busy ? "Saving…" : s === "PAID" ? "Approve & Pay" : s === "CANCELLED" ? "Cancel trade" : `Set ${s}`}
                 </button>
               ))}
             </div>
-            <button onClick={() => update()} className="btn-primary w-full">Save final payout</button>
-            {msg && <p className="text-sm text-brand-700">{msg}</p>}
+            <button type="button" onClick={() => update()} disabled={updateAction.busy} className="btn-primary w-full">
+              {updateAction.busy ? "Saving…" : "Save final payout"}
+            </button>
+            <FormFeedback status={updateAction.status} anchorRef={updateAction.statusRef} />
           </div>
         </div>
 

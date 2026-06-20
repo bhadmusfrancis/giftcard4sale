@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 
 const MOMO_NETWORKS = ["MTN", "Vodafone", "AirtelTigo"] as const;
@@ -44,8 +46,9 @@ export default function WalletPage() {
   const [bankAccountId, setBankAccountId] = useState("");
   const [momoAccountId, setMomoAccountId] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const withdrawAction = useAsyncAction();
+  const bankAction = useAsyncAction();
+  const momoAction = useAsyncAction();
 
   // add bank form
   const [bankName, setBankName] = useState("");
@@ -77,34 +80,37 @@ export default function WalletPage() {
 
   async function addBank(e: React.FormEvent) {
     e.preventDefault();
-    await api("/me/bank-accounts", { body: { bankName, accountNumber, accountName } });
-    setBankName(""); setAccountNumber(""); setAccountName("");
-    loadAll();
+    await bankAction.run(async () => {
+      await api("/me/bank-accounts", { body: { bankName, accountNumber, accountName } });
+      setBankName("");
+      setAccountNumber("");
+      setAccountName("");
+      await loadAll();
+    }, "Bank account added.");
   }
 
   async function addMomo(e: React.FormEvent) {
     e.preventDefault();
-    await api("/me/momo-accounts", { body: { network: momoNetwork, phoneNumber: momoPhone, accountName: momoName } });
-    setMomoPhone(""); setMomoName("");
-    loadAll();
+    await momoAction.run(async () => {
+      await api("/me/momo-accounts", { body: { network: momoNetwork, phoneNumber: momoPhone, accountName: momoName } });
+      setMomoPhone("");
+      setMomoName("");
+      await loadAll();
+    }, "MoMo account added.");
   }
 
   async function submitWithdraw(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null); setErr(null);
-    try {
+    await withdrawAction.run(async () => {
       const body: any = { currency, amount };
       if (currency === "NGN") body.bankAccountId = bankAccountId;
       else if (currency === "GHS") body.momoAccountId = momoAccountId;
       else body.destinationAddress = destinationAddress;
       await api("/withdrawals", { body });
-      setMsg("Withdrawal request submitted and pending approval.");
       setAmount(0);
       await refresh();
       await loadAll();
-    } catch (e: any) {
-      setErr(e.message);
-    }
+    }, "Withdrawal request submitted and pending approval.");
   }
 
   if (!user) return null;
@@ -195,9 +201,10 @@ export default function WalletPage() {
             </div>
           )}
 
-          {msg && <p className="text-sm text-brand-700">{msg}</p>}
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          <button className="btn-primary w-full">Submit request</button>
+          <FormFeedback status={withdrawAction.status} anchorRef={withdrawAction.statusRef} className="mt-2" />
+          <button type="submit" className="btn-primary w-full" disabled={withdrawAction.busy}>
+            {withdrawAction.busy ? "Submitting…" : "Submit request"}
+          </button>
         </form>
 
         {/* Payout destinations */}
@@ -209,6 +216,7 @@ export default function WalletPage() {
                 <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <span>{a.bankName} — {a.accountNumber} ({a.accountName})</span>
                   <button
+                    type="button"
                     className="text-red-600"
                     onClick={async () => { await api(`/me/bank-accounts/${a.id}`, { method: "DELETE" }); loadAll(); }}
                   >
@@ -222,7 +230,10 @@ export default function WalletPage() {
               <input className="input" placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
               <input className="input" placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
               <input className="input" placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
-              <button className="btn-ghost w-full">Add account</button>
+              <button type="submit" className="btn-ghost w-full" disabled={bankAction.busy}>
+                {bankAction.busy ? "Adding…" : "Add account"}
+              </button>
+              <FormFeedback status={bankAction.status} anchorRef={bankAction.statusRef} />
             </form>
           </div>
 
@@ -233,6 +244,7 @@ export default function WalletPage() {
                 <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <span>{a.network} — {a.phoneNumber} ({a.accountName})</span>
                   <button
+                    type="button"
                     className="text-red-600"
                     onClick={async () => { await api(`/me/momo-accounts/${a.id}`, { method: "DELETE" }); loadAll(); }}
                   >
@@ -250,7 +262,10 @@ export default function WalletPage() {
               </select>
               <input className="input" placeholder="MoMo phone number" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} required />
               <input className="input" placeholder="Registered name" value={momoName} onChange={(e) => setMomoName(e.target.value)} required />
-              <button className="btn-ghost w-full">Add MoMo account</button>
+              <button type="submit" className="btn-ghost w-full" disabled={momoAction.busy}>
+                {momoAction.busy ? "Adding…" : "Add MoMo account"}
+              </button>
+              <FormFeedback status={momoAction.status} anchorRef={momoAction.statusRef} />
             </form>
           </div>
         </div>

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 import { NoOnesSyncPanel } from "@/components/NoOnesSyncPanel";
 import { NoOnesSyncProvider, useNoOnesSyncState } from "@/components/NoOnesSyncContext";
 
@@ -23,26 +25,16 @@ export default function AdminRatesPage() {
 
 function ConfigSection() {
   const [config, setConfig] = useState<any>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [msgOk, setMsgOk] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const statusRef = useRef<HTMLDivElement>(null);
+  const { busy: saving, status, run, statusRef } = useAsyncAction();
 
   useEffect(() => {
     api("/admin/config").then((d) => setConfig(d.config));
   }, []);
 
-  useEffect(() => {
-    if (msg && statusRef.current) {
-      statusRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [msg]);
-
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!config) return;
-    setSaving(true);
-    try {
+    await run(async () => {
       const d = await api("/admin/config", {
         method: "PUT",
         body: {
@@ -65,18 +57,12 @@ function ConfigSection() {
         },
       });
       if (d.config) setConfig(d.config);
-      setMsgOk(true);
-      setMsg(
-        d.tiersUpdated
-          ? `Config saved. Updated ${d.tiersUpdated} country tier(s) to match the new minimum.`
-          : "Config saved successfully."
-      );
-    } catch (err) {
-      setMsgOk(false);
-      setMsg((err as Error).message || "Failed to save config.");
-    } finally {
-      setSaving(false);
-    }
+      return d;
+    }, (d) =>
+      d.tiersUpdated
+        ? `Config saved. Updated ${d.tiersUpdated} country tier(s) to match the new minimum.`
+        : "Config saved successfully."
+    );
   }
 
   if (!config) return null;
@@ -166,21 +152,8 @@ function ConfigSection() {
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
         Minimum withdrawal amounts apply to user wallet send/withdraw requests.
       </p>
-      <div ref={statusRef} className="mt-4 space-y-3">
-        {msg ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className={`rounded-lg border px-4 py-3 text-sm font-medium ${
-              msgOk
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "border-red-200 bg-red-50 text-red-900"
-            }`}
-          >
-            {msgOk ? "✓ " : "✕ "}
-            {msg}
-          </div>
-        ) : null}
+      <div className="mt-4 space-y-3">
+        <FormFeedback status={status} anchorRef={statusRef} />
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Save config"}
         </button>
@@ -193,19 +166,35 @@ function ImportSection() {
   const [text, setText] = useState("");
   const [replaceExisting, setReplaceExisting] = useState(false);
   const [preview, setPreview] = useState<any>(null);
-  const [result, setResult] = useState<any>(null);
+  const previewAction = useAsyncAction({ scrollOnStatus: false });
+  const importAction = useAsyncAction({ scrollOnStatus: false });
+  const feedbackRef = useRef<HTMLDivElement>(null);
 
   async function doPreview() {
-    setResult(null);
-    const d = await api("/admin/rates/parse", { body: { text } });
-    setPreview(d);
+    await previewAction.run(async () => {
+      const d = await api("/admin/rates/parse", { body: { text } });
+      setPreview(d);
+      return d;
+    }, () => "Preview ready.");
   }
 
   async function doImport() {
-    const d = await api("/admin/rates/import", { body: { text, replaceExisting } });
-    setResult(d);
-    setPreview(null);
+    await importAction.run(async () => {
+      const result = await api("/admin/rates/import", { body: { text, replaceExisting } });
+      setPreview(null);
+      return result;
+    }, (result) =>
+      `Imported ${result.summary.rates} rates across ${result.summary.cardTypes} card types.`
+    );
   }
+
+  const status = importAction.status ?? previewAction.status;
+
+  useEffect(() => {
+    if (status && feedbackRef.current) {
+      feedbackRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [status]);
 
   return (
     <div className="card p-6">
@@ -216,13 +205,19 @@ function ImportSection() {
       </p>
       <textarea className="input mt-3 min-h-[200px] font-mono text-sm" value={text} onChange={(e) => setText(e.target.value)} placeholder="===【Apple/iTunes】SLOW ===&#10;● US (200-500 in 100s) = 1092 ..." />
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button onClick={doPreview} className="btn-ghost" disabled={!text}>Preview parse</button>
+        <button type="button" onClick={doPreview} className="btn-ghost" disabled={!text || previewAction.busy || importAction.busy}>
+          {previewAction.busy ? "Previewing…" : "Preview parse"}
+        </button>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
           Replace existing rates for these card types
         </label>
-        <button onClick={doImport} className="btn-primary" disabled={!text}>Import</button>
+        <button type="button" onClick={doImport} className="btn-primary" disabled={!text || previewAction.busy || importAction.busy}>
+          {importAction.busy ? "Importing…" : "Import"}
+        </button>
       </div>
+
+      <FormFeedback status={status} anchorRef={feedbackRef} className="mt-4" />
 
       {preview && (
         <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm">
@@ -249,11 +244,6 @@ function ImportSection() {
         </div>
       )}
 
-      {result && (
-        <div className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-800">
-          Imported {result.summary.rates} rates across {result.summary.cardTypes} card types.
-        </div>
-      )}
     </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { date } from "@/lib/format";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 import { useNoOnesSyncState } from "@/components/NoOnesSyncContext";
 
 interface SyncProgress {
@@ -71,8 +73,7 @@ function phaseLabel(phase: string): string {
 
 export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void }) {
   const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
+  const startAction = useAsyncAction();
   const [wasRunning, setWasRunning] = useState(false);
   const { setSync } = useNoOnesSyncState();
 
@@ -112,17 +113,10 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
   }, [status?.active.running, onSyncFinished, wasRunning, load]);
 
   async function startSync(force: boolean) {
-    setMsg(null);
-    setStarting(true);
-    try {
+    await startAction.run(async () => {
       await api("/admin/noones/sync-rates", { method: "POST", body: { force } });
-      setMsg(force ? "Force refresh started." : "Sync started.");
       await load();
-    } catch (e) {
-      setMsg((e as Error).message);
-    } finally {
-      setStarting(false);
-    }
+    }, force ? "Force refresh started." : "Sync started.");
   }
 
   if (!status) return null;
@@ -145,7 +139,7 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
           <button
             type="button"
             className="btn-primary text-sm"
-            disabled={!configured || starting || active.running}
+            disabled={!configured || startAction.busy || active.running}
             onClick={() => startSync(false)}
           >
             {active.running ? "Syncing…" : "Sync stale cards"}
@@ -153,7 +147,7 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
           <button
             type="button"
             className="btn-ghost text-sm"
-            disabled={!configured || starting || active.running}
+            disabled={!configured || startAction.busy || active.running}
             onClick={() => startSync(true)}
           >
             Force refresh all
@@ -274,7 +268,9 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
         </details>
       ) : null}
 
-      {msg ? <p className="mt-3 text-sm text-slate-600">{msg}</p> : null}
+      {startAction.status ? (
+        <FormFeedback status={startAction.status} anchorRef={startAction.statusRef} className="mt-3" />
+      ) : null}
     </div>
   );
 }

@@ -86,7 +86,7 @@ function RegisterInner() {
             </span>
           </label>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <button className="btn-primary w-full" disabled={busy || !acceptTerms}>{busy ? "Creating…" : "Create account"}</button>
+          <button type="submit" className="btn-primary w-full" disabled={busy || !acceptTerms}>{busy ? "Creating…" : "Create account"}</button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-500">
           Already have an account? <Link href="/login" className="text-brand-700 hover:underline">Log in</Link>

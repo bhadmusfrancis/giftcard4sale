@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { FormFeedback } from "@/components/FormFeedback";
+import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money, date } from "@/lib/format";
 
 const STATUS_FILTERS = ["ALL", "ACTIVE", "SUSPENDED", "BANNED"] as const;
@@ -19,6 +21,7 @@ export default function AdminUsersPage() {
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ email: "", password: "", displayName: "", role: "USER" });
+  const createAction = useAsyncAction();
 
   async function load() {
     const params = new URLSearchParams();
@@ -37,17 +40,19 @@ export default function AdminUsersPage() {
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
-    await api("/admin/users", { body: form });
-    setShowCreate(false);
-    setForm({ email: "", password: "", displayName: "", role: "USER" });
-    load();
+    await createAction.run(async () => {
+      await api("/admin/users", { body: form });
+      setShowCreate(false);
+      setForm({ email: "", password: "", displayName: "", role: "USER" });
+      await load();
+    }, "User created.");
   }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold">Users</h2>
-        <button onClick={() => setShowCreate((s) => !s)} className="btn-primary">New user</button>
+        <button type="button" onClick={() => setShowCreate((s) => !s)} className="btn-primary">New user</button>
       </div>
 
       {showCreate && (
@@ -59,7 +64,10 @@ export default function AdminUsersPage() {
             <option value="USER">User</option>
             <option value="ADMIN">Admin</option>
           </select>
-          <button className="btn-primary sm:col-span-2">Create</button>
+          <button type="submit" className="btn-primary sm:col-span-2" disabled={createAction.busy}>
+            {createAction.busy ? "Creating…" : "Create"}
+          </button>
+          <FormFeedback status={createAction.status} anchorRef={createAction.statusRef} className="sm:col-span-2" />
         </form>
       )}
 
@@ -67,6 +75,7 @@ export default function AdminUsersPage() {
         {STATUS_FILTERS.map((s) => (
           <button
             key={s}
+            type="button"
             onClick={() => setStatusFilter(s)}
             className={`badge ${statusFilter === s ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}
           >

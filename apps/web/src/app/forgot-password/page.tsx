@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
               <label className="label">Email</label>
               <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
-            <button className="btn-primary w-full" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button>
+            <button type="submit" className="btn-primary w-full" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button>
           </form>
         )}
         <p className="mt-4 text-center text-sm">
