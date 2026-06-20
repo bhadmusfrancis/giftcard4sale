@@ -142,11 +142,18 @@ export async function getCardRateStalenessInfo(
   const [existingNoones, currencyMetaRows] = await Promise.all([
     prisma.rate.findMany({
       where: { cardTypeId, speed: "NOONES" },
-      select: { updatedAt: true, minDenom: true, maxDenom: true, active: true, country: true },
+      select: {
+        updatedAt: true,
+        minDenom: true,
+        maxDenom: true,
+        active: true,
+        country: true,
+        currency: true,
+      },
     }),
     prisma.cardCurrencyMeta.findMany({
       where: { cardTypeId },
-      select: { syncedAt: true },
+      select: { currency: true, syncedAt: true },
     }),
   ]);
 
@@ -171,9 +178,14 @@ export async function getCardRateStalenessInfo(
     return { stale: true, oldestAt };
   }
 
+  const activeCurrencies = [...new Set(activeNoones.map((r) => r.currency))];
+  const metaByCurrency = new Map(currencyMetaRows.map((m) => [m.currency, m]));
   const metaFresh =
-    currencyMetaRows.length > 0 &&
-    currencyMetaRows.every((m) => isRateSyncFresh(m.syncedAt, refreshHours));
+    activeCurrencies.length === 0 ||
+    activeCurrencies.every((currency) => {
+      const meta = metaByCurrency.get(currency);
+      return meta != null && isRateSyncFresh(meta.syncedAt, refreshHours);
+    });
   const ratesFresh = activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshHours));
   const cardFullyFresh = !hasOpenEnded && metaFresh && ratesFresh;
 
@@ -184,9 +196,10 @@ export async function getCardRateStalenessInfo(
       oldestAt = Math.min(oldestAt, r.updatedAt.getTime());
     }
   }
-  for (const m of currencyMetaRows) {
-    if (!isRateSyncFresh(m.syncedAt, refreshHours)) {
-      oldestAt = Math.min(oldestAt, m.syncedAt.getTime());
+  for (const currency of activeCurrencies) {
+    const meta = metaByCurrency.get(currency);
+    if (meta && !isRateSyncFresh(meta.syncedAt, refreshHours)) {
+      oldestAt = Math.min(oldestAt, meta.syncedAt.getTime());
     }
   }
   if (hasOpenEnded) {
@@ -203,6 +216,26 @@ export async function getCardRateStalenessInfo(
   if (oldestAt === Infinity) oldestAt = Date.now();
 
   return { stale: !cardFullyFresh, oldestAt };
+}
+
+/** Drop cards whose NoOnes data is still within the refresh window. */
+export async function filterStaleCardTypes<T extends { id: string }>(
+  cards: T[],
+  refreshHours: number
+): Promise<T[]> {
+  const { staleCheckBatchSize, staleCheckPauseMs } = getNoOnesSyncLimits();
+  const stale: T[] = [];
+
+  for (let i = 0; i < cards.length; i += staleCheckBatchSize) {
+    const batch = cards.slice(i, i + staleCheckBatchSize);
+    for (const card of batch) {
+      const info = await getCardRateStalenessInfo(card.id, refreshHours);
+      if (info.stale) stale.push(card);
+    }
+    if (i + staleCheckBatchSize < cards.length) await sleep(staleCheckPauseMs);
+  }
+
+  return stale;
 }
 
 /** Cards linked to NoOnes that need a refresh, oldest stale data first (not by popularity). */

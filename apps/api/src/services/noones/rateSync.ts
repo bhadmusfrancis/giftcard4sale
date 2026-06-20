@@ -3,7 +3,7 @@ import { canonicalCardSlug, sellSlug } from "@gc4s/shared";
 import { prisma } from "../../prisma";
 import { findExistingCardType } from "../cardTypeDedup";
 import { applyNoOnesPublishState, ensureCardSeoLandingPagesPublished, isManualRateSpeed, MANUAL_RATE_WHERE, refreshCardCatalogVisibility } from "../cardVisibility";
-import { getRateConfig, getCardRateStalenessInfo, isRateSyncFresh, cardTypePopularityOrder } from "../rateConfig";
+import { getRateConfig, getCardRateStalenessInfo, isRateSyncFresh, cardTypePopularityOrder, filterStaleCardTypes } from "../rateConfig";
 import { isNoOnesConfigured, noonesPost } from "./client";
 import { resolvePaymentMethodSlug } from "./paymentMethods";
 import { buildSyncTargets, paymentMethodToCardName, RateSyncTarget, OTHER_COUNTRY_TIER, GENERIC_EURO_TIER, isOtherCountryTier, isEuroTier, isOpenEndedCountryTier, appendDiscoveredCurrencyTargets, expandTargetsFromOfferRanges, ensureTargetsForCurrencyMeta, currencyTierFromCode } from "./rateCatalog";
@@ -624,6 +624,26 @@ async function syncCardTypeRates(
     }
   }
 
+  const activeCurrencies = new Set(
+    (
+      await prisma.rate.findMany({
+        where: { cardTypeId: card.id, speed: "NOONES", active: true },
+        select: { currency: true },
+      })
+    ).map((r) => r.currency)
+  );
+  for (const currency of metaByCurrency.keys()) {
+    activeCurrencies.add(currency);
+  }
+  if (activeCurrencies.size > 0) {
+    await prisma.cardCurrencyMeta.deleteMany({
+      where: {
+        cardTypeId: card.id,
+        currency: { notIn: [...activeCurrencies] },
+      },
+    });
+  }
+
   const visible = await refreshCardCatalogVisibility(card.id);
   if (!visible) summary.drafted++;
 }
@@ -669,7 +689,8 @@ export async function reapplyCountryTierVisibility(minOffers: number): Promise<n
 async function syncCardsInBatches(
   cardTypes: { id: string; slug: string; name: string; noonesPaymentMethod: string | null }[],
   summary: RateSyncSummary,
-  options?: RateSyncOptions
+  options?: RateSyncOptions,
+  refreshHours?: number
 ): Promise<void> {
   const { cardsPerBatch, pauseBetweenBatchesMs, pauseBetweenCardsMs } = getNoOnesSyncLimits();
 
@@ -678,6 +699,20 @@ async function syncCardsInBatches(
 
     for (let i = 0; i < batch.length; i++) {
       const card = batch[i];
+      if (!options?.force && refreshHours != null) {
+        const { stale } = await getCardRateStalenessInfo(card.id, refreshHours);
+        if (!stale) {
+          summary.skipped++;
+          if (isNoOnesSyncActive()) {
+            const processed = batchStart + i + 1;
+            setNoOnesSyncCurrentCard({ id: card.id, name: card.name }, processed);
+            mergeNoOnesSyncSummary(summary);
+          }
+          if (i < batch.length - 1) await sleep(pauseBetweenCardsMs);
+          continue;
+        }
+      }
+
       const processed = batchStart + i + 1;
       if (isNoOnesSyncActive()) {
         setNoOnesSyncCurrentCard({ id: card.id, name: card.name }, processed);
@@ -735,6 +770,11 @@ export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<Ra
       .sort((a, b) => order.get(a.id)! - order.get(b.id)!);
   }
 
+  const { noonesRateRefreshHours } = await getRateConfig();
+  if (!options?.force) {
+    cardTypes = await filterStaleCardTypes(cardTypes, noonesRateRefreshHours);
+  }
+
   summary.cardTypes = cardTypes.length;
 
   if (isNoOnesSyncActive()) {
@@ -742,7 +782,11 @@ export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<Ra
     setNoOnesSyncPhase("syncing");
   }
 
-  await syncCardsInBatches(cardTypes, summary, options);
+  if (!cardTypes.length) {
+    return summary;
+  }
+
+  await syncCardsInBatches(cardTypes, summary, options, noonesRateRefreshHours);
 
   await ensureCardSeoLandingPagesPublished();
 
