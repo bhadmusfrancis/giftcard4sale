@@ -20,11 +20,15 @@ export function TradeChat({
   tradeId,
   myUserId,
   isAdmin = false,
+  layout = "default",
 }: {
   tradeId: string;
   myUserId: string;
   isAdmin?: boolean;
+  /** "panel" fills available height — use on admin trade detail. */
+  layout?: "default" | "panel";
 }) {
+  const isPanel = layout === "panel";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tradeStatus, setTradeStatus] = useState<string | null>(null);
   const [body, setBody] = useState("");
@@ -51,8 +55,7 @@ export function TradeChat({
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitMessage() {
     if (chatClosed) return;
     if (!body.trim() && !file) return;
     await sendAction.run(async () => {
@@ -67,16 +70,48 @@ export function TradeChat({
     }, "Message sent.");
   }
 
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    await submitMessage();
+  }
+
   return (
-    <div className="card flex flex-col p-4">
-      <h3 className="mb-3 font-bold">Trade chat</h3>
+    <div
+      className={`card flex flex-col overflow-hidden ${
+        isPanel ? "h-full min-h-0" : "p-4"
+      }`}
+    >
+      <div className={`shrink-0 ${isPanel ? "border-b border-slate-200 px-5 py-4" : "mb-3"}`}>
+        <h3 className="font-bold">Trade chat</h3>
+        {isPanel && (
+          <p className="mt-0.5 text-sm text-slate-500">
+            {isAdmin ? "Reply to the seller — messages notify them by email." : "Chat with support about this trade."}
+          </p>
+        )}
+      </div>
+
       {chatClosed && (
-        <p className="mb-3 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">
+        <p
+          className={`shrink-0 text-sm text-slate-600 ${
+            isPanel ? "mx-5 mt-4 rounded-lg bg-slate-100 px-3 py-2" : "mb-3 rounded-lg bg-slate-100 px-3 py-2"
+          }`}
+        >
           This trade was rejected. Chat is closed — contact support if you need help.
         </p>
       )}
-      <div className="mb-3 max-h-80 flex-1 space-y-3 overflow-y-auto">
-        {messages.length === 0 && <p className="text-sm text-slate-400">No messages yet.</p>}
+
+      <div
+        className={`space-y-3 overflow-y-auto ${
+          isPanel
+            ? "min-h-0 flex-1 px-5 py-4"
+            : "mb-3 max-h-80 flex-1 md:max-h-96"
+        }`}
+      >
+        {messages.length === 0 && (
+          <p className="py-8 text-center text-sm text-slate-400">
+            {isPanel ? "No messages yet. Start the conversation below." : "No messages yet."}
+          </p>
+        )}
         {messages.map((m) => {
           const mine = m.sender.id === myUserId;
           const isImage = m.attachmentMimeType?.startsWith("image/");
@@ -84,21 +119,23 @@ export function TradeChat({
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                className={`max-w-[min(100%,28rem)] rounded-2xl px-4 py-2.5 text-sm ${
                   mine ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-800"
                 }`}
               >
                 <div className="text-[11px] opacity-70">
                   {m.sender.role === "ADMIN" ? "Support" : m.sender.displayName || "You"} · {date(m.createdAt)}
                 </div>
-                {m.body ? <div className="whitespace-pre-wrap">{m.body}</div> : null}
+                {m.body ? <div className="mt-1 whitespace-pre-wrap break-words">{m.body}</div> : null}
                 {m.attachmentUrl && isImage && (
                   <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="mt-2 block">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={m.attachmentUrl}
                       alt={m.attachmentFilename || "Attachment"}
-                      className="max-h-48 rounded-lg border border-white/20 object-contain"
+                      className={`rounded-lg border border-white/20 object-contain ${
+                        isPanel ? "max-h-64 xl:max-h-80" : "max-h-48"
+                      }`}
                     />
                   </a>
                 )}
@@ -118,30 +155,77 @@ export function TradeChat({
         })}
         <div ref={endRef} />
       </div>
+
       {!chatClosed && (
-        <form onSubmit={send} className="space-y-2">
-          <div className="flex gap-2">
-            <input
-              className="input"
-              placeholder="Type a message…"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-            />
-            <button type="submit" className="btn-primary shrink-0" disabled={sendAction.busy || (!body.trim() && !file)}>
-              {sendAction.busy ? "Sending…" : "Send"}
-            </button>
-          </div>
+        <form
+          onSubmit={send}
+          className={`shrink-0 space-y-2 ${isPanel ? "border-t border-slate-200 bg-slate-50/80 px-5 py-4" : ""}`}
+        >
+          {isPanel ? (
+            <>
+              <textarea
+                className="input min-h-[4.5rem] resize-y"
+                rows={2}
+                placeholder="Type a message to the seller…"
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void submitMessage();
+                  }
+                }}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-500">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="max-w-full text-xs"
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  />
+                  {file && <span className="truncate">{file.name}</span>}
+                </div>
+                <button
+                  type="submit"
+                  className="btn-primary shrink-0"
+                  disabled={sendAction.busy || (!body.trim() && !file)}
+                >
+                  {sendAction.busy ? "Sending…" : "Send message"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex gap-2">
+                <input
+                  className="input"
+                  placeholder="Type a message…"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="btn-primary shrink-0"
+                  disabled={sendAction.busy || (!body.trim() && !file)}
+                >
+                  {sendAction.busy ? "Sending…" : "Send"}
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="text-xs"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                />
+                {file && <span className="truncate">{file.name}</span>}
+              </div>
+            </>
+          )}
           <FormFeedback status={sendAction.status} anchorRef={sendAction.statusRef} />
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,application/pdf"
-              className="text-xs"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-            {file && <span className="truncate">{file.name}</span>}
-          </div>
         </form>
       )}
     </div>

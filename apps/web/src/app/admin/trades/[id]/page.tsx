@@ -52,8 +52,8 @@ export default function AdminTradeDetail() {
         <span className={`badge ${STATUS_COLORS[trade.status]}`}>{trade.status}</span>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-stretch xl:min-h-[calc(100vh-11rem)]">
+        <aside className="space-y-6 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-1">
           <div className="card space-y-2 p-6 text-sm">
             <Row label="Trade ID" value={trade.tradeNumber} />
             <Row label="Seller" value={`${trade.user?.displayName || ""} (${trade.user?.email})`} />
@@ -90,7 +90,7 @@ export default function AdminTradeDetail() {
               <label className="label">Reason (reject / cancel)</label>
               <input className="input" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
               {STATUSES.map((s) => (
                 <button key={s} type="button" onClick={() => update(s)} disabled={updateAction.busy} className="btn-ghost text-xs">
                   {updateAction.busy ? "Saving…" : s === "PAID" ? "Approve & Pay" : s === "CANCELLED" ? "Cancel trade" : `Set ${s}`}
@@ -102,9 +102,13 @@ export default function AdminTradeDetail() {
             </button>
             <FormFeedback status={updateAction.status} anchorRef={updateAction.statusRef} />
           </div>
-        </div>
+        </aside>
 
-        {user && <TradeChat tradeId={trade.id} myUserId={user.id} isAdmin={user.role === "ADMIN"} />}
+        {user && (
+          <div className="flex min-h-[28rem] flex-col lg:min-h-0">
+            <TradeChat tradeId={trade.id} myUserId={user.id} isAdmin={user.role === "ADMIN"} layout="panel" />
+          </div>
+        )}
       </div>
     </div>
   );
