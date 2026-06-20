@@ -59,6 +59,9 @@ export const env = {
     from: process.env.MAIL_FROM || "GiftCard4Sale <no-reply@giftcard4sale.com>",
   },
 
+  /** Brevo transactional email API key (xkeysib-…). Required on Render — SMTP ports are blocked. */
+  brevoApiKey: process.env.BREVO_API_KEY || "",
+
   vapid: {
     publicKey: process.env.VAPID_PUBLIC_KEY || "",
     privateKey: process.env.VAPID_PRIVATE_KEY || "",
@@ -127,12 +130,17 @@ if (env.isProd) {
     problems.push("JWT_SECRET must be a strong random string (>= 24 chars) in production");
   }
   if (!env.databaseUrl) problems.push("DATABASE_URL is required");
+  const hasBrevoApi = Boolean(env.brevoApiKey);
   const smtpHost = env.smtp.host;
-  if (!process.env.SMTP_HOST || smtpHost === "localhost" || smtpHost === "127.0.0.1") {
-    problems.push("SMTP_HOST must be set to your email provider (e.g. smtp-relay.brevo.com) — not localhost");
-  }
-  if (!env.smtp.user || !env.smtp.pass) {
-    problems.push("SMTP_USER and SMTP_PASS are required in production");
+  const hasSmtp =
+    Boolean(process.env.SMTP_HOST) &&
+    smtpHost !== "localhost" &&
+    smtpHost !== "127.0.0.1" &&
+    Boolean(env.smtp.user && env.smtp.pass);
+  if (!hasBrevoApi && !hasSmtp) {
+    problems.push(
+      "Email requires BREVO_API_KEY (recommended on Render) or SMTP_HOST/USER/PASS for a real provider"
+    );
   }
   if (problems.length) {
     throw new Error(`Insecure/invalid production config:\n - ${problems.join("\n - ")}`);

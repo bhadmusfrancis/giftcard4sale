@@ -1,16 +1,42 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "../env";
 
-/** True when pointing at a real provider (not local Mailpit). */
+export type EmailTransport = "brevo-api" | "smtp" | "none";
+
+let emailVerified = false;
+let activeTransport: EmailTransport = "none";
+
+/** True when Brevo HTTP API key is set (preferred on Render — SMTP ports are often blocked). */
+export function usesBrevoApi(): boolean {
+  return Boolean(env.brevoApiKey);
+}
+
+/** True when pointing at a real SMTP provider (not local Mailpit). */
 export function isSmtpConfigured(): boolean {
   const { host, user, pass } = env.smtp;
   if (!host || host === "localhost" || host === "127.0.0.1") return false;
   return Boolean(user && pass);
 }
 
+export function isEmailConfigured(): boolean {
+  return usesBrevoApi() || isSmtpConfigured();
+}
+
+export function getEmailTransport(): EmailTransport {
+  return activeTransport;
+}
+
+export function isEmailVerified(): boolean {
+  return emailVerified;
+}
+
+/** @deprecated Use isEmailVerified */
+export function isSmtpVerified(): boolean {
+  return emailVerified;
+}
+
 function buildTransportOptions() {
   const port = env.smtp.port;
-  // Port 587 uses STARTTLS (secure=false + requireTLS). Port 465 uses implicit TLS.
   const secure = port === 465 ? true : port === 587 ? false : env.smtp.secure;
 
   return {
@@ -27,21 +53,46 @@ function buildTransportOptions() {
 
 const transporter: Transporter = nodemailer.createTransport(buildTransportOptions());
 
-let smtpVerified = false;
+function parseFrom(from: string): { name: string; email: string } {
+  const m = from.match(/^(.+?)\s*<([^>]+)>$/);
+  if (m) return { name: m[1].trim(), email: m[2].trim() };
+  return { name: "GiftCard4Sale", email: from.trim() };
+}
 
-/** Call once at startup in production to surface SMTP misconfiguration early. */
-export async function verifySmtpConnection(): Promise<boolean> {
-  if (!isSmtpConfigured()) {
-    console.warn("[email] SMTP not configured — emails will fail (set SMTP_HOST/USER/PASS on the server).");
+function formatSubject(subject: string): string {
+  return subject.startsWith("[GiftCard4Sale]") ? subject : `[GiftCard4Sale] ${subject}`;
+}
+
+async function verifyBrevoApi(): Promise<boolean> {
+  try {
+    const res = await fetch("https://api.brevo.com/v3/account", {
+      headers: { "api-key": env.brevoApiKey, accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[email] Brevo API verify failed:", res.status, body.slice(0, 200));
+      return false;
+    }
+    activeTransport = "brevo-api";
+    emailVerified = true;
+    console.log("[email] Brevo API ready (HTTPS — works on Render where SMTP is blocked)");
+    return true;
+  } catch (err) {
+    console.error("[email] Brevo API verify failed:", (err as Error).message);
     return false;
   }
+}
+
+async function verifySmtp(): Promise<boolean> {
+  if (!isSmtpConfigured()) return false;
   try {
     await transporter.verify();
-    smtpVerified = true;
+    activeTransport = "smtp";
+    emailVerified = true;
     console.log(`[email] SMTP ready (${env.smtp.host}:${env.smtp.port})`);
     return true;
   } catch (err) {
-    smtpVerified = false;
     const e = err as Error & { code?: string; response?: string };
     console.error(
       "[email] SMTP verify failed:",
@@ -49,12 +100,105 @@ export async function verifySmtpConnection(): Promise<boolean> {
       e.code ? `(${e.code})` : "",
       e.response ? `— ${e.response}` : ""
     );
+    if (env.isProd && e.code === "ETIMEDOUT") {
+      console.error(
+        "[email] Render often blocks outbound SMTP. Set BREVO_API_KEY (Brevo → SMTP & API → API keys) instead."
+      );
+    }
     return false;
   }
 }
 
-export function isSmtpVerified(): boolean {
-  return smtpVerified;
+/** Call once at startup to surface email misconfiguration early. */
+export async function verifyEmailConnection(): Promise<boolean> {
+  emailVerified = false;
+  activeTransport = "none";
+
+  if (!isEmailConfigured()) {
+    console.warn("[email] Not configured — set BREVO_API_KEY (production) or SMTP_* (local).");
+    return false;
+  }
+
+  if (usesBrevoApi()) {
+    const ok = await verifyBrevoApi();
+    if (ok || !isSmtpConfigured()) return ok;
+    console.warn("[email] Brevo API failed; trying SMTP fallback…");
+  }
+
+  return verifySmtp();
+}
+
+/** @deprecated Use verifyEmailConnection */
+export async function verifySmtpConnection(): Promise<boolean> {
+  return verifyEmailConnection();
+}
+
+async function sendViaBrevoApi(to: string, subject: string, html: string, text: string): Promise<boolean> {
+  const sender = parseFrom(env.smtp.from);
+  try {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": env.brevoApiKey,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender,
+        to: [{ email: to }],
+        subject: formatSubject(subject),
+        htmlContent: html,
+        textContent: text,
+        headers: { "X-Entity-Ref-ID": "giftcard4sale-transactional" },
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[email] Brevo API failed → ${to}:`, res.status, body.slice(0, 300));
+      return false;
+    }
+
+    const data = (await res.json().catch(() => ({}))) as { messageId?: string };
+    if (env.isProd) {
+      console.log(`[email] sent (brevo-api) → ${to}: ${data.messageId || "ok"}`);
+    }
+    return true;
+  } catch (err) {
+    console.error(`[email] Brevo API failed → ${to}:`, (err as Error).message);
+    return false;
+  }
+}
+
+async function sendViaSmtp(to: string, subject: string, html: string, text: string): Promise<boolean> {
+  try {
+    const info = await transporter.sendMail({
+      from: env.smtp.from,
+      to,
+      subject: formatSubject(subject),
+      html,
+      text,
+      headers: {
+        "X-Entity-Ref-ID": "giftcard4sale-transactional",
+        Precedence: "auto",
+      },
+    });
+    if (env.isProd) {
+      console.log(`[email] sent (smtp) → ${to}: ${info.messageId || "ok"}`);
+    }
+    return true;
+  } catch (err) {
+    const e = err as Error & { code?: string; response?: string; responseCode?: number };
+    console.error(
+      `[email] SMTP failed → ${to}:`,
+      e.message,
+      e.code ? `(${e.code})` : "",
+      e.responseCode ? `[${e.responseCode}]` : "",
+      e.response ? `— ${e.response}` : ""
+    );
+    return false;
+  }
 }
 
 export function escapeHtml(value: string): string {
@@ -120,38 +264,23 @@ export async function sendEmail(
   html: string,
   text?: string
 ): Promise<boolean> {
-  if (!isSmtpConfigured()) {
-    console.error(`[email] skipped (SMTP not configured) → ${to}: ${subject}`);
+  if (!isEmailConfigured()) {
+    console.error(`[email] skipped (not configured) → ${to}: ${subject}`);
     return false;
   }
 
-  try {
-    const info = await transporter.sendMail({
-      from: env.smtp.from,
-      to,
-      subject: subject.startsWith("[GiftCard4Sale]") ? subject : `[GiftCard4Sale] ${subject}`,
-      html,
-      text: text ?? stripHtml(html),
-      headers: {
-        "X-Entity-Ref-ID": "giftcard4sale-transactional",
-        Precedence: "auto",
-      },
-    });
-    if (env.isProd) {
-      console.log(`[email] sent → ${to}: ${info.messageId || "ok"}`);
-    }
-    return true;
-  } catch (err) {
-    const e = err as Error & { code?: string; response?: string; responseCode?: number };
-    console.error(
-      `[email] failed → ${to}:`,
-      e.message,
-      e.code ? `(${e.code})` : "",
-      e.responseCode ? `[${e.responseCode}]` : "",
-      e.response ? `— ${e.response}` : ""
-    );
-    return false;
+  const plain = text ?? stripHtml(html);
+
+  if (usesBrevoApi()) {
+    const ok = await sendViaBrevoApi(to, subject, html, plain);
+    if (ok || !isSmtpConfigured()) return ok;
   }
+
+  if (isSmtpConfigured()) {
+    return sendViaSmtp(to, subject, html, plain);
+  }
+
+  return false;
 }
 
 export async function sendTransactionalEmail(

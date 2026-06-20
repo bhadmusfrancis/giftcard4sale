@@ -22,7 +22,12 @@ import {
   syncNoOnesCatalogVisibilityFromStored,
 } from "./services/cardVisibility";
 import { repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
-import { isSmtpConfigured, isSmtpVerified, verifySmtpConnection } from "./services/email";
+import {
+  getEmailTransport,
+  isEmailConfigured,
+  isEmailVerified,
+  verifyEmailConnection,
+} from "./services/email";
 
 const app = express();
 
@@ -53,7 +58,12 @@ app.get("/health", (_req, res) =>
   res.json({
     ok: true,
     service: "gc4s-api",
-    email: isSmtpConfigured() ? (isSmtpVerified() ? "ready" : "configured") : "missing",
+    email: !isEmailConfigured()
+      ? "missing"
+      : isEmailVerified()
+        ? "ready"
+        : "configured",
+    transport: getEmailTransport(),
   })
 );
 
@@ -82,7 +92,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(env.port, () => {
   console.log(`GiftCard4Sale API listening on ${env.apiUrl} (port ${env.port})`);
-  void verifySmtpConnection();
+  void verifyEmailConnection();
   repairManualRateCatalog()
     .then((n) => {
       if (n > 0) console.log(`Reactivated ${n} manually imported rate row(s).`);
