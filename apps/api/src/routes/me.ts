@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, AuthedRequest } from "../lib/auth";
@@ -60,7 +61,7 @@ meRouter.patch(
 
     const user = await prisma.user.update({
       where: { id: req.userId },
-      data: { notificationPreferences: next },
+      data: { notificationPreferences: next as unknown as Prisma.InputJsonValue },
     });
     res.json({ preferences: parseNotificationPreferences(user.notificationPreferences) });
   })
