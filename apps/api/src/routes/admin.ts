@@ -401,6 +401,7 @@ adminRouter.patch(
         status: z.enum(["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID", "CANCELLED"]).optional(),
         finalPayout: z.number().optional(),
         rejectionReason: z.string().optional(),
+        notificationsMuted: z.boolean().optional(),
       }),
       req.body
     );
@@ -410,6 +411,7 @@ adminRouter.patch(
 
     const patch: Prisma.TradeUpdateInput = {};
     if (data.finalPayout != null) patch.finalPayout = new Prisma.Decimal(data.finalPayout);
+    if (data.notificationsMuted != null) patch.notificationsMuted = data.notificationsMuted;
 
     if (data.status === "CANCELLED" && trade.status !== "CANCELLED") {
       const check = canCancelTrade(trade, true);
@@ -437,6 +439,7 @@ adminRouter.patch(
         body: data.rejectionReason || "Your trade was rejected. Please contact support for details.",
         link: `/dashboard/trades/${trade.id}`,
         emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+        category: "tradeStatus",
       });
     } else if (data.status === "CANCELLED" && trade.status !== "CANCELLED") {
       await notify({
@@ -454,6 +457,7 @@ adminRouter.patch(
         link: `/dashboard/trades/${trade.id}`,
         emailSubject: "Action required on your trade",
         emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+        category: "tradeStatus",
       });
     } else if (data.status && data.status !== "PROCESSING" && data.status !== "PENDING") {
       await notify({
@@ -960,9 +964,12 @@ adminRouter.put(
         minWithdrawalUsdt: new Prisma.Decimal(data.minWithdrawalUsdt),
       },
     });
-    const tiersUpdated = await reapplyCountryTierVisibility(data.minCountryOffersForDisplay);
     const config = await getRateConfig();
-    res.json({ config, tiersUpdated });
+    // Respond immediately — tier visibility can touch thousands of rate rows.
+    res.json({ config, tierReapplyPending: true });
+    void reapplyCountryTierVisibility(data.minCountryOffersForDisplay).catch((err) =>
+      console.error("[admin/config] tier visibility reapply failed:", (err as Error).message)
+    );
   })
 );
 

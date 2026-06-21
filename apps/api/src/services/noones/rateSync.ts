@@ -664,6 +664,8 @@ export async function reapplyCountryTierVisibility(minOffers: number): Promise<n
 
   let updated = 0;
   const cardIds = new Set<string>();
+  const activateIds: string[] = [];
+  const deactivateIds: string[] = [];
 
   for (const rate of rates) {
     const regionLock = resolveCardRegionLock(
@@ -680,10 +682,18 @@ export async function reapplyCountryTierVisibility(minOffers: number): Promise<n
     }
 
     if (rate.active !== shouldBeActive) {
-      await prisma.rate.update({ where: { id: rate.id }, data: { active: shouldBeActive } });
+      if (shouldBeActive) activateIds.push(rate.id);
+      else deactivateIds.push(rate.id);
       updated++;
     }
     cardIds.add(rate.cardTypeId);
+  }
+
+  if (activateIds.length) {
+    await prisma.rate.updateMany({ where: { id: { in: activateIds } }, data: { active: true } });
+  }
+  if (deactivateIds.length) {
+    await prisma.rate.updateMany({ where: { id: { in: deactivateIds } }, data: { active: false } });
   }
 
   for (const cardTypeId of cardIds) {

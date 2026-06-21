@@ -40,6 +40,16 @@ export default function AdminTradeDetail() {
     }, status ? `Trade updated to ${status}.` : "Final payout saved.");
   }
 
+  async function toggleMute() {
+    await updateAction.run(async () => {
+      await api(`/admin/trades/${id}`, {
+        method: "PATCH",
+        body: { notificationsMuted: !trade.notificationsMuted },
+      });
+      await load();
+    }, trade.notificationsMuted ? "Chat notifications unmuted for this trade." : "Chat notifications muted for this trade.");
+  }
+
   if (!trade) return <p className="text-slate-500">Loading…</p>;
 
   return (
@@ -89,6 +99,26 @@ export default function AdminTradeDetail() {
             <div>
               <label className="label">Reason (reject / cancel)</label>
               <input className="input" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} />
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Trade chat notifications</div>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {trade.notificationsMuted
+                      ? "Muted — no chat alerts for this trade (15‑min batching still applies when unmuted)."
+                      : "Active — chat alerts send at most once per 15 minutes."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  disabled={updateAction.busy}
+                  className={`btn-ghost shrink-0 text-xs ${trade.notificationsMuted ? "text-brand-700" : "text-slate-600"}`}
+                >
+                  {updateAction.busy ? "Saving…" : trade.notificationsMuted ? "Unmute" : "Mute"}
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
               {STATUSES.map((s) => (

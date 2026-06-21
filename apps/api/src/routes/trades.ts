@@ -7,6 +7,7 @@ import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } fro
 import { upload, chatUpload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify, notifyAdmins } from "../services/notify";
+import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
 import { executeNoOnesResell, isNoOnesConfigured, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
 import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
@@ -271,24 +272,31 @@ tradesRouter.post(
 
     const notifyBody = text || (file ? `Sent a file: ${file.originalname}` : "New message");
 
-    // Notify the other party.
-    const recipientId = req.userRole === "ADMIN" ? trade.userId : null;
-    if (recipientId) {
-      await notify({
-        userId: recipientId,
-        title: "New message on your trade",
-        body: notifyBody,
-        link: `/dashboard/trades/${trade.id}`,
-        emailSubject: "New reply on your trade",
-        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
-      });
-    } else {
-      await notifyAdmins({
-        title: "Trade chat reply",
-        body: notifyBody,
-        link: `/admin/trades/${trade.id}`,
-        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
-      });
+    const shouldNotify = await shouldSendTradeChatNotification(trade.id, message.id);
+    if (shouldNotify) {
+      const recipientId = req.userRole === "ADMIN" ? trade.userId : null;
+      if (recipientId) {
+        await notify({
+          userId: recipientId,
+          title: "New message on your trade",
+          body: notifyBody,
+          link: `/dashboard/trades/${trade.id}`,
+          emailSubject: "New reply on your trade",
+          emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+          category: "tradeChat",
+          tradeId: trade.id,
+        });
+      } else {
+        await notifyAdmins({
+          title: "Trade chat reply",
+          body: notifyBody,
+          link: `/admin/trades/${trade.id}`,
+          emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+          category: "tradeChat",
+          tradeId: trade.id,
+          messageId: message.id,
+        });
+      }
     }
 
     res.status(201).json({ message: serializeMessage(message) });
@@ -356,6 +364,7 @@ export function serializeTrade(t: any) {
     ecodes: t.ecodes,
     notes: t.notes,
     rejectionReason: t.rejectionReason,
+    notificationsMuted: t.notificationsMuted ?? false,
     attachments: t.attachments?.map((a: any) => ({ id: a.id, url: a.url, filename: a.filename })) ?? [],
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,

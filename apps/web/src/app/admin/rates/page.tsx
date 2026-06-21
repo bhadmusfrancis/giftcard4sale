@@ -58,11 +58,7 @@ function ConfigSection() {
       });
       if (d.config) setConfig(d.config);
       return d;
-    }, (d) =>
-      d.tiersUpdated
-        ? `Config saved. Updated ${d.tiersUpdated} country tier(s) to match the new minimum.`
-        : "Config saved successfully."
-    );
+    }, () => "Config saved successfully.");
   }
 
   if (!config) return null;
@@ -153,6 +149,15 @@ function ConfigSection() {
         Minimum withdrawal amounts apply to user wallet send/withdraw requests.
       </p>
       <div className="mt-4 space-y-3">
+        {saving && !status ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700"
+          >
+            Saving configuration…
+          </div>
+        ) : null}
         <FormFeedback status={status} anchorRef={statusRef} />
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? "Saving…" : "Save config"}

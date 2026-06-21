@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { RateRefreshStatus, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
+import { CountryPicker } from "@/components/CountryPicker";
 
 interface Rate {
   id: string;
@@ -56,7 +57,7 @@ export function RateCalculator({
   const [country, setCountry] = useState(countryOptions[0]?.country ?? "");
   const [otherCountryName, setOtherCountryName] = useState("");
   const [medium, setMedium] = useState<CardMedium>("PHYSICAL");
-  const [amount, setAmount] = useState<number>(100);
+  const [amountInput, setAmountInput] = useState("100");
   const [payoutCurrency, setPayoutCurrency] = useState<PayoutCurrency>("NGN");
   const [hasReceipt, setHasReceipt] = useState<boolean | null>(null);
   const [isCashReceipt, setIsCashReceipt] = useState<boolean | null>(null);
@@ -67,6 +68,13 @@ export function RateCalculator({
   const [quoteReady, setQuoteReady] = useState(false);
 
   const selectedCurrency = countryOptions.find((o) => o.country === country)?.currency;
+
+  const amount = useMemo(() => {
+    const trimmed = amountInput.trim();
+    if (!trimmed) return NaN;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : NaN;
+  }, [amountInput]);
 
   useEffect(() => {
     if (countryOptions.length && !countryOptions.some((o) => o.country === country)) {
@@ -96,21 +104,19 @@ export function RateCalculator({
   const rangesReady = hasCandidates && boundedTiers.length > 0;
   const advertisedRanges = useMemo(() => formatDenomRanges(boundedTiers), [boundedTiers]);
 
-  // Snap amount to a valid tier before quoting (runs before paint on country/currency change).
+  // Reset to a valid default when country, currency, or medium changes — not while the user is typing.
   useLayoutEffect(() => {
     if (!rangesReady) return;
-    if (!findRateTierForAmount(boundedTiers, amount)) {
-      setAmount(defaultAmountForTiers(boundedTiers));
-    }
+    setAmountInput(String(defaultAmountForTiers(boundedTiers)));
   }, [country, selectedCurrency, medium, boundedTiers, rangesReady]);
 
   const boundedTier = useMemo(
-    () => (rangesReady ? findRateTierForAmount(boundedTiers, amount) : null),
+    () => (rangesReady && Number.isFinite(amount) ? findRateTierForAmount(boundedTiers, amount) : null),
     [boundedTiers, amount, rangesReady]
   );
 
   const matched = useMemo(
-    () => (rangesReady ? findBoundedRateForAmount(candidates, boundedTiers, amount) : null),
+    () => (rangesReady && Number.isFinite(amount) ? findBoundedRateForAmount(candidates, boundedTiers, amount) : null),
     [candidates, boundedTiers, amount, rangesReady]
   );
 
@@ -121,7 +127,7 @@ export function RateCalculator({
     return "NONE";
   }, [hasReceipt, isCashReceipt]);
 
-  const amountOutOfRange = Boolean(rangesReady && amount > 0 && !boundedTier);
+  const amountOutOfRange = Boolean(rangesReady && Number.isFinite(amount) && amount > 0 && !boundedTier);
   const pricingReady = rangesReady && Boolean(boundedTier) && Boolean(matched);
   const showReceiptPrompt = askReceipt && !amountOutOfRange;
 
@@ -228,11 +234,7 @@ export function RateCalculator({
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
           <label className="label">Card country</label>
-          <select className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
-            {countryOptions.map((o) => (
-              <option key={o.country} value={o.country}>{o.label}</option>
-            ))}
-          </select>
+          <CountryPicker options={countryOptions} value={country} onChange={setCountry} />
           {isOtherCountry ? (
             <div className="mt-3">
               <label className="label">Your card country</label>
@@ -271,12 +273,18 @@ export function RateCalculator({
         <div>
           <label className="label">Card amount ({matched?.currency ?? selectedCurrency ?? "USD"})</label>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             className="input"
-            value={amount}
-            min={boundedTiers[0]?.minDenom ?? 1}
-            max={boundedTiers[0]?.maxDenom ?? undefined}
-            onChange={(e) => setAmount(Number(e.target.value))}
+            value={amountInput}
+            onChange={(e) => setAmountInput(e.target.value.replace(/[^\d.]/g, ""))}
+            onBlur={() => {
+              if (!rangesReady) return;
+              const trimmed = amountInput.trim();
+              if (!trimmed || !Number.isFinite(Number(trimmed)) || Number(trimmed) <= 0) {
+                setAmountInput(String(defaultAmountForTiers(boundedTiers)));
+              }
+            }}
             disabled={!rangesReady}
           />
           {!rangesReady ? (

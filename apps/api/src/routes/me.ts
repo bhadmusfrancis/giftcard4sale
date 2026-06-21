@@ -5,8 +5,66 @@ import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, AuthedRequest } from "../lib/auth";
 import { upload, fileUrl } from "../lib/upload";
 import { publicUser } from "./auth";
+import {
+  parseNotificationPreferences,
+  NOTIFICATION_CATEGORIES,
+} from "../services/notificationPreferences";
 
 export const meRouter = Router();
+
+const channelPrefsSchema = z.object({
+  inApp: z.boolean(),
+  push: z.boolean(),
+  email: z.boolean(),
+});
+
+const preferencesPatchSchema = z.object({
+  tradeStatus: channelPrefsSchema.partial().optional(),
+  tradeChat: channelPrefsSchema.partial().optional(),
+  withdrawal: channelPrefsSchema.partial().optional(),
+  referral: channelPrefsSchema.partial().optional(),
+});
+
+meRouter.get(
+  "/notification-preferences",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { notificationPreferences: true },
+    });
+    res.json({ preferences: parseNotificationPreferences(user?.notificationPreferences) });
+  })
+);
+
+meRouter.patch(
+  "/notification-preferences",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const patch = validate(preferencesPatchSchema, req.body);
+
+    const current = parseNotificationPreferences(
+      (
+        await prisma.user.findUnique({
+          where: { id: req.userId },
+          select: { notificationPreferences: true },
+        })
+      )?.notificationPreferences
+    );
+
+    const next = { ...current };
+    for (const category of NOTIFICATION_CATEGORIES) {
+      const update = patch[category];
+      if (update) next[category] = { ...current[category], ...update };
+    }
+
+    const user = await prisma.user.update({
+      where: { id: req.userId },
+      data: { notificationPreferences: next },
+    });
+    res.json({ preferences: parseNotificationPreferences(user.notificationPreferences) });
+  })
+);
 
 meRouter.patch(
   "/profile",

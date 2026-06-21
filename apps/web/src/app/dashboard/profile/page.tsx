@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { FormFeedback } from "@/components/FormFeedback";
@@ -74,6 +74,7 @@ export default function ProfilePage() {
       </div>
 
       <ChangePasswordSection />
+      <NotificationPreferencesSection />
     </div>
   );
 }
@@ -130,6 +131,102 @@ function ChangePasswordSection() {
         <FormFeedback status={passwordAction.status} anchorRef={passwordAction.statusRef} />
         <button type="submit" className="btn-primary" disabled={passwordAction.busy}>
           {passwordAction.busy ? "Updating…" : "Update password"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+type ChannelPrefs = { inApp: boolean; push: boolean; email: boolean };
+type NotificationPreferences = {
+  tradeStatus: ChannelPrefs;
+  tradeChat: ChannelPrefs;
+  withdrawal: ChannelPrefs;
+  referral: ChannelPrefs;
+};
+
+const PREF_LABELS: { key: keyof NotificationPreferences; label: string; hint: string }[] = [
+  { key: "tradeStatus", label: "Trade updates", hint: "Status changes, approvals, payouts" },
+  { key: "tradeChat", label: "Trade chat", hint: "At most one alert per 15 minutes per trade" },
+  { key: "withdrawal", label: "Withdrawals", hint: "Withdrawal requests and payouts" },
+  { key: "referral", label: "Referrals", hint: "Referral bonus earnings" },
+];
+
+function NotificationPreferencesSection() {
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
+  const saveAction = useAsyncAction();
+
+  useEffect(() => {
+    api<{ preferences: NotificationPreferences }>("/me/notification-preferences").then((d) =>
+      setPrefs(d.preferences)
+    );
+  }, []);
+
+  function update(
+    category: keyof NotificationPreferences,
+    channel: keyof ChannelPrefs,
+    value: boolean
+  ) {
+    setPrefs((prev) =>
+      prev ? { ...prev, [category]: { ...prev[category], [channel]: value } } : prev
+    );
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!prefs) return;
+    await saveAction.run(async () => {
+      const { preferences } = await api<{ preferences: NotificationPreferences }>(
+        "/me/notification-preferences",
+        { method: "PATCH", body: prefs }
+      );
+      setPrefs(preferences);
+    }, "Notification preferences saved.");
+  }
+
+  if (!prefs) {
+    return (
+      <div className="card p-6">
+        <h2 className="text-lg font-bold">Notifications</h2>
+        <p className="mt-2 text-sm text-slate-500">Loading…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card p-6">
+      <h2 className="text-lg font-bold">Notifications</h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Choose how you want to be notified for each type of activity.
+      </p>
+      <form onSubmit={save} className="mt-4 space-y-5">
+        {PREF_LABELS.map(({ key, label, hint }) => (
+          <div key={key} className="rounded-xl border border-slate-200 p-4">
+            <div className="font-semibold">{label}</div>
+            <p className="text-xs text-slate-500">{hint}</p>
+            <div className="mt-3 flex flex-wrap gap-4 text-sm">
+              {(
+                [
+                  ["inApp", "In-app"],
+                  ["push", "Push"],
+                  ["email", "Email"],
+                ] as const
+              ).map(([channel, channelLabel]) => (
+                <label key={channel} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={prefs[key][channel]}
+                    onChange={(e) => update(key, channel, e.target.checked)}
+                  />
+                  {channelLabel}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+        <FormFeedback status={saveAction.status} anchorRef={saveAction.statusRef} />
+        <button type="submit" className="btn-primary" disabled={saveAction.busy}>
+          {saveAction.busy ? "Saving…" : "Save notification preferences"}
         </button>
       </form>
     </div>

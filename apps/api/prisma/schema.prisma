@@ -115,6 +115,8 @@ model User {
   moderationEvents  UserModerationEvent[]
   moderationActions UserModerationEvent[] @relation("ModerationAdmin")
 
+  notificationPreferences Json?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -249,6 +251,8 @@ model Trade {
   noonesCryptoAmount  Decimal? @db.Decimal(20, 8)
   noonesCryptoCurrency String?
   noonesAwaitingSend  Boolean  @default(false)
+
+  notificationsMuted Boolean @default(false)
 
   attachments     TradeAttachment[]
   messages        TradeMessage[]

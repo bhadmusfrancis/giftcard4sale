@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -10,9 +10,42 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
+async function getExistingSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  if (Notification.permission !== "granted") return null;
+
+  const reg = await navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+
 export function PushButton() {
-  const [state, setState] = useState<"idle" | "done" | "error">("idle");
+  const [state, setState] = useState<"checking" | "idle" | "done" | "error">("checking");
   const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sub = await getExistingSubscription();
+        if (cancelled) return;
+        if (sub) {
+          setState("done");
+          // Re-sync with server in case the DB was reset or the user re-logged in.
+          api("/notifications/subscribe", { body: sub.toJSON() }).catch(() => {});
+        } else {
+          setState("idle");
+        }
+      } catch {
+        if (!cancelled) setState("idle");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function enable() {
     try {
@@ -40,8 +73,16 @@ export function PushButton() {
 
   return (
     <div>
-      <button onClick={enable} className="btn-ghost text-sm py-2" disabled={state === "done"}>
-        {state === "done" ? "🔔 Push enabled" : "Enable push notifications"}
+      <button
+        onClick={enable}
+        className="btn-ghost text-sm py-2"
+        disabled={state === "done" || state === "checking"}
+      >
+        {state === "done"
+          ? "🔔 Push enabled"
+          : state === "checking"
+            ? "Checking push status…"
+            : "Enable push notifications"}
       </button>
       {state === "error" && <p className="mt-1 text-xs text-red-600">{msg}</p>}
     </div>

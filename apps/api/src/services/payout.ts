@@ -58,6 +58,7 @@ export async function payTrade(tradeId: string): Promise<void> {
       body: `Your wallet has been credited ${Number(t.finalPayout ?? t.quotedPayout)} ${t.payoutCurrency}.`,
       link: `/dashboard/wallet`,
       emailDetail: t.tradeNumber ? `Trade ID: ${t.tradeNumber}` : undefined,
+      category: "tradeStatus",
     });
     if ((result as any).referredById) {
       await notify({
@@ -65,6 +66,7 @@ export async function payTrade(tradeId: string): Promise<void> {
         title: "Referral bonus earned",
         body: `You earned a referral bonus in ${t.payoutCurrency} from your referral's successful trade.`,
         link: `/dashboard/referrals`,
+        category: "referral",
       });
     }
   }
