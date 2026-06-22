@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { AuthProvider } from "@/lib/auth";
 import { Navbar } from "@/components/Navbar";
+import { SUPPORT_EMAIL } from "@/lib/site";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -42,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <nav className="flex flex-wrap gap-x-4 gap-y-1">
                   <a href="/terms" className="hover:text-brand-700">Terms of Service</a>
                   <a href="/privacy" className="hover:text-brand-700">Privacy Policy</a>
-                  <a href="mailto:support@giftcard4sale.com" className="hover:text-brand-700">Contact</a>
+                  <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-brand-700">Contact</a>
                 </nav>
               </div>
               <p className="mt-3 text-xs">Trade responsibly. Only submit valid gift cards.</p>

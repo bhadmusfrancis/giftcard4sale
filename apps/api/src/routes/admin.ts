@@ -4,12 +4,13 @@ import { Prisma } from "@prisma/client";
 import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
-import { requireAuth, requireAdmin, hashPassword, generateReferralCode, randomToken, AuthedRequest } from "../lib/auth";
+import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
 import { applyWalletChange } from "../services/wallet";
 import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
 import { payoutNgnToBank } from "../services/payoutProvider";
 import { notify, notifyAdmins } from "../services/notify";
+import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getRateConfig, listStaleCardTypeIds } from "../services/rateConfig";
 import {
   executeNoOnesResell,
@@ -34,7 +35,6 @@ import { rejectTradeWithBadScore } from "../services/tradeRejection";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
 import { generateTradeNumber } from "../services/tradeNumber";
 import { env } from "../env";
-import { sendTransactionalEmail } from "../services/email";
 import {
   ACTIVE_TRADE_STATUSES,
   applyUserModeration,
@@ -227,53 +227,7 @@ adminRouter.post(
   asyncHandler(async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    const resetToken = randomToken();
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { resetToken, resetTokenExp: new Date(Date.now() + 60 * 60 * 1000) },
-    });
-    const url = `${env.webUrl}/reset-password?token=${resetToken}`;
-    await sendTransactionalEmail(user.email, "Reset your password", {
-      title: "Reset your password",
-      paragraphs: [
-        "An administrator requested a password reset for your GiftCard4Sale account.",
-        "This link expires in 1 hour. If you did not expect this, contact support immediately.",
-      ],
-      ctaLabel: "Reset password",
-      ctaHref: url,
-      securityNote: "Never share this link with anyone.",
-    });
-    res.json({ ok: true });
-  })
-);
-
-adminRouter.post(
-  "/users/:id/reset-password",
-  asyncHandler(async (req, res) => {
-    const { password } = validate(z.object({ password: z.string().min(8) }), req.body);
-    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: await hashPassword(password),
-        resetToken: null,
-        resetTokenExp: null,
-        passwordChangedAt: new Date(),
-      },
-    });
-    await sendTransactionalEmail(user.email, "Your password was changed", {
-      title: "Password changed",
-      paragraphs: [
-        "Your GiftCard4Sale password was updated by an administrator.",
-        "If you did not request this change, contact support immediately.",
-      ],
-      ctaLabel: "Sign in",
-      ctaHref: `${env.webUrl}/login`,
-      securityNote: "GiftCard4Sale will never ask for your password by email or chat.",
-    });
+    await sendPasswordResetEmail(user, { adminRequested: true });
     res.json({ ok: true });
   })
 );

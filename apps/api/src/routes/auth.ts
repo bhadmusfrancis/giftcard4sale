@@ -13,6 +13,7 @@ import {
   AuthedRequest,
 } from "../lib/auth";
 import { sendTransactionalEmail } from "../services/email";
+import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getUserRestriction } from "../services/userModeration";
 import { authLimiter } from "../lib/rateLimit";
 
@@ -179,25 +180,19 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { email } = validate(z.object({ email: z.string().email() }), req.body);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (user) {
-      const resetToken = randomToken();
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { resetToken, resetTokenExp: new Date(Date.now() + 60 * 60 * 1000) },
-      });
-      const url = `${env.webUrl}/reset-password?token=${resetToken}`;
-      await sendTransactionalEmail(user.email, "Reset your password", {
-        title: "Reset your password",
-        preheader: "Use this link to choose a new GiftCard4Sale password.",
-        paragraphs: [
-          "We received a request to reset your password.",
-          "This link expires in 1 hour. If you did not request a reset, you can safely ignore this email.",
-        ],
-        ctaLabel: "Reset password",
-        ctaHref: url,
-        securityNote: "Never share this link with anyone.",
-      });
-    }
+    if (user) await sendPasswordResetEmail(user);
+    res.json({ ok: true });
+  })
+);
+
+authRouter.post(
+  "/request-password-reset",
+  requireAuth,
+  authLimiter,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    await sendPasswordResetEmail(user);
     res.json({ ok: true });
   })
 );
@@ -220,35 +215,6 @@ authRouter.post(
         passwordHash: await hashPassword(password),
         resetToken: null,
         resetTokenExp: null,
-        passwordChangedAt: new Date(),
-      },
-    });
-    await sendPasswordChangedEmail(user.email);
-    res.json({ ok: true });
-  })
-);
-
-authRouter.post(
-  "/change-password",
-  requireAuth,
-  authLimiter,
-  asyncHandler(async (req: AuthedRequest, res) => {
-    const { currentPassword, newPassword } = validate(
-      z.object({
-        currentPassword: z.string().min(1),
-        newPassword: z.string().min(8, "Password must be at least 8 characters"),
-      }),
-      req.body
-    );
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) return res.status(404).json({ error: "User not found" });
-    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
-      return res.status(400).json({ error: "Current password is incorrect" });
-    }
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: await hashPassword(newPassword),
         passwordChangedAt: new Date(),
       },
     });

@@ -73,66 +73,43 @@ export default function ProfilePage() {
         </form>
       </div>
 
-      <ChangePasswordSection />
+      <PasswordResetSection email={user.email} />
       <NotificationPreferencesSection />
     </div>
   );
 }
 
-function ChangePasswordSection() {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const passwordAction = useAsyncAction();
+function PasswordResetSection({ email }: { email: string }) {
+  const resetAction = useAsyncAction();
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (newPassword !== confirmPassword) {
-      setError("New passwords do not match.");
-      return;
-    }
-    await passwordAction.run(async () => {
-      await api("/auth/change-password", {
-        method: "POST",
-        body: { currentPassword, newPassword },
-      });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    }, "Password updated.");
+  async function requestReset() {
+    await resetAction.run(async () => {
+      await api("/auth/request-password-reset", { method: "POST" });
+    }, `Reset link sent to ${email}. Check your inbox.`);
   }
 
   return (
     <div className="card p-6">
       <h2 className="text-lg font-bold">Password</h2>
       <p className="mt-1 text-sm text-slate-500">
-        Change your password here, or use{" "}
+        For security, password changes are only done through a reset link sent to your email.
+      </p>
+      <FormFeedback status={resetAction.status} anchorRef={resetAction.statusRef} className="mt-4" />
+      <button
+        type="button"
+        className="btn-primary mt-4"
+        onClick={requestReset}
+        disabled={resetAction.busy}
+      >
+        {resetAction.busy ? "Sending…" : "Email me a reset link"}
+      </button>
+      <p className="mt-3 text-sm text-slate-500">
+        Not logged in? Use{" "}
         <a href="/forgot-password" className="text-brand-700 hover:underline">
           forgot password
         </a>{" "}
-        if you are logged out.
+        on the login page.
       </p>
-      <form onSubmit={submit} className="mt-4 max-w-md space-y-4">
-        <div>
-          <label className="label">Current password</label>
-          <input className="input" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
-        </div>
-        <div>
-          <label className="label">New password</label>
-          <input className="input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} minLength={8} required />
-        </div>
-        <div>
-          <label className="label">Confirm new password</label>
-          <input className="input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={8} required />
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <FormFeedback status={passwordAction.status} anchorRef={passwordAction.statusRef} />
-        <button type="submit" className="btn-primary" disabled={passwordAction.busy}>
-          {passwordAction.busy ? "Updating…" : "Update password"}
-        </button>
-      </form>
     </div>
   );
 }

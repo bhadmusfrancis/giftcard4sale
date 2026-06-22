@@ -44,7 +44,7 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: SUPPORT_EMAIL
-        sync: false
+        value: admin@giftcard4sale.com
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY

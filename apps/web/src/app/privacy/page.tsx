@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -35,8 +36,8 @@ export default function PrivacyPage() {
       <Section title="1. Data controller">
         <p>
           For questions about this Policy or to exercise your privacy rights, contact us at{" "}
-          <a href="mailto:support@giftcard4sale.com" className="text-brand-700 hover:underline">
-            support@giftcard4sale.com
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-700 hover:underline">
+            {SUPPORT_EMAIL}
           </a>
           .
         </p>
@@ -133,7 +134,7 @@ export default function PrivacyPage() {
       <Section title="9. Your rights">
         <p>
           Depending on your jurisdiction, you may have rights to access, correct, delete, restrict, or port your personal
-          data, and to object to certain processing. To exercise these rights, email support@giftcard4sale.com. We may
+          data, and to object to certain processing. To exercise these rights, email {SUPPORT_EMAIL}. We may
           verify your identity before responding.
         </p>
         <p>
@@ -178,8 +179,8 @@ export default function PrivacyPage() {
       <Section title="14. Contact">
         <p>
           Privacy inquiries:{" "}
-          <a href="mailto:support@giftcard4sale.com" className="text-brand-700 hover:underline">
-            support@giftcard4sale.com
+          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-700 hover:underline">
+            {SUPPORT_EMAIL}
           </a>
         </p>
       </Section>
