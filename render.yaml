@@ -8,7 +8,7 @@ services:
     runtime: node
     plan: free # free spins down after ~15 min idle (slow first request); upgrade to "starter" to stay warm
     region: virginia # closest to the Neon DB (us-east-1)
-    buildCommand: npm install --include=dev && npm run build:shared && npm run prisma:generate -w @gc4s/api && npm run prisma:deploy -w @gc4s/api && npm run build -w @gc4s/api
+    buildCommand: npm install --include=dev -w @gc4s/api -w @gc4s/shared && npm run build:shared && npm run prisma:generate -w @gc4s/api && npm run prisma:deploy -w @gc4s/api && npm run build -w @gc4s/api
     startCommand: npm run start -w @gc4s/api
     healthCheckPath: /health
     envVars:
@@ -81,7 +81,7 @@ services:
     name: gc4s-insights
     schedule: "0 8 * * *"
     region: virginia
-    buildCommand: npm install --include=dev && npm run build:shared && npm run prisma:generate -w @gc4s/api
+    buildCommand: npm install --include=dev -w @gc4s/api -w @gc4s/shared && npm run build:shared && npm run prisma:generate -w @gc4s/api
     startCommand: npm run generate:insights -w @gc4s/api
     envVars:
       - key: DATABASE_URL

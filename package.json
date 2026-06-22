@@ -22,9 +22,13 @@
     "import:noones-cards": "npm run import:noones-cards -w @gc4s/api"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.2"
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "postcss": "^8.5.10",
+    "shell-quote": "^1.8.4"
   }
 }
