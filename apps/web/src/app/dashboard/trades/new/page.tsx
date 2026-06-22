@@ -133,10 +133,20 @@ function NewTradeInner() {
       if (files) Array.from(files).forEach((f) => fd.append("images", f));
       if (receiptFiles) Array.from(receiptFiles).forEach((f) => fd.append("receiptImages", f));
 
-      return api<{ trade: { id: string } }>("/trades", { body: fd, isForm: true });
-    }, () => "Trade submitted successfully. Redirecting…");
+      return api<{ trade: { id: string }; autoRejected?: boolean; message?: string }>("/trades", {
+        body: fd,
+        isForm: true,
+      });
+    }, (r) =>
+      r.autoRejected
+        ? r.message || "Trade rejected — this card was already used in a previous trade."
+        : "Trade submitted successfully. Redirecting…"
+    );
 
     if (result?.trade?.id) {
+      if (result.autoRejected) {
+        setError(result.message || "This gift card was already used in a previous trade.");
+      }
       router.push(`/dashboard/trades/${result.trade.id}`);
     }
   }

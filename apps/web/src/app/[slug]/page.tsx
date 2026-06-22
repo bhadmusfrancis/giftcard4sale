@@ -4,6 +4,7 @@ import { fixDuplicateSellSlug } from "@gc4s/shared";
 import { apiServer } from "@/lib/api";
 import { CardRatePanel } from "@/components/CardRatePanel";
 import { BrandLogo } from "@/components/BrandLogo";
+import { GiftCardSearch } from "@/components/GiftCardSearch";
 
 interface LandingResp {
   page: {
@@ -58,11 +59,18 @@ const articleProse =
   "[&_.faq-item_summary]:cursor-pointer [&_.faq-item_p]:mt-2 [&_.faq-item_p]:text-sm [&_.faq-item_p]:text-slate-600 " +
   "[&_.balance-steps]:my-4 [&_.sell-steps]:my-4";
 
+interface CatalogResp {
+  cards: { id: string; name: string; slug: string; sellSlug: string; imageUrl?: string; description?: string }[];
+}
+
 async function load(slug: string) {
   const landing = await apiServer<LandingResp>(`/landing/${slug}`);
   const cardSlug = landing?.page.cardType?.sellSlug || landing?.page.cardType?.slug || slug;
-  const card = await apiServer<CardResp>(`/cards/${cardSlug}`);
-  return { landing, card };
+  const [card, catalog] = await Promise.all([
+    apiServer<CardResp>(`/cards/${cardSlug}`),
+    apiServer<CatalogResp>("/cards"),
+  ]);
+  return { landing, card, catalogCards: catalog?.cards ?? [] };
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
@@ -95,7 +103,7 @@ export default async function SlugPage({ params }: { params: { slug: string } })
   const fixedSlug = fixDuplicateSellSlug(params.slug);
   if (fixedSlug !== params.slug) redirect(`/${fixedSlug}`);
 
-  const { landing, card } = await load(fixedSlug);
+  const { landing, card, catalogCards } = await load(fixedSlug);
   if (!landing && !card) notFound();
 
   const title = landing?.page.title || `Sell ${card?.card.name} Gift Card`;
@@ -158,6 +166,10 @@ export default async function SlugPage({ params }: { params: { slug: string } })
           )}
         </div>
       </header>
+
+      <div className="mt-6">
+        <GiftCardSearch cards={catalogCards} currentSellSlug={card?.card.sellSlug ?? fixedSlug} />
+      </div>
 
       {/* Mobile: rate calculator immediately after header for conversion */}
       <div className="mt-6 lg:hidden">{ratePanel}</div>

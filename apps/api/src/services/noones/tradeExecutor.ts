@@ -57,6 +57,18 @@ async function uploadTradeAttachments(tradeHash: string, attachmentUrls: string[
   }
 }
 
+function isReceiptAttachment(filename: string | null | undefined): boolean {
+  return !!filename?.startsWith("receipt-");
+}
+
+function cardAttachmentUrls(attachments: { url: string; filename: string | null }[]): string[] {
+  return attachments.filter((a) => !isReceiptAttachment(a.filename)).map((a) => a.url);
+}
+
+function receiptAttachmentUrls(attachments: { url: string; filename: string | null }[]): string[] {
+  return attachments.filter((a) => isReceiptAttachment(a.filename)).map((a) => a.url);
+}
+
 function displayCountry(trade: { country: string; otherCountryName?: string | null }): string {
   if (trade.country === "Other" && trade.otherCountryName?.trim()) {
     return trade.otherCountryName.trim();
@@ -64,17 +76,23 @@ function displayCountry(trade: { country: string; otherCountryName?: string | nu
   return trade.country;
 }
 
+function mediumLabel(medium: string): string {
+  return medium === "ECODE" ? "E-code" : "Physical card";
+}
+
 function buildGreetingMessage(trade: {
   cardDenominations?: string | null;
   cardAmount: number | { toString(): string };
   country: string;
   otherCountryName?: string | null;
+  medium: string;
   cardType: { name: string };
 }): string {
   const country = displayCountry(trade);
   const cardName = trade.cardType.name.replace(/\s+gift\s+card$/i, "").trim();
   const denominations = trade.cardDenominations?.trim() || `${Number(trade.cardAmount)}x1`;
-  return `Hi, got ${denominations} ${country} ${cardName} gift card`;
+  const mediumTag = mediumLabel(trade.medium);
+  return `Hi, got ${denominations} ${country} ${cardName} (${mediumTag}) gift card`;
 }
 
 /** Gross up the user-facing effective rate to raw NoOnes marketplace level (re-add deduction). */
@@ -89,12 +107,13 @@ async function grossUpNairaPerUnit(effectiveRate: number, payoutCurrency: string
   return effectiveRate / (1 - reduction / 100);
 }
 
+const PARTNER_SEND_PATTERNS = [/\bsend\b/i, /\bgo ahead\b/i, /\byou can send\b/i, /\bready when you are\b/i];
+
 function partnerSaidSend(messages: NoOnesChatMessage[]): boolean {
-  const sendPattern = /\bsend\b/i;
   return messages.some((m) => {
     const text = (m.text || m.message || "").trim();
     if (!text || m.is_for_moderator) return false;
-    return sendPattern.test(text);
+    return PARTNER_SEND_PATTERNS.some((pattern) => pattern.test(text));
   });
 }
 
@@ -128,9 +147,9 @@ async function deliverCardToPartner(tradeId: string, tradeHash: string): Promise
     });
   }
 
-  const urls = trade.attachments.map((a) => a.url);
-  if (urls.length) {
-    await uploadTradeAttachments(tradeHash, urls);
+  const cardUrls = cardAttachmentUrls(trade.attachments);
+  if (cardUrls.length) {
+    await uploadTradeAttachments(tradeHash, cardUrls);
   }
 
   await noonesPost("trade/paid", { trade_hash: tradeHash });
@@ -143,10 +162,18 @@ async function deliverCardToPartner(tradeId: string, tradeHash: string): Promise
 
 /**
  * Auto-resell a user's gift card on NoOnes (user never sees NoOnes).
- * Opens the trade with a greeting and waits for the partner to say "send".
+ * Opens the trade with a greeting, uploads receipt when required, then waits for the partner to say "send".
  */
-export async function executeNoOnesResell(tradeId: string): Promise<void> {
+export async function executeNoOnesResell(
+  tradeId: string,
+  options: { force?: boolean } = {}
+): Promise<void> {
   if (!isNoOnesConfigured()) return;
+
+  if (!options.force) {
+    const config = await getRateConfig();
+    if (!config.noonesAutoResellEnabled) return;
+  }
 
   const trade = await prisma.trade.findUnique({
     where: { id: tradeId },
@@ -210,6 +237,15 @@ export async function executeNoOnesResell(tradeId: string): Promise<void> {
         trade_hash: tradeHash,
         message: greeting,
       });
+
+      const needsReceipt =
+        trade.receiptType !== "NONE" || market.requiresReceipt;
+      if (needsReceipt) {
+        const receiptUrls = receiptAttachmentUrls(trade.attachments);
+        if (receiptUrls.length) {
+          await uploadTradeAttachments(tradeHash, receiptUrls);
+        }
+      }
     }
 
     const messages = await fetchTradeChatMessages(tradeHash);

@@ -1,4 +1,5 @@
 import { env } from "../../env";
+import { getRateConfig } from "../rateConfig";
 import { NoOnesApiResponse } from "./types";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -15,6 +16,13 @@ export class NoOnesApiError extends Error {
 
 export function isNoOnesConfigured(): boolean {
   return Boolean(env.noones.enabled && env.noones.clientId && env.noones.clientSecret);
+}
+
+/** True when NoOnes credentials exist and admin has background auto-resell enabled. */
+export async function isAutoResellEnabled(): Promise<boolean> {
+  if (!isNoOnesConfigured()) return false;
+  const config = await getRateConfig();
+  return config.noonesAutoResellEnabled;
 }
 
 /** Exchange client credentials for a JWT (cached until ~1 min before expiry). */

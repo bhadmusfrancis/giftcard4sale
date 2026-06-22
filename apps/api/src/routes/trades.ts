@@ -8,13 +8,20 @@ import { upload, chatUpload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
-import { executeNoOnesResell, isNoOnesConfigured, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
+import { executeNoOnesResell, isAutoResellEnabled, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
 import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 import { generateTradeNumber } from "../services/tradeNumber";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
 import { canCancelTrade as canCancelTradeCheck } from "@gc4s/shared";
 import { assertUserCanTrade } from "../services/userModeration";
+import { rejectTradeWithBadScore } from "../services/tradeRejection";
+import {
+  analyzeCardSubmission,
+  attachmentCreateData,
+  primaryDuplicateReason,
+  submittedCodeCreateData,
+} from "../services/cardValidation";
 
 export const tradesRouter = Router();
 
@@ -133,6 +140,20 @@ tradesRouter.post(
       reductions: config.reductions,
     });
 
+    const analysis = await analyzeCardSubmission({
+      cardFiles,
+      receiptFiles,
+      ecodes: data.ecodes,
+    });
+    const isDuplicate = analysis.duplicates.length > 0;
+    const duplicateReason = isDuplicate ? primaryDuplicateReason(analysis.duplicates) : "";
+    const rejectionReason = isDuplicate
+      ? `${duplicateReason} Your account received a bad score for submitting a previously used card.`
+      : undefined;
+
+    const cardAnalyzed = analysis.cardFiles.filter((f) => !f.isReceipt);
+    const receiptAnalyzed = analysis.cardFiles.filter((f) => f.isReceipt);
+
     const tradeNumber = await generateTradeNumber();
     const trade = await prisma.trade.create({
       data: {
@@ -155,19 +176,53 @@ tradesRouter.post(
         status: "PENDING",
         attachments: {
           create: [
-            ...cardFiles.map((f) => ({
-              url: fileUrl(f),
-              filename: f.originalname,
-            })),
-            ...receiptFiles.map((f) => ({
-              url: fileUrl(f),
-              filename: `receipt-${f.originalname}`,
-            })),
+            ...cardAnalyzed.map((af, i) =>
+              attachmentCreateData(af, fileUrl(cardFiles[i]), cardFiles[i].originalname)
+            ),
+            ...receiptAnalyzed.map((af, i) =>
+              attachmentCreateData(
+                af,
+                fileUrl(receiptFiles[i]),
+                `receipt-${receiptFiles[i].originalname}`
+              )
+            ),
           ],
+        },
+        submittedCodes: {
+          create: submittedCodeCreateData(analysis.codes),
         },
       },
       include: { attachments: true, cardType: true },
     });
+
+    if (isDuplicate && rejectionReason) {
+      await rejectTradeWithBadScore(trade.id, { rejectionReason });
+      const rejected = await prisma.trade.findUnique({
+        where: { id: trade.id },
+        include: { attachments: true, cardType: true },
+      });
+
+      void notify({
+        userId: req.userId!,
+        title: "Trade rejected — duplicate card",
+        body: rejectionReason,
+        link: `/dashboard/trades/${trade.id}`,
+        emailDetail: `Trade ID: ${trade.tradeNumber}`,
+      }).catch((err) => console.error("[notify] duplicate reject user notify failed:", (err as Error).message));
+
+      void notifyAdmins({
+        title: "Duplicate card auto-rejected",
+        body: `${trade.tradeNumber}: ${duplicateReason}`,
+        link: `/admin/trades/${trade.id}`,
+        emailDetail: `Trade ID: ${trade.tradeNumber}`,
+      }).catch((err) => console.error("[notify] duplicate reject admin notify failed:", (err as Error).message));
+
+      return res.status(201).json({
+        trade: serializeTrade(rejected),
+        autoRejected: true,
+        message: rejectionReason,
+      });
+    }
 
     // Notify admins of a new pending trade.
     res.status(201).json({ trade: serializeTrade(trade) });
@@ -179,10 +234,12 @@ tradesRouter.post(
       emailDetail: `Trade ID: ${trade.tradeNumber}`,
     }).catch((err) => console.error("[notify] trade admin notify failed:", (err as Error).message));
 
+    const autoResell = await isAutoResellEnabled();
+
     void notify({
       userId: req.userId!,
-      title: isNoOnesConfigured() ? "Trade received — processing" : "Trade received — pending review",
-      body: isNoOnesConfigured()
+      title: autoResell ? "Trade received — processing" : "Trade received — pending review",
+      body: autoResell
         ? `Your ${rate.cardType.name} trade (${trade.tradeNumber}) is being processed. We'll credit your wallet once verification completes.`
         : `Your ${rate.cardType.name} trade (${trade.tradeNumber}) is pending review. Only submit cards you legally own with accurate details.`,
       link: `/dashboard/trades/${trade.id}`,
@@ -190,7 +247,7 @@ tradesRouter.post(
     }).catch((err) => console.error("[notify] trade user notify failed:", (err as Error).message));
 
     // Auto-resell on NoOnes in the background (hidden from user).
-    if (isNoOnesConfigured()) {
+    if (autoResell) {
       executeNoOnesResell(trade.id).catch((err) =>
         console.error(`NoOnes resell background error (${trade.id}):`, err.message)
       );

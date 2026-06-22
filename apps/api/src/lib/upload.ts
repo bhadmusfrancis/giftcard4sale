@@ -1,6 +1,6 @@
 import multer, { StorageEngine } from "multer";
 import multerS3 from "multer-s3";
-import { S3Client } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -72,6 +72,35 @@ export function fileUrl(file: Express.Multer.File): string {
     return s3file.location;
   }
   return `${env.apiUrl}/uploads/${file.filename}`;
+}
+
+/** Read bytes from a multer upload (local disk or S3). */
+export async function readUploadedFile(file: Express.Multer.File): Promise<Buffer> {
+  const diskPath = (file as Express.Multer.File & { path?: string }).path;
+  if (diskPath && fs.existsSync(diskPath)) {
+    return fs.readFileSync(diskPath);
+  }
+
+  const s3Key = (file as Express.MulterS3.File).key;
+  if (useS3 && s3Client && s3Key) {
+    const out = await s3Client.send(
+      new GetObjectCommand({ Bucket: env.s3.bucket, Key: s3Key })
+    );
+    const bytes = await out.Body?.transformToByteArray();
+    if (bytes) return Buffer.from(bytes);
+  }
+
+  const url = fileUrl(file);
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to read uploaded file (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  const localName = url.replace(/^.*\/uploads\//, "");
+  const filePath = path.join(UPLOAD_DIR, localName);
+  if (!fs.existsSync(filePath)) throw new Error("Uploaded file not found on disk");
+  return fs.readFileSync(filePath);
 }
 
 export { UPLOAD_DIR };

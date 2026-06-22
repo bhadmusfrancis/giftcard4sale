@@ -56,7 +56,18 @@ export default function TradeDetailPage() {
           <Row label="Payout" value={money(trade.finalPayout ?? trade.quotedPayout, trade.payoutCurrency)} />
           <Row label="Receipt" value={trade.receiptType} />
           <Row label="Submitted" value={date(trade.createdAt)} />
-          {trade.rejectionReason && <Row label="Reason" value={trade.rejectionReason} />}
+          {trade.rejectionReason && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <div className="font-semibold">Rejection reason</div>
+              <p className="mt-1">{trade.rejectionReason}</p>
+              {trade.status === "REJECTED" && (
+                <p className="mt-2 text-xs">
+                  Submitting a previously used gift card or duplicate image affects your bad score and may lead to
+                  account suspension.
+                </p>
+              )}
+            </div>
+          )}
 
           {cancelCheck.ok && (
             <div className="border-t border-slate-100 pt-4">

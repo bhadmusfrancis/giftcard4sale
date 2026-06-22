@@ -558,7 +558,7 @@ adminRouter.post(
 
     if (data.markPaid) await payTrade(trade.id);
     else if (data.startNoOnes && isNoOnesConfigured()) {
-      executeNoOnesResell(trade.id).catch((err) =>
+      executeNoOnesResell(trade.id, { force: true }).catch((err) =>
         console.error(`NoOnes resell background error (${trade.id}):`, err.message)
       );
     }
@@ -896,6 +896,7 @@ adminRouter.put(
         minWithdrawalNgn: z.number().positive(),
         minWithdrawalGhs: z.number().positive(),
         minWithdrawalUsdt: z.number().positive(),
+        noonesAutoResellEnabled: z.boolean(),
       }),
       req.body
     );
@@ -917,6 +918,7 @@ adminRouter.put(
         minWithdrawalNgn: new Prisma.Decimal(data.minWithdrawalNgn),
         minWithdrawalGhs: new Prisma.Decimal(data.minWithdrawalGhs),
         minWithdrawalUsdt: new Prisma.Decimal(data.minWithdrawalUsdt),
+        noonesAutoResellEnabled: data.noonesAutoResellEnabled,
       },
     });
     const config = await getRateConfig();
@@ -1184,7 +1186,7 @@ adminRouter.post(
       where: { id: trade.id },
       data: { noonesError: null, noonesStatus: null },
     });
-    await executeNoOnesResell(trade.id);
+    await executeNoOnesResell(trade.id, { force: true });
     const updated = await prisma.trade.findUnique({
       where: { id: trade.id },
       include: { cardType: true, attachments: true },

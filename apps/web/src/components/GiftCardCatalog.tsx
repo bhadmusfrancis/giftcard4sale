@@ -15,7 +15,7 @@ export interface GiftCard {
   description?: string;
 }
 
-function filterCards(cards: GiftCard[], query: string) {
+export function filterCards(cards: GiftCard[], query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return cards;
   return cards.filter((card) => {

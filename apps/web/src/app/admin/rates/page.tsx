@@ -54,6 +54,7 @@ function ConfigSection() {
           minWithdrawalNgn: Number(config.minWithdrawals?.NGN ?? 5000),
           minWithdrawalGhs: Number(config.minWithdrawals?.GHS ?? 50),
           minWithdrawalUsdt: Number(config.minWithdrawals?.USDT ?? 5),
+          noonesAutoResellEnabled: config.noonesAutoResellEnabled !== false,
         },
       });
       if (d.config) setConfig(d.config);
@@ -93,6 +94,24 @@ function ConfigSection() {
           value={config.minCountryOffersForDisplay ?? 5}
           onChange={(v) => setConfig({ ...config, minCountryOffersForDisplay: v })}
         />
+        <div className="sm:col-span-3">
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={config.noonesAutoResellEnabled !== false}
+              onChange={(e) => setConfig({ ...config, noonesAutoResellEnabled: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium text-slate-800">Background auto-resell on NoOnes</span>
+              <span className="mt-1 block text-slate-500">
+                When enabled, new trades are automatically opened on NoOnes (greeting, receipt upload when required,
+                then card delivery after the partner says &quot;send&quot;). When disabled, trades stay pending for
+                manual admin review; you can still start NoOnes from a trade detail page.
+              </span>
+            </span>
+          </label>
+        </div>
         <Field
           label="Default max active trades"
           value={config.defaultMaxConcurrentTrades ?? 5}
