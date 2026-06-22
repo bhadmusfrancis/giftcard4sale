@@ -16,7 +16,10 @@ function entry(
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const feed = await fetchSitemapFeed();
-  const siteMod = new Date(feed.siteLastModified);
+  const siteMod =
+    feed.cards.length || feed.landingPages.length || feed.insightPosts.length
+      ? new Date(feed.siteLastModified)
+      : new Date();
 
   const staticRoutes: MetadataRoute.Sitemap = [
     entry("/", siteMod, "daily", 1),
