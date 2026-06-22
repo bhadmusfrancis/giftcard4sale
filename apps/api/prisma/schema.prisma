@@ -151,6 +151,7 @@ model CardType {
   currencyMeta CardCurrencyMeta[]
   trades      Trade[]
   landingPage LandingPage?
+  insightPosts InsightPost[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -412,6 +413,36 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+}
+
+// Daily gift-card insights / news articles (7 per day, full rotation across active catalog).
+model InsightPost {
+  id          String   @id @default(cuid())
+  slug        String   @unique // e.g. "amazon-insights-2026-06-22"
+  title       String
+  metaTitle   String?
+  metaDesc    String?
+  excerpt     String?
+  bodyHtml    String
+  cardType    CardType @relation(fields: [cardTypeId], references: [id], onDelete: Cascade)
+  cardTypeId  String
+  batchDate   DateTime @db.Date
+  sourceUrls  String[] @default([])
+  published   Boolean  @default(true)
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([batchDate, published])
+  @@index([cardTypeId])
+  @@unique([cardTypeId, batchDate])
+}
+
+model InsightRotationState {
+  id          String   @id @default("default")
+  featuredIds String[] @default([])
+  cycleNumber Int      @default(1)
+  updatedAt   DateTime @updatedAt
 }
 
 // SEO landing pages rewritten from Facebook posts.

@@ -75,4 +75,19 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+
+  # Daily gift-card insights (7 articles/day). Runs at 08:00 UTC.
+  - type: cron
+    name: gc4s-insights
+    schedule: "0 8 * * *"
+    region: virginia
+    buildCommand: npm install --include=dev && npm run build:shared && npm run prisma:generate -w @gc4s/api
+    startCommand: npm run generate:insights -w @gc4s/api
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: INSIGHTS_ENABLED
+        value: "true"
+      - key: OPENAI_API_KEY
+        sync: false
 # Web app (Next.js) is deployed on Vercel — see apps/web/vercel.json.

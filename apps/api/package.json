@@ -12,6 +12,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "seed:landing": "tsx scripts/seed-landing-articles.ts",
+    "generate:insights": "tsx scripts/generate-daily-insights.ts",
+    "regenerate:insights": "tsx scripts/regenerate-insights.ts",
     "publish:landing": "tsx scripts/publish-landing-pages.ts",
     "import:noones-cards": "tsx scripts/import-noones-cards.ts",
     "sync:noones": "tsx --import ./scripts/sync-noones-preload.ts scripts/sync-noones.ts",

@@ -3,11 +3,12 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/lib/auth";
 import { Navbar } from "@/components/Navbar";
 import { SUPPORT_EMAIL } from "@/lib/site";
+import { SITE_URL } from "@/lib/seo/site";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const googleSiteVerification = process.env.GOOGLE_SITE_VERIFICATION?.trim();
 
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "GiftCard4Sale — Sell Gift Cards for USDT, Naira & Cedi",
     template: "%s | GiftCard4Sale",
@@ -20,10 +21,11 @@ export const metadata: Metadata = {
     apple: [{ url: "/icon.svg" }],
   },
   alternates: { canonical: "/" },
+  ...(googleSiteVerification ? { verification: { google: googleSiteVerification } } : {}),
   openGraph: {
     title: "GiftCard4Sale",
     description: "Sell gift cards for USDT, Naira & Cedi.",
-    url: SITE,
+    url: SITE_URL,
     siteName: "GiftCard4Sale",
     type: "website",
   },

@@ -1,39 +1,61 @@
 import type { MetadataRoute } from "next";
-import { apiServer } from "@/lib/api";
+import { fetchSitemapFeed } from "@/lib/seo/sitemap-data";
+import { absoluteUrl } from "@/lib/seo/site";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+/** Regenerate often so crawlers see fresh lastmod after rate syncs and new insights. */
+export const revalidate = 900;
 
-export const revalidate = 3600; // refresh hourly
+type SitemapId = "static" | "catalog" | "insights";
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date();
+export async function generateSitemaps() {
+  return [{ id: "static" }, { id: "catalog" }, { id: "insights" }] satisfies { id: SitemapId }[];
+}
 
-  const staticRoutes: MetadataRoute.Sitemap = [
-    { url: `${SITE}/`, lastModified: now, changeFrequency: "daily", priority: 1 },
-    { url: `${SITE}/cards`, lastModified: now, changeFrequency: "daily", priority: 0.9 },
-  ];
+function entry(
+  path: string,
+  lastModified: Date,
+  changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"],
+  priority: number
+): MetadataRoute.Sitemap[number] {
+  return { url: absoluteUrl(path), lastModified, changeFrequency, priority };
+}
 
-  const cardsData = await apiServer<{ cards: { sellSlug: string }[] }>("/cards");
-  const cardRoutes: MetadataRoute.Sitemap = (cardsData?.cards ?? []).map((c) => ({
-    url: `${SITE}/${c.sellSlug}`,
-    lastModified: now,
-    changeFrequency: "weekly",
-    priority: 0.8,
-  }));
+export default async function sitemap(props: { id: SitemapId }): Promise<MetadataRoute.Sitemap> {
+  const feed = await fetchSitemapFeed();
+  const siteMod = new Date(feed.siteLastModified);
 
-  const landingData = await apiServer<{ pages: { slug: string }[] }>("/landing");
-  const landingRoutes: MetadataRoute.Sitemap = (landingData?.pages ?? []).map((p) => ({
-    url: `${SITE}/${p.slug}`,
-    lastModified: now,
-    changeFrequency: "weekly",
-    priority: 0.7,
-  }));
+  if (props.id === "static") {
+    return [
+      entry("/", siteMod, "daily", 1),
+      entry("/cards", siteMod, "daily", 0.9),
+      entry("/insights", siteMod, "daily", 0.85),
+      entry("/terms", siteMod, "monthly", 0.3),
+      entry("/privacy", siteMod, "monthly", 0.3),
+    ];
+  }
 
-  // De-dupe (a landing slug may equal a card sellSlug).
-  const seen = new Set<string>();
-  return [...staticRoutes, ...cardRoutes, ...landingRoutes].filter((r) => {
-    if (seen.has(r.url)) return false;
-    seen.add(r.url);
-    return true;
-  });
+  if (props.id === "catalog") {
+    const seen = new Set<string>();
+    const routes: MetadataRoute.Sitemap = [];
+
+    for (const card of feed.cards) {
+      const url = absoluteUrl(`/${card.sellSlug}`);
+      if (seen.has(url)) continue;
+      seen.add(url);
+      routes.push(entry(`/${card.sellSlug}`, new Date(card.updatedAt), "daily", 0.8));
+    }
+
+    for (const page of feed.landingPages) {
+      const url = absoluteUrl(`/${page.slug}`);
+      if (seen.has(url)) continue;
+      seen.add(url);
+      routes.push(entry(`/${page.slug}`, new Date(page.updatedAt), "weekly", 0.75));
+    }
+
+    return routes;
+  }
+
+  return feed.insightPosts.map((post) =>
+    entry(`/insights/${post.slug}`, new Date(post.lastModified), "weekly", 0.7)
+  );
 }

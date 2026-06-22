@@ -13,9 +13,12 @@ import { withdrawalsRouter } from "./routes/withdrawals";
 import { referralsRouter } from "./routes/referrals";
 import { notificationsRouter } from "./routes/notifications";
 import { landingRouter } from "./routes/landing";
+import { insightsRouter } from "./routes/insights";
+import { seoRouter } from "./routes/seo";
 import { adminRouter } from "./routes/admin";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
+import { startInsightsScheduler } from "./services/insights/scheduler";
 import {
   ensureCardSeoLandingPagesPublished,
   repairManualRateCatalog,
@@ -69,6 +72,8 @@ app.use("/api/withdrawals", writeLimiter, withdrawalsRouter);
 app.use("/api/referrals", referralsRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/landing", landingRouter);
+app.use("/api/insights", insightsRouter);
+app.use("/api/seo", seoRouter);
 app.use("/api/admin", adminRouter);
 
 // 404
@@ -111,5 +116,8 @@ app.listen(env.port, () => {
       if (n > 0) console.log(`Re-published ${n} SEO landing page(s) for inactive cards.`);
     })
     .catch((e) => console.warn("SEO landing publish:", (e as Error).message))
-    .finally(() => startNoOnesJobs());
+    .finally(() => {
+      startNoOnesJobs();
+      startInsightsScheduler();
+    });
 });

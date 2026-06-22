@@ -96,6 +96,18 @@ export const env = {
     password: process.env.ADMIN_PASSWORD || "ChangeMe123!",
   },
 
+  /** Daily gift-card insights / blog generation */
+  insights: {
+    enabled: (process.env.INSIGHTS_ENABLED || "true") === "true",
+    cronHourUtc: num(process.env.INSIGHTS_CRON_HOUR_UTC, 8),
+    cronSecret: process.env.INSIGHTS_CRON_SECRET || process.env.CRON_SECRET || "",
+  },
+
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || "",
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+  },
+
   noones: {
     enabled: (process.env.NOONES_ENABLED || "false") === "true",
     clientId: process.env.NOONES_CLIENT_ID || process.env.NOONES_APP_ID || "",

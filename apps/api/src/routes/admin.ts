@@ -45,6 +45,7 @@ import {
 } from "../services/userModeration";
 import { storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
 import { parseStoredQuotes } from "../services/noones";
+import { generateDailyInsights } from "../services/insights/generator";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -1006,6 +1007,17 @@ adminRouter.delete(
   asyncHandler(async (req, res) => {
     await prisma.landingPage.delete({ where: { slug: req.params.slug } });
     res.json({ ok: true });
+  })
+);
+
+// ---------------------------------------------------------------- Insights / daily blog
+adminRouter.post(
+  "/insights/generate",
+  asyncHandler(async (req, res) => {
+    const force = req.body?.force === true;
+    const dryRun = req.body?.dryRun === true;
+    const result = await generateDailyInsights({ force, dryRun });
+    res.json(result);
   })
 );
 

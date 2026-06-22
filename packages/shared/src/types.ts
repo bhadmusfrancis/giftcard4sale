@@ -223,15 +223,22 @@ export function formatDenomRanges(tiers: RateDenomRange[]): string {
   return currency ? `${parts.join(", ")} ${currency}` : parts.join(", ");
 }
 
-/** Default sample amount that fits a tier (midpoint or lower bound). */
+/** Default card amount: 100 when in range, else the tier minimum when it exceeds 100. */
 export function defaultAmountForTiers(tiers: RateDenomRange[]): number {
   if (!tiers.length) return 100;
+
   const sorted = [...tiers].sort((a, b) => (a.minDenom ?? 0) - (b.minDenom ?? 0));
-  const tier = sorted[0];
-  if (tier.minDenom != null && tier.maxDenom != null) {
-    return Math.round((tier.minDenom + tier.maxDenom) / 2);
-  }
-  return tier.minDenom ?? tier.maxDenom ?? 100;
+  const lowestMin = sorted.reduce<number | null>((min, tier) => {
+    if (tier.minDenom == null) return min;
+    return min == null ? tier.minDenom : Math.min(min, tier.minDenom);
+  }, null);
+
+  if (lowestMin != null && lowestMin > 100) return lowestMin;
+
+  if (findRateTierForAmount(tiers, 100)) return 100;
+
+  // 100 is below the minimum tier — use the smallest valid amount (usually the tier minimum).
+  return lowestMin ?? sorted[0].minDenom ?? sorted[0].maxDenom ?? 100;
 }
 
 export interface RateDenomRange {
