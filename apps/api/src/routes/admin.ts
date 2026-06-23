@@ -729,6 +729,7 @@ adminRouter.get(
         description: c.description,
         rateCount: c._count.rates,
         noonesPaymentMethod: c.noonesPaymentMethod,
+        noonesAutoResellEnabled: c.noonesAutoResellEnabled,
       })),
     });
   })
@@ -759,6 +760,7 @@ adminRouter.patch(
         description: z.string().optional(),
         imageUrl: z.string().optional(),
         active: z.boolean().optional(),
+        noonesAutoResellEnabled: z.boolean().optional(),
       }),
       req.body
     );
@@ -1087,6 +1089,7 @@ adminRouter.post(
               created: 0,
               updated: 0,
               skipped: 0,
+              deleted: 0,
               drafted: 0,
               published: 0,
               cardTypes: 0,

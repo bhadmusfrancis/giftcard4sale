@@ -147,6 +147,8 @@ model CardType {
   tradeVolume Int      @default(0)
   // Last completed NoOnes rate sync attempt (cooldown when tiers stay inactive).
   noonesSyncedAt DateTime?
+  // When true (and global auto-resell is on), new trades for this card are auto-opened on NoOnes.
+  noonesAutoResellEnabled Boolean @default(true)
   rates       Rate[]
   currencyMeta CardCurrencyMeta[]
   trades      Trade[]

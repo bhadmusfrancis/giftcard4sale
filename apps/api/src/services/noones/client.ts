@@ -1,4 +1,5 @@
 import { env } from "../../env";
+import { prisma } from "../../prisma";
 import { getRateConfig } from "../rateConfig";
 import { NoOnesApiResponse } from "./types";
 
@@ -18,11 +19,25 @@ export function isNoOnesConfigured(): boolean {
   return Boolean(env.noones.enabled && env.noones.clientId && env.noones.clientSecret);
 }
 
-/** True when NoOnes credentials exist and admin has background auto-resell enabled. */
+/** True when NoOnes credentials exist and admin has background auto-resell enabled globally. */
 export async function isAutoResellEnabled(): Promise<boolean> {
   if (!isNoOnesConfigured()) return false;
   const config = await getRateConfig();
   return config.noonesAutoResellEnabled;
+}
+
+/** True when global auto-resell is on and this card type is selected for auto-trade. */
+export async function isAutoResellEnabledForCard(cardTypeId: string): Promise<boolean> {
+  if (!isNoOnesConfigured()) return false;
+  const [config, card] = await Promise.all([
+    getRateConfig(),
+    prisma.cardType.findUnique({
+      where: { id: cardTypeId },
+      select: { noonesAutoResellEnabled: true },
+    }),
+  ]);
+  if (!config.noonesAutoResellEnabled) return false;
+  return card?.noonesAutoResellEnabled !== false;
 }
 
 /** Exchange client credentials for a JWT (cached until ~1 min before expiry). */

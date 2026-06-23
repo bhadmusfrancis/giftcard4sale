@@ -37,6 +37,9 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(initialQuery);
   const [liveCards, setLiveCards] = useState<GiftCard[] | null>(null);
+  const [catalogState, setCatalogState] = useState<"idle" | "loading" | "error" | "ready">(
+    cards.length > 0 ? "ready" : "idle"
+  );
 
   useEffect(() => {
     setQuery(searchParams.get("q") ?? initialQuery);
@@ -44,10 +47,28 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
 
   // SSR can miss the API when the server starts before the API is ready.
   useEffect(() => {
-    if (cards.length > 0) return;
+    if (cards.length > 0) {
+      setCatalogState("ready");
+      return;
+    }
+
+    let cancelled = false;
+    setCatalogState("loading");
     api<{ cards: GiftCard[] }>("/cards")
-      .then((data) => setLiveCards(data.cards ?? []))
-      .catch(() => setLiveCards([]));
+      .then((data) => {
+        if (cancelled) return;
+        setLiveCards(data.cards ?? []);
+        setCatalogState("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLiveCards([]);
+        setCatalogState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [cards.length]);
 
   const catalogCards = liveCards ?? cards;
@@ -106,11 +127,27 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
       {filtered.length === 0 && (
         <div className="card mt-8 p-8 text-center">
           <p className="font-medium text-slate-700">
-            {liveCards === null && cards.length === 0 ? "Loading gift cards…" : "No gift cards found"}
+            {catalogState === "loading" || catalogState === "idle"
+              ? "Loading gift cards…"
+              : catalogState === "error"
+                ? "Couldn't load gift cards"
+                : "No gift cards found"}
           </p>
           <p className="mt-2 text-sm text-slate-500">
-            {liveCards === null && cards.length === 0 ? (
+            {catalogState === "loading" || catalogState === "idle" ? (
               "Loading gift cards from our catalog."
+            ) : catalogState === "error" ? (
+              <>
+                Our catalog is temporarily unavailable.{" "}
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="text-brand-700 hover:underline"
+                >
+                  Try again
+                </button>
+                .
+              </>
             ) : (
               <>
                 Try a different search term, or{" "}

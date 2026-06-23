@@ -31,6 +31,7 @@ export interface RateSyncSummary {
   created: number;
   updated: number;
   skipped: number;
+  deleted: number;
   drafted: number;
   published: number;
   cardTypes: number;
@@ -191,15 +192,16 @@ async function upsertRateFromNoOnes(
   return "created";
 }
 
-async function deactivateStaleDenomTiers(
+async function deleteStaleDenomTiers(
   cardTypeId: string,
   metaByCurrency: Map<string, CurrencyOfferMeta>,
   genericEuroMeta?: CurrencyOfferMeta | null
-): Promise<void> {
+): Promise<string[]> {
   const noonesRates = await prisma.rate.findMany({
     where: { cardTypeId, speed: "NOONES" },
   });
 
+  const toDelete: string[] = [];
   for (const rate of noonesRates) {
     if (isOpenEndedCountryTier(rate.country)) continue;
     const meta = isEuroTier(rate.country)
@@ -208,9 +210,61 @@ async function deactivateStaleDenomTiers(
     if (!meta?.ranges.length) continue;
     const matches = meta.ranges.some((r) => r.min === rate.minDenom && r.max === rate.maxDenom);
     if (!matches) {
-      await prisma.rate.update({ where: { id: rate.id }, data: { active: false } });
+      toDelete.push(rate.id);
     }
   }
+  return toDelete;
+}
+
+async function purgeSupersededNoonesRates(
+  cardTypeId: string,
+  metaByCurrency: Map<string, CurrencyOfferMeta>,
+  genericEuroMeta: CurrencyOfferMeta | null | undefined,
+  regionLock: ReturnType<typeof resolveCardRegionLock>,
+  summary: RateSyncSummary
+): Promise<void> {
+  const staleDenomIds = await deleteStaleDenomTiers(cardTypeId, metaByCurrency, genericEuroMeta);
+  const toDelete = new Set(staleDenomIds);
+
+  const noonesRates = await prisma.rate.findMany({
+    where: { cardTypeId, speed: "NOONES" },
+    select: {
+      id: true,
+      active: true,
+      country: true,
+      currency: true,
+      minDenom: true,
+      maxDenom: true,
+    },
+  });
+
+  for (const rate of noonesRates) {
+    if (
+      rate.minDenom == null &&
+      rate.maxDenom == null &&
+      !["Other", "Euro"].includes(rate.country) &&
+      !isOpenEndedCountryTier(rate.country)
+    ) {
+      toDelete.add(rate.id);
+      continue;
+    }
+
+    if (regionLock && !tierMatchesRegionLock(rate, regionLock)) {
+      toDelete.add(rate.id);
+      continue;
+    }
+
+    if (!rate.active) {
+      toDelete.add(rate.id);
+    }
+  }
+
+  if (!toDelete.size) return;
+
+  const result = await prisma.rate.deleteMany({
+    where: { id: { in: [...toDelete] } },
+  });
+  summary.deleted += result.count;
 }
 
 async function stashCountryTier(
@@ -310,17 +364,6 @@ async function syncCardTypeRates(
 
   const existingRates = await prisma.rate.findMany({ where: { cardTypeId: card.id } });
   let targets = buildSyncTargets(existingRates, { ...options, regionLock });
-
-  await prisma.rate.updateMany({
-    where: {
-      cardTypeId: card.id,
-      speed: "NOONES",
-      minDenom: null,
-      maxDenom: null,
-      country: { notIn: ["Other", "Euro"] },
-    },
-    data: { active: false },
-  });
 
   let discovered: string[] = [];
   if (!regionLock) {
@@ -517,10 +560,12 @@ async function syncCardTypeRates(
       const staleOther = await prisma.rate.findMany({
         where: { cardTypeId: card.id, country: "Other", speed: "NOONES" },
       });
-      for (const row of staleOther) {
-        if (!isRateSyncFresh(row.updatedAt, noonesRateRefreshHours)) {
-          await prisma.rate.update({ where: { id: row.id }, data: { active: false } });
-        }
+      const staleOtherIds = staleOther
+        .filter((row) => !isRateSyncFresh(row.updatedAt, noonesRateRefreshHours))
+        .map((row) => row.id);
+      if (staleOtherIds.length) {
+        const removed = await prisma.rate.deleteMany({ where: { id: { in: staleOtherIds } } });
+        summary.deleted += removed.count;
       }
     }
   } catch (err) {
@@ -601,29 +646,7 @@ async function syncCardTypeRates(
     }
   }
 
-  await deactivateStaleDenomTiers(card.id, metaByCurrency, genericEuroMeta);
-
-  await prisma.rate.updateMany({
-    where: {
-      cardTypeId: card.id,
-      speed: "NOONES",
-      minDenom: null,
-      maxDenom: null,
-      country: { notIn: ["Other", "Euro"] },
-    },
-    data: { active: false },
-  });
-
-  if (regionLock) {
-    const outOfRegion = await prisma.rate.findMany({
-      where: { cardTypeId: card.id, speed: "NOONES", active: true },
-    });
-    for (const rate of outOfRegion) {
-      if (!tierMatchesRegionLock(rate, regionLock)) {
-        await prisma.rate.update({ where: { id: rate.id }, data: { active: false } });
-      }
-    }
-  }
+  await purgeSupersededNoonesRates(card.id, metaByCurrency, genericEuroMeta, regionLock, summary);
 
   const activeCurrencies = new Set(
     (
@@ -758,6 +781,7 @@ export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<Ra
     created: 0,
     updated: 0,
     skipped: 0,
+    deleted: 0,
     drafted: 0,
     published: 0,
     cardTypes: 0,
@@ -827,6 +851,7 @@ export async function syncCardRatesFromNoOnes(
     created: 0,
     updated: 0,
     skipped: 0,
+    deleted: 0,
     drafted: 0,
     published: 0,
     cardTypes: 0,

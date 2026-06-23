@@ -8,7 +8,7 @@ import { upload, chatUpload, fileUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
-import { executeNoOnesResell, isAutoResellEnabled, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
+import { executeNoOnesResell, isAutoResellEnabledForCard, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
 import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 import { generateTradeNumber } from "../services/tradeNumber";
@@ -234,7 +234,7 @@ tradesRouter.post(
       emailDetail: `Trade ID: ${trade.tradeNumber}`,
     }).catch((err) => console.error("[notify] trade admin notify failed:", (err as Error).message));
 
-    const autoResell = await isAutoResellEnabled();
+    const autoResell = await isAutoResellEnabledForCard(rate.cardTypeId);
 
     void notify({
       userId: req.userId!,

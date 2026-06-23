@@ -46,6 +46,7 @@ const emptySummary = (): RateSyncSummary => ({
   created: 0,
   updated: 0,
   skipped: 0,
+  deleted: 0,
   drafted: 0,
   published: 0,
   cardTypes: 0,

@@ -8,7 +8,7 @@ import { notify, notifyAdmins } from "../notify";
 import { payTrade } from "../payout";
 import { rejectTradeWithBadScore } from "../tradeRejection";
 import { getRateConfig } from "../rateConfig";
-import { isNoOnesConfigured, noonesPost, noonesUpload, NoOnesApiError } from "./client";
+import { isAutoResellEnabledForCard, isNoOnesConfigured, noonesPost, noonesUpload, NoOnesApiError } from "./client";
 import { resolveOfferForCard } from "./rates";
 import { NoOnesTradeGetData } from "./types";
 
@@ -170,16 +170,17 @@ export async function executeNoOnesResell(
 ): Promise<void> {
   if (!isNoOnesConfigured()) return;
 
-  if (!options.force) {
-    const config = await getRateConfig();
-    if (!config.noonesAutoResellEnabled) return;
-  }
-
   const trade = await prisma.trade.findUnique({
     where: { id: tradeId },
     include: { cardType: true, attachments: true },
   });
   if (!trade) return;
+
+  if (!options.force) {
+    const enabled = await isAutoResellEnabledForCard(trade.cardTypeId);
+    if (!enabled) return;
+  }
+
   if (trade.noonesTradeHash && !trade.noonesAwaitingSend) return;
   if (trade.status === "REJECTED" || trade.status === "PAID" || trade.status === "CANCELLED") return;
 

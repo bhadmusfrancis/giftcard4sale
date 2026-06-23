@@ -107,7 +107,8 @@ function ConfigSection() {
               <span className="mt-1 block text-slate-500">
                 When enabled, new trades are automatically opened on NoOnes (greeting, receipt upload when required,
                 then card delivery after the partner says &quot;send&quot;). When disabled, trades stay pending for
-                manual admin review; you can still start NoOnes from a trade detail page.
+                manual admin review; you can still start NoOnes from a trade detail page. Use the per-card
+                &quot;Auto-trade&quot; checkboxes below to choose which gift cards participate.
               </span>
             </span>
           </label>
@@ -304,6 +305,21 @@ function CardsSection() {
     }
   }
 
+  async function toggleAutoTrade(card: { id: string; noonesAutoResellEnabled?: boolean }) {
+    setSyncMsg(null);
+    try {
+      const enabled = card.noonesAutoResellEnabled === false;
+      await api(`/admin/cards/${card.id}`, {
+        method: "PATCH",
+        body: { noonesAutoResellEnabled: enabled },
+      });
+      await load();
+      setSyncMsg(enabled ? "Auto-trade enabled for this card." : "Auto-trade disabled for this card.");
+    } catch (e) {
+      setSyncMsg((e as Error).message);
+    }
+  }
+
   async function deleteCard(card: { id: string; name: string }) {
     if (!confirm(`Delete "${card.name}" and all its rates? This cannot be undone.`)) return;
     setSyncMsg(null);
@@ -338,6 +354,15 @@ function CardsSection() {
                 <span className="ml-2 text-sm text-slate-500">{c.rateCount} rates {expanded === c.id ? "▲" : "▼"}</span>
               </button>
               <div className="flex shrink-0 items-center gap-1">
+                <label className="flex items-center gap-1.5 px-2 text-xs text-slate-600" title="Auto-open new trades on NoOnes">
+                  <input
+                    type="checkbox"
+                    checked={c.noonesAutoResellEnabled !== false}
+                    disabled={sync.running}
+                    onChange={() => toggleAutoTrade(c)}
+                  />
+                  Auto-trade
+                </label>
                 {c.noonesPaymentMethod ? (
                   <button
                     type="button"
