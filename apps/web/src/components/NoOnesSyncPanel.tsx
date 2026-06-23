@@ -24,6 +24,7 @@ interface SyncProgress {
   summary: {
     created: number;
     updated: number;
+    deleted: number;
     skipped: number;
     drafted: number;
     published: number;
@@ -215,7 +216,7 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
             <span>{active.summary.created} created</span>
             <span>{active.summary.updated} updated</span>
-            <span>{active.summary.deleted ?? 0} deleted</span>
+            <span>{active.summary.deleted} deleted</span>
             <span>{active.summary.skipped} skipped</span>
             <span>{active.summary.published} published</span>
             <span>{active.summary.drafted} drafted</span>
@@ -243,7 +244,7 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
           </p>
           <p className="mt-1">
             {lastCompleted.summary.created} created, {lastCompleted.summary.updated} updated,{" "}
-            {lastCompleted.summary.deleted ?? 0} deleted, {lastCompleted.summary.skipped} skipped
+            {lastCompleted.summary.deleted} deleted, {lastCompleted.summary.skipped} skipped
             {lastCompleted.summary.errors.length
               ? ` · ${lastCompleted.summary.errors.length} error(s)`
               : ""}
