@@ -24,11 +24,14 @@ export interface NotifyOptions {
 }
 
 const ADMIN_EMAIL_EVENTS = new Set([
+  "New user registered",
   "New trade submitted",
   "Trade cancelled by user",
+  "Duplicate card auto-rejected",
   "New withdrawal request",
   "Trade chat reply",
   "NoOnes resell needs attention",
+  "Auto-credit failed after NoOnes release",
 ]);
 
 export async function notify(opts: NotifyOptions): Promise<void> {

@@ -13,6 +13,7 @@ import {
   AuthedRequest,
 } from "../lib/auth";
 import { sendTransactionalEmail } from "../services/email";
+import { notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getUserRestriction } from "../services/userModeration";
 import { authLimiter } from "../lib/rateLimit";
@@ -99,6 +100,14 @@ authRouter.post(
 
     const verifyUrl = `${env.webUrl}/verify-email?token=${verifyToken}`;
     await sendVerifyEmail(email, verifyUrl);
+
+    void notifyAdmins({
+      title: "New user registered",
+      body: `${user.displayName} (${user.email}) just created an account.`,
+      link: `/admin/users`,
+      email: true,
+      emailDetail: referredById ? "Joined via a referral link." : undefined,
+    }).catch((err) => console.error("[notify] new user admin notify failed:", (err as Error).message));
 
     const token = signToken(user);
     res.status(201).json({ token, user: publicUser(user), needsVerification: true });
