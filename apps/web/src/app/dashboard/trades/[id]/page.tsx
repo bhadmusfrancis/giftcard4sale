@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { money, date, STATUS_COLORS } from "@/lib/format";
+import { money, date, STATUS_COLORS, SELLER_STATUS_DESCRIPTIONS } from "@/lib/format";
 import { TradeChat } from "@/components/TradeChat";
 
 export default function TradeDetailPage() {
@@ -45,8 +45,14 @@ export default function TradeDetailPage() {
           <h1 className="text-2xl font-bold">{trade.cardType?.name} trade</h1>
           <p className="mt-1 font-mono text-sm text-slate-500">{trade.tradeNumber}</p>
         </div>
-        <span className={`badge ${STATUS_COLORS[trade.status]}`}>{trade.status}</span>
+        <span className={`badge ${STATUS_COLORS[trade.status]}`} title={SELLER_STATUS_DESCRIPTIONS[trade.status]}>{trade.status}</span>
       </div>
+
+      {SELLER_STATUS_DESCRIPTIONS[trade.status] && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          {SELLER_STATUS_DESCRIPTIONS[trade.status]}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card space-y-3 p-6">

@@ -16,8 +16,20 @@ export async function payTrade(tradeId: string): Promise<void> {
     if (!trade) throw new Error("Trade not found");
     if (trade.status === "CANCELLED" || trade.status === "REJECTED") return { alreadyPaid: true, trade };
 
+    // A trade earns one good transaction score the first time it reaches PAID,
+    // regardless of which path (fresh credit or self-heal) gets it there.
+    const firstTimePaid = trade.status !== "PAID";
+
     const existing = await tx.walletTransaction.findUnique({ where: { tradeId } });
-    if (existing) return { alreadyPaid: true, trade };
+    if (existing) {
+      // Already credited (e.g. webhook + poller raced). Make sure the trade lands on PAID
+      // so it stops being counted as an active trade, and award the score once.
+      if (firstTimePaid) {
+        await tx.trade.update({ where: { id: trade.id }, data: { status: "PAID" } });
+        await tx.user.update({ where: { id: trade.userId }, data: { goodScore: { increment: 1 } } });
+      }
+      return { alreadyPaid: true, trade };
+    }
 
     const amount = new Prisma.Decimal(trade.finalPayout ?? trade.quotedPayout);
 
@@ -47,6 +59,10 @@ export async function payTrade(tradeId: string): Promise<void> {
     }
 
     await tx.trade.update({ where: { id: trade.id }, data: { status: "PAID" } });
+    // Reward the successful, completed trade with +1 good transaction score.
+    if (firstTimePaid) {
+      await tx.user.update({ where: { id: trade.userId }, data: { goodScore: { increment: 1 } } });
+    }
     return { alreadyPaid: false, trade, referredById: seller?.referredById ?? null, amount };
   });
 
@@ -70,4 +86,31 @@ export async function payTrade(tradeId: string): Promise<void> {
       });
     }
   }
+}
+
+/**
+ * Self-heal trades that were credited to a wallet but never moved to PAID
+ * (e.g. a webhook/poller race left them stuck at APPROVED, so they still
+ * counted as "active"). Marks each PAID and awards the good transaction score.
+ * Idempotent — only touches trades that have a credit but aren't PAID/CANCELLED/REJECTED.
+ */
+export async function reconcilePaidTrades(): Promise<number> {
+  const stuck = await prisma.trade.findMany({
+    where: {
+      status: { notIn: ["PAID", "CANCELLED", "REJECTED"] },
+      transaction: { is: { type: "TRADE_CREDIT" } },
+    },
+    select: { id: true, userId: true },
+  });
+
+  if (!stuck.length) return 0;
+
+  for (const trade of stuck) {
+    await prisma.$transaction([
+      prisma.trade.update({ where: { id: trade.id }, data: { status: "PAID" } }),
+      prisma.user.update({ where: { id: trade.userId }, data: { goodScore: { increment: 1 } } }),
+    ]);
+  }
+
+  return stuck.length;
 }

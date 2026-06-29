@@ -380,6 +380,11 @@ export async function handleNoOnesTradeStatus(
   });
 }
 
+/**
+ * NoOnes released the funds — the trade succeeded on the marketplace.
+ * Mark it APPROVED, then immediately credit the seller's wallet (payTrade sets PAID).
+ * payTrade is idempotent, so retries (webhook + poller) never double-credit.
+ */
 async function finalizeSuccessfulResell(
   tradeId: string,
   noonesTradeHash: string,
@@ -404,7 +409,20 @@ async function finalizeSuccessfulResell(
     },
   });
 
-  await payTrade(tradeId);
+  // Automatically credit the wallet now that the marketplace trade is successful.
+  try {
+    await payTrade(tradeId);
+  } catch (err) {
+    // Keep the trade APPROVED (not PAID) so the poller/webhook retries the credit.
+    const msg = (err as Error).message;
+    console.error(`Auto-credit failed for trade ${tradeId} after NoOnes release:`, msg);
+    await notifyAdmins({
+      title: "Auto-credit failed after NoOnes release",
+      body: `${trade.tradeNumber}: marketplace released funds but the wallet credit failed — ${msg}`,
+      link: `/admin/trades/${tradeId}`,
+    });
+    throw err;
+  }
 }
 
 async function finalizeFailedResell(tradeId: string, noonesTradeHash: string, reason: string): Promise<void> {

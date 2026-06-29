@@ -26,6 +26,7 @@ import {
   syncNoOnesCatalogVisibilityFromStored,
 } from "./services/cardVisibility";
 import { repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
+import { reconcilePaidTrades } from "./services/payout";
 import { getEmailTransport, isEmailConfigured, isEmailVerified, verifyEmailDelivery } from "./services/email";
 
 export function mountApi(app: Express): void {
@@ -85,6 +86,11 @@ export function mountApi(app: Express): void {
       if (n > 0) console.log(`Renamed ${n} EUR rate row(s) from Germany to Euro.`);
     })
     .catch((e) => console.warn("Euro country repair:", (e as Error).message))
+    .then(() => reconcilePaidTrades())
+    .then((n) => {
+      if (n > 0) console.log(`Reconciled ${n} credited trade(s) stuck off PAID (marked PAID + scored).`);
+    })
+    .catch((e) => console.warn("Paid trade reconciliation:", (e as Error).message))
     .then(() => syncNoOnesCatalogVisibilityFromStored())
     .then(({ published, drafted }) => {
       if (published || drafted) {

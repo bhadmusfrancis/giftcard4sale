@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
-import { money, date, STATUS_COLORS } from "@/lib/format";
+import { money, date, STATUS_COLORS, STATUS_DESCRIPTIONS } from "@/lib/format";
 import { TradeChat } from "@/components/TradeChat";
 
 const STATUSES = ["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID", "CANCELLED"];
@@ -59,8 +59,15 @@ export default function AdminTradeDetail() {
           <h2 className="text-2xl font-bold">Trade · {trade.cardType?.name}</h2>
           <p className="mt-1 font-mono text-sm text-slate-500">{trade.tradeNumber}</p>
         </div>
-        <span className={`badge ${STATUS_COLORS[trade.status]}`}>{trade.status}</span>
+        <span className={`badge ${STATUS_COLORS[trade.status]}`} title={STATUS_DESCRIPTIONS[trade.status]}>{trade.status}</span>
       </div>
+
+      {STATUS_DESCRIPTIONS[trade.status] && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <span className="font-semibold text-slate-800">{trade.status}:</span>{" "}
+          {STATUS_DESCRIPTIONS[trade.status]}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-stretch xl:min-h-[calc(100vh-11rem)]">
         <aside className="space-y-6 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-1">
@@ -122,11 +129,15 @@ export default function AdminTradeDetail() {
             </div>
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
               {STATUSES.map((s) => (
-                <button key={s} type="button" onClick={() => update(s)} disabled={updateAction.busy} className="btn-ghost text-xs">
+                <button key={s} type="button" onClick={() => update(s)} disabled={updateAction.busy} title={STATUS_DESCRIPTIONS[s]} className="btn-ghost text-xs">
                   {updateAction.busy ? "Saving…" : s === "PAID" ? "Approve & Pay" : s === "CANCELLED" ? "Cancel trade" : `Set ${s}`}
                 </button>
               ))}
             </div>
+            <p className="text-xs text-slate-500">
+              &quot;Approve &amp; Pay&quot; credits the seller&apos;s wallet immediately. Trades resold on NoOnes are
+              paid automatically when the marketplace releases the funds — no manual step needed.
+            </p>
             <button type="button" onClick={() => update()} disabled={updateAction.busy} className="btn-primary w-full">
               {updateAction.busy ? "Saving…" : "Save final payout"}
             </button>

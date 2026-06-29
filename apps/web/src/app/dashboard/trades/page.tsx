@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { money, date, STATUS_COLORS } from "@/lib/format";
+import { money, date, STATUS_COLORS, SELLER_STATUS_DESCRIPTIONS } from "@/lib/format";
 
 export default function TradesPage() {
   const [trades, setTrades] = useState<any[]>([]);
@@ -36,7 +36,7 @@ export default function TradesPage() {
                   <span className="font-mono">{t.tradeNumber}</span> · {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)} · {date(t.createdAt)}
                 </div>
               </div>
-              <span className={`badge ${STATUS_COLORS[t.status]}`}>{t.status}</span>
+              <span className={`badge ${STATUS_COLORS[t.status]}`} title={SELLER_STATUS_DESCRIPTIONS[t.status]}>{t.status}</span>
             </Link>
           ))}
         </div>
