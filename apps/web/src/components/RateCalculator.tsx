@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, findBoundedRateForAmount, buildCountryOptions, formatDenomRanges, defaultAmountForTiers, collectDenomRangesFromRateRows } from "@gc4s/shared";
 import { useAuth } from "@/lib/auth";
@@ -104,10 +104,22 @@ export function RateCalculator({
   const rangesReady = hasCandidates && boundedTiers.length > 0;
   const advertisedRanges = useMemo(() => formatDenomRanges(boundedTiers), [boundedTiers]);
 
-  // Reset to a valid default when country, currency, or medium changes — not while the user is typing.
+  // Track whether the user has typed their own amount, and the active card region.
+  // The amount is only auto-reset on the first load or when the card region (country/currency)
+  // changes — never on a Physical/E-code toggle or while the user is typing.
+  const amountEditedRef = useRef(false);
+  const regionKeyRef = useRef<string | null>(null);
+
   useLayoutEffect(() => {
     if (!rangesReady) return;
-    setAmountInput(String(defaultAmountForTiers(boundedTiers)));
+    const regionKey = `${country}|${selectedCurrency ?? ""}`;
+    const regionChanged = regionKeyRef.current !== regionKey;
+    regionKeyRef.current = regionKey;
+
+    if (regionChanged || !amountEditedRef.current) {
+      setAmountInput(String(defaultAmountForTiers(boundedTiers)));
+      amountEditedRef.current = false;
+    }
   }, [country, selectedCurrency, medium, boundedTiers, rangesReady]);
 
   const boundedTier = useMemo(
@@ -277,11 +289,15 @@ export function RateCalculator({
             inputMode="decimal"
             className="input"
             value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value.replace(/[^\d.]/g, ""))}
+            onChange={(e) => {
+              amountEditedRef.current = true;
+              setAmountInput(e.target.value.replace(/[^\d.]/g, ""));
+            }}
             onBlur={() => {
               if (!rangesReady) return;
               const trimmed = amountInput.trim();
               if (!trimmed || !Number.isFinite(Number(trimmed)) || Number(trimmed) <= 0) {
+                amountEditedRef.current = false;
                 setAmountInput(String(defaultAmountForTiers(boundedTiers)));
               }
             }}
