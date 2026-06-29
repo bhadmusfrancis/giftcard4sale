@@ -17,7 +17,8 @@
     "publish:landing": "tsx scripts/publish-landing-pages.ts",
     "import:noones-cards": "tsx scripts/import-noones-cards.ts",
     "sync:noones": "tsx --import ./scripts/sync-noones-preload.ts scripts/sync-noones.ts",
-    "sync:noones-rates": "tsx --import ./scripts/sync-noones-preload.ts scripts/sync-noones.ts"
+    "sync:noones-rates": "tsx --import ./scripts/sync-noones-preload.ts scripts/sync-noones.ts",
+    "purge:stale-rates": "tsx scripts/purge-stale-synced-rates.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -345,6 +345,11 @@ async function syncCardTypeRates(
     }
   }
 
+  // Marks the start of this card's sync run. Any NoOnes row created/updated
+  // below stamps `updatedAt >= syncStartedAt`, so rows still carrying an older
+  // `updatedAt` afterwards are leftovers from a previous sync and get purged.
+  const syncStartedAt = new Date();
+
   try {
   try {
     const { offerCount, tradeVolume } = await fetchNoOnesCardStats(paymentMethod, statsCurrency);
@@ -647,6 +652,23 @@ async function syncCardTypeRates(
   }
 
   await purgeSupersededNoonesRates(card.id, metaByCurrency, genericEuroMeta, regionLock, summary);
+
+  // Delete all previously-synced NoOnes rows for this card that this run did not
+  // refresh. On a forced sync we wipe everything older than this run; on a
+  // scheduled sync we keep rows still inside the freshness window (those were
+  // intentionally skipped this run, not superseded). Manual rates (non-"NOONES"
+  // speed) are never touched.
+  const previouslySyncedCutoff = options?.force
+    ? syncStartedAt
+    : new Date(Date.now() - noonesRateRefreshHours * 60 * 60 * 1000);
+  const purgedPrevious = await prisma.rate.deleteMany({
+    where: {
+      cardTypeId: card.id,
+      speed: "NOONES",
+      updatedAt: { lt: previouslySyncedCutoff },
+    },
+  });
+  summary.deleted += purgedPrevious.count;
 
   const activeCurrencies = new Set(
     (
