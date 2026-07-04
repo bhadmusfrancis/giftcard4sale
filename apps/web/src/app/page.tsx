@@ -1,7 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { apiServer } from "@/lib/api";
 import { PopularCards } from "@/components/PopularCards";
 import type { GiftCard } from "@/components/GiftCardCatalog";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 interface Card {
   id: string;

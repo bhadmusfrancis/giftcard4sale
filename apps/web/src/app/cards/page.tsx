@@ -1,8 +1,14 @@
 import { Suspense } from "react";
 import { apiServer } from "@/lib/api";
 import { GiftCardCatalog } from "@/components/GiftCardCatalog";
+import { publicPageMetadata } from "@/lib/seo/public-metadata";
 
-export const metadata = { title: "Sell a gift card" };
+export const metadata = publicPageMetadata({
+  title: "Sell a Gift Card",
+  description:
+    "Browse and search our gift card catalog. Compare live payout rates in USDT, Naira, or Cedi and open a trade in minutes.",
+  canonical: "/cards",
+});
 
 interface Card {
   id: string;

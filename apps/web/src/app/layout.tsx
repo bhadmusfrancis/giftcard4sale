@@ -20,7 +20,6 @@ export const metadata: Metadata = {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     apple: [{ url: "/icon.svg" }],
   },
-  alternates: { canonical: "/" },
   ...(googleSiteVerification ? { verification: { google: googleSiteVerification } } : {}),
   openGraph: {
     title: "GiftCard4Sale",

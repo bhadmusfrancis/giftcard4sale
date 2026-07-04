@@ -5,6 +5,7 @@ import { SUPPORT_EMAIL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Terms of Service",
   description: "GiftCard4Sale Terms of Service — rules for selling gift cards on giftcard4sale.com.",
+  alternates: { canonical: "/terms" },
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

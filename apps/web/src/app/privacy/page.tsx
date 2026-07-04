@@ -5,6 +5,7 @@ import { SUPPORT_EMAIL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description: "GiftCard4Sale Privacy Policy — how we collect, use, and protect your data.",
+  alternates: { canonical: "/privacy" },
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

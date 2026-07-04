@@ -5,6 +5,12 @@ const nextConfig = {
   images: {
     remotePatterns: [{ protocol: "http", hostname: "**" }, { protocol: "https", hostname: "**" }],
   },
+  async redirects() {
+    return [
+      { source: "/index.php", destination: "/", permanent: true },
+      { source: "/index.php/:path*", destination: "/:path*", permanent: true },
+    ];
+  },
 };
 
 module.exports = nextConfig;
