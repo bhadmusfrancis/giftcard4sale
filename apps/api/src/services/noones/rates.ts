@@ -194,6 +194,14 @@ export function averageTopOffersNaira(
 
 }
 
+/** Highest-volume offer whose rate meets the averaged gate floor (for trade/start). */
+export function pickVolumeOfferAtOrAboveAvg(
+  offers: ScoredOffer[],
+  avgNaira: number
+): ScoredOffer | null {
+  return sortOffersByVolume(offers).find((o) => o.nairaPerUnit >= avgNaira) ?? null;
+}
+
 
 
 function sortOffersForTrade(
@@ -534,15 +542,17 @@ export async function fetchAverageOffer(params: {
 
   const pool = poolForReceiptType(offers, receiptType);
 
+  const scoredPool = pool.length ? pool : offers;
+
   const { noonesTopOffersForRate } = await getRateConfig();
 
-  const avgNaira = averageTopOffersNaira(pool.length ? pool : offers, noonesTopOffersForRate);
+  const avgNaira = averageTopOffersNaira(scoredPool, noonesTopOffersForRate);
 
   if (!avgNaira || avgNaira <= 0) return null;
 
+  const best = pickVolumeOfferAtOrAboveAvg(scoredPool, avgNaira);
 
-
-  const best = sortOffersByVolume(pool.length ? pool : offers)[0];
+  if (!best) return null;
 
   const hash = best.offer.offer_id || best.offer.offer_hash;
 
