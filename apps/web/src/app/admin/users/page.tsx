@@ -20,6 +20,7 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
   const [showCreate, setShowCreate] = useState(false);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [form, setForm] = useState({ email: "", password: "", displayName: "", role: "USER" });
   const createAction = useAsyncAction();
 
@@ -46,6 +47,17 @@ export default function AdminUsersPage() {
       setForm({ email: "", password: "", displayName: "", role: "USER" });
       await load();
     }, "User created.");
+  }
+
+  async function deleteUser(id: string) {
+    if (!confirm("Permanently delete this user?")) return;
+    setDeletingUserId(id);
+    try {
+      await api(`/admin/users/${id}`, { method: "DELETE" });
+      await load();
+    } finally {
+      setDeletingUserId((cur) => (cur === id ? null : cur));
+    }
   }
 
   return (
@@ -136,7 +148,22 @@ export default function AdminUsersPage() {
                   <div>{money(u.balanceGhs, "GHS")}</div>
                 </td>
                 <td className="p-3">
-                  <Link href={`/admin/users/${u.id}`} className="btn-ghost text-brand-700">Manage</Link>
+                  <div className="flex items-center gap-2">
+                    <Link href={`/admin/users/${u.id}`} className="btn-ghost text-brand-700">
+                      Manage
+                    </Link>
+                    {u.role !== "ADMIN" && (
+                      <button
+                        type="button"
+                        onClick={() => void deleteUser(u.id)}
+                        disabled={deletingUserId === u.id}
+                        className="rounded bg-red-100 px-3 py-1.5 text-sm text-red-800 disabled:opacity-60"
+                        title="Permanently delete this non-admin user"
+                      >
+                        {deletingUserId === u.id ? "Deleting…" : "Delete"}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

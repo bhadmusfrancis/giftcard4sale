@@ -293,6 +293,10 @@ adminRouter.post(
 adminRouter.delete(
   "/users/:id",
   asyncHandler(async (req, res) => {
+    const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, role: true } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.role === "ADMIN") return res.status(403).json({ error: "Cannot delete admin users" });
+
     await prisma.user.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
   })
