@@ -31,6 +31,11 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || "dev-insecure-secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
 
+  /** Cloudflare Turnstile CAPTCHA — enforced on /register when the secret key is set. */
+  turnstile: {
+    secretKey: process.env.TURNSTILE_SECRET_KEY || "",
+  },
+
   // Object storage (S3 / Cloudflare R2 / Supabase). When S3_BUCKET is set, uploads
   // go to the bucket; otherwise they fall back to local disk (dev only).
   s3: {

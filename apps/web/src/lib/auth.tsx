@@ -29,6 +29,9 @@ interface AuthCtx {
     displayName?: string;
     referralCode?: string;
     acceptTerms: boolean;
+    registerChallenge: string;
+    website?: string;
+    captchaToken?: string;
   }) => Promise<User>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -77,6 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     displayName?: string;
     referralCode?: string;
     acceptTerms: boolean;
+    registerChallenge: string;
+    website?: string;
+    captchaToken?: string;
   }) {
     const { token, user } = await api<{ token: string; user: User }>("/auth/register", { body: data });
     setToken(token);

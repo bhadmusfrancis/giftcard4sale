@@ -64,6 +64,18 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
       return res.status(401).json({ error: "Session expired — please sign in again" });
     }
 
+    // Unverified accounts can only access a limited set of endpoints (mainly
+    // "me" and "resend verification") so they cannot use the platform.
+    if (!user.emailVerified) {
+      const url = req.originalUrl || req.path || "";
+      const allowed =
+        url.startsWith("/api/auth/me") ||
+        url.startsWith("/api/auth/resend-verification");
+      if (!allowed) {
+        return res.status(403).json({ error: "Please verify your email first" });
+      }
+    }
+
     req.userId = user.id;
     req.userRole = user.role;
     next();

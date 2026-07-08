@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 
 function RegisterInner() {
   const { register } = useAuth();
@@ -17,6 +18,13 @@ function RegisterInner() {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [registerChallenge, setRegisterChallenge] = useState<string>("");
+
+  useEffect(() => {
+    api<{ challenge: string }>("/auth/register-challenge")
+      .then(({ challenge }) => setRegisterChallenge(challenge))
+      .catch((e: any) => setError(e.message || "Could not load registration challenge."));
+  }, []);
 
   useEffect(() => {
     const ref = params.get("ref");
@@ -33,6 +41,8 @@ function RegisterInner() {
         password,
         displayName: displayName || undefined,
         referralCode: referralCode || undefined,
+        registerChallenge,
+        website: "",
         acceptTerms: true,
       });
       router.push("/dashboard?welcome=1");
@@ -86,7 +96,13 @@ function RegisterInner() {
             </span>
           </label>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <button type="submit" className="btn-primary w-full" disabled={busy || !acceptTerms}>{busy ? "Creating…" : "Create account"}</button>
+          <button
+            type="submit"
+            className="btn-primary w-full"
+            disabled={busy || !acceptTerms || !registerChallenge}
+          >
+            {busy ? "Creating…" : "Create account"}
+          </button>
         </form>
         <p className="mt-4 text-center text-sm text-slate-500">
           Already have an account? <Link href="/login" className="text-brand-700 hover:underline">Log in</Link>

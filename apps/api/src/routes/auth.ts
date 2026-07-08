@@ -16,7 +16,15 @@ import { sendTransactionalEmail } from "../services/email";
 import { notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getUserRestriction } from "../services/userModeration";
-import { authLimiter } from "../lib/rateLimit";
+import { authLimiter, apiLimiter } from "../lib/rateLimit";
+import {
+  registerLimiter,
+  issueRegisterChallenge,
+  verifyRegisterChallenge,
+  isHoneypotTripped,
+  isDisposableEmail,
+  verifyCaptcha,
+} from "../lib/botProtection";
 
 export const authRouter = Router();
 
@@ -25,6 +33,12 @@ const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   displayName: z.string().min(2).max(40).optional(),
   referralCode: z.string().optional(),
+  // Bot-wall fields (required for successful registration).
+  registerChallenge: z.string(),
+  // Hidden honeypot: real users keep it empty, bots often populate it.
+  website: z.string(),
+  // Optional when CAPTCHA is not configured; enforced on /register when secret is set.
+  captchaToken: z.string().optional(),
   acceptTerms: z.literal(true, {
     errorMap: () => ({ message: "You must accept the Terms of Service and Privacy Policy" }),
   }),
@@ -67,12 +81,35 @@ async function sendPasswordChangedEmail(email: string): Promise<void> {
   });
 }
 
+authRouter.get(
+  "/register-challenge",
+  apiLimiter,
+  asyncHandler(async (_req, res) => {
+    res.json({ challenge: issueRegisterChallenge() });
+  })
+);
+
 authRouter.post(
   "/register",
-  authLimiter,
+  registerLimiter,
   asyncHandler(async (req, res) => {
     const data = validate(registerSchema, req.body);
     const email = data.email.toLowerCase();
+
+    const challengeCheck = verifyRegisterChallenge(data.registerChallenge);
+    if (!challengeCheck.ok) return res.status(400).json({ error: challengeCheck.error });
+
+    if (isHoneypotTripped(data)) {
+      return res.status(400).json({ error: "Invalid registration submission." });
+    }
+
+    if (isDisposableEmail(email)) {
+      return res.status(403).json({ error: "Please use a valid email address." });
+    }
+
+    if (!(await verifyCaptcha(data.captchaToken, req.ip))) {
+      return res.status(403).json({ error: "CAPTCHA verification failed." });
+    }
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: "Email already registered" });
@@ -101,14 +138,6 @@ authRouter.post(
     const verifyUrl = `${env.webUrl}/verify-email?token=${verifyToken}`;
     await sendVerifyEmail(email, verifyUrl);
 
-    void notifyAdmins({
-      title: "New user registered",
-      body: `${user.displayName} (${user.email}) just created an account.`,
-      link: `/admin/users`,
-      email: true,
-      emailDetail: referredById ? "Joined via a referral link." : undefined,
-    }).catch((err) => console.error("[notify] new user admin notify failed:", (err as Error).message));
-
     const token = signToken(user);
     res.status(201).json({ token, user: publicUser(user), needsVerification: true });
   })
@@ -122,10 +151,24 @@ authRouter.post(
     if (!user || !user.verifyTokenExp || user.verifyTokenExp < new Date()) {
       return res.status(400).json({ error: "Invalid or expired verification link" });
     }
+
+    const referredById = user.referredById;
+    const displayName = user.displayName || user.email.split("@")[0];
+
     await prisma.user.update({
       where: { id: user.id },
       data: { emailVerified: true, verifyToken: null, verifyTokenExp: null },
     });
+
+    void notifyAdmins({
+      title: "New user registered",
+      body: `${displayName} (${user.email}) verified their email and joined the platform.`,
+      link: `/admin/users`,
+      email: true,
+      emailDetail: referredById ? "Joined via a referral link." : undefined,
+    }).catch((err) =>
+      console.error("[notify] new user admin notify failed:", (err as Error).message)
+    );
 
     await sendTransactionalEmail(user.email, "Welcome to GiftCard4Sale", {
       title: "You're all set",
