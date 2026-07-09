@@ -243,8 +243,12 @@ authRouter.post(
     if (restriction.blocked) {
       return res.status(403).json({ error: restriction.reason || "Account restricted" });
     }
-    const token = signToken(user);
-    res.json({ token, user: publicUser(user) });
+    const loggedIn = await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+    const token = signToken(loggedIn);
+    res.json({ token, user: publicUser(loggedIn) });
   })
 );
 
@@ -337,6 +341,7 @@ export function adminUserListItem(
 ) {
   return {
     ...publicUser(u),
+    lastLoginAt: u.lastLoginAt ?? null,
     activeTrades: stats?.activeTrades ?? 0,
     recentRejections: stats?.recentRejections ?? 0,
     tradeLimit: stats?.tradeLimit ?? null,

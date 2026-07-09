@@ -111,6 +111,7 @@ export default function AdminUsersPage() {
             <tr>
               <th className="p-3">User</th>
               <th className="p-3">Status</th>
+              <th className="p-3">Last login</th>
               <th className="p-3">Trades</th>
               <th className="p-3">Scores</th>
               <th className="p-3">Wallets</th>
@@ -133,6 +134,9 @@ export default function AdminUsersPage() {
                   {u.suspendedUntil && (
                     <div className="mt-1 text-xs text-slate-500">until {date(u.suspendedUntil)}</div>
                   )}
+                </td>
+                <td className="p-3 text-xs text-slate-600 whitespace-nowrap">
+                  {u.lastLoginAt ? date(u.lastLoginAt) : <span className="text-slate-400">Never</span>}
                 </td>
                 <td className="p-3 text-xs">
                   <div>{u.activeTrades ?? 0} / {u.tradeLimit ?? "—"} active</div>
