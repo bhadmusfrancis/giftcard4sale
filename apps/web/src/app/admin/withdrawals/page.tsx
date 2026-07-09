@@ -42,32 +42,58 @@ function WithdrawalsInner() {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Withdrawals</h2>
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-5 sm:space-y-6">
+      <h2 className="text-xl font-bold sm:text-2xl">Withdrawals</h2>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth: "thin" }}>
         {STATUSES.map((s) => (
-          <button key={s || "ALL"} onClick={() => setStatus(s)} className={`badge ${status === s ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}>
+          <button
+            key={s || "ALL"}
+            type="button"
+            onClick={() => setStatus(s)}
+            className={`badge shrink-0 ${status === s ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}
+          >
             {s || "ALL"}
           </button>
         ))}
       </div>
 
-      <div className="card divide-y divide-slate-100">
+      <div className="card divide-y divide-slate-100 overflow-hidden">
         {items.map((w) => (
-          <div key={w.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <div>
-              <div className="font-semibold">{money(w.amount, w.currency)} · {w.user?.displayName || w.user?.email}</div>
-              <div className="text-sm text-slate-500">
-                {withdrawalDestination(w)} · {date(w.createdAt)}
+          <div key={w.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="font-semibold">
+                {money(w.amount, w.currency)}
+                <span className="mx-1.5 font-normal text-slate-400">·</span>
+                <span className="font-medium text-slate-700">{w.user?.displayName || w.user?.email}</span>
               </div>
+              <div className="mt-1 break-all text-sm text-slate-500">{withdrawalDestination(w)}</div>
+              <div className="mt-0.5 text-xs text-slate-400">{date(w.createdAt)}</div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className={`badge ${STATUS_COLORS[w.status]}`}>{w.status}</span>
               {["PENDING", "PROCESSING"].includes(w.status) && (
                 <>
-                  <button onClick={() => act(w.id, "PROCESSING")} className="rounded bg-blue-100 px-2 py-1 text-blue-700 text-xs">Processing</button>
-                  <button onClick={() => act(w.id, "PAID")} className="rounded bg-green-100 px-2 py-1 text-green-700 text-xs">Mark paid</button>
-                  <button onClick={() => act(w.id, "REJECTED")} className="rounded bg-red-100 px-2 py-1 text-red-700 text-xs">Reject</button>
+                  <button
+                    type="button"
+                    onClick={() => act(w.id, "PROCESSING")}
+                    className="rounded-lg bg-blue-100 px-2.5 py-1.5 text-xs font-semibold text-blue-700"
+                  >
+                    Processing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => act(w.id, "PAID")}
+                    className="rounded-lg bg-green-100 px-2.5 py-1.5 text-xs font-semibold text-green-700"
+                  >
+                    Mark paid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => act(w.id, "REJECTED")}
+                    className="rounded-lg bg-red-100 px-2.5 py-1.5 text-xs font-semibold text-red-700"
+                  >
+                    Reject
+                  </button>
                 </>
               )}
             </div>

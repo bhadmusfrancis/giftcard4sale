@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { CollapsibleSidebar, useCollapsibleSidebar } from "@/components/CollapsibleSidebar";
+import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 
 const NAV = [
   { href: "/dashboard", label: "Overview" },
@@ -20,49 +20,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const { open, toggle } = useCollapsibleSidebar();
 
   useEffect(() => {
     if (!loading && !user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
   }, [loading, user, router, pathname]);
 
   if (loading || !user) {
-    return <div className="mx-auto max-w-6xl px-4 py-20 text-center text-slate-500">Loading…</div>;
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-16 text-center text-slate-500 sm:py-20">
+        Loading dashboard…
+      </div>
+    );
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
       {!user.emailVerified && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
-          <span>⚠️ Please verify your email to open trades and withdraw funds.</span>
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
+          <span>Please verify your email to open trades and withdraw funds.</span>
           <button
+            type="button"
             onClick={async () => {
               await api("/auth/resend-verification", { body: {} });
               alert("Verification email sent.");
             }}
-            className="font-semibold underline"
+            className="shrink-0 self-start rounded-lg bg-amber-200/80 px-3 py-1.5 text-sm font-semibold text-amber-950 hover:bg-amber-200 sm:self-auto"
           >
             Resend email
           </button>
         </div>
       )}
 
-      <div className={`grid gap-6 ${open ? "md:grid-cols-[220px_1fr]" : ""}`}>
+      <div className="grid gap-4 md:grid-cols-[200px_1fr] md:gap-6 lg:grid-cols-[220px_1fr]">
         <CollapsibleSidebar
-          title="Dashboard menu"
+          title="Dashboard"
           items={NAV}
           rootHref="/dashboard"
-          open={open}
-          onToggle={toggle}
           footer={
             user.role === "ADMIN" ? (
-              <Link href="/admin" className="block px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <Link
+                href="/admin"
+                className="block px-4 py-3 text-sm font-medium text-brand-700 hover:bg-brand-50 md:rounded-none"
+              >
                 Admin console →
               </Link>
             ) : undefined
           }
         />
-        <section>{children}</section>
+        <section className="min-w-0">{children}</section>
       </div>
     </div>
   );

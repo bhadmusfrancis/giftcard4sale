@@ -12,20 +12,28 @@ export default function AdminHome() {
   }, []);
 
   const cards = [
-    ["Users", stats?.users, "/admin/users"],
-    ["Pending trades", stats?.pendingTrades, "/admin/trades?status=PENDING"],
-    ["Pending withdrawals", stats?.pendingWithdrawals, "/admin/withdrawals?status=PENDING"],
-    ["Card types", stats?.cardTypes, "/admin/rates"],
+    ["Users", stats?.users, "/admin/users", "All registered accounts"],
+    ["Pending trades", stats?.pendingTrades, "/admin/trades?status=PENDING", "Need review or processing"],
+    ["Pending withdrawals", stats?.pendingWithdrawals, "/admin/withdrawals?status=PENDING", "Awaiting payout"],
+    ["Card types", stats?.cardTypes, "/admin/rates", "Active catalog cards"],
   ] as const;
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Overview</h2>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map(([label, value, href]) => (
-          <Link key={label} href={href} className="card p-6 hover:shadow-md">
-            <div className="text-sm text-slate-500">{label}</div>
-            <div className="mt-1 text-3xl font-extrabold">{value ?? "—"}</div>
+    <div className="space-y-5 sm:space-y-6">
+      <div>
+        <h2 className="text-xl font-bold sm:text-2xl">Overview</h2>
+        <p className="mt-1 text-sm text-slate-500">Snapshot of platform activity</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {cards.map(([label, value, href, hint]) => (
+          <Link
+            key={label}
+            href={href}
+            className="card block p-4 transition hover:border-brand-300 hover:shadow-md sm:p-6"
+          >
+            <div className="text-xs text-slate-500 sm:text-sm">{label}</div>
+            <div className="mt-1 text-2xl font-extrabold sm:text-3xl">{value ?? "—"}</div>
+            <p className="mt-2 hidden text-xs text-slate-400 sm:block">{hint}</p>
           </Link>
         ))}
       </div>

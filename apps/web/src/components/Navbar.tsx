@@ -10,10 +10,10 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-extrabold text-xl text-brand-700">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-700 text-white">G</span>
-          GiftCard4Sale
+      <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-3 sm:px-4">
+        <Link href="/" className="flex min-w-0 items-center gap-2 font-extrabold text-lg text-brand-700 sm:text-xl">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-700 text-white">G</span>
+          <span className="truncate">GiftCard4Sale</span>
         </Link>
 
         <nav className="hidden items-center gap-6 md:flex">
