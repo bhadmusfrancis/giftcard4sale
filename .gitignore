@@ -28,3 +28,14 @@ text.txt
 # prisma
 apps/api/prisma/*.db
 apps/api/prisma/migrations/dev.db*
+
+# Local marketing assets (not deployed)
+marketing/
+
+# Local scratch / design exports
+.cursor/
+ChatGPT Image*.png
+WhatsApp Image*.jpeg
+WhatsApp Image*.jpg
+git.txt
+
