@@ -5,6 +5,7 @@ import { apiServer } from "@/lib/api";
 import { CardRatePanel } from "@/components/CardRatePanel";
 import { BrandLogo } from "@/components/BrandLogo";
 import { GiftCardSearch } from "@/components/GiftCardSearch";
+import { MetaViewContent } from "@/components/MetaViewContent";
 
 interface LandingResp {
   page: {
@@ -149,6 +150,12 @@ export default async function SlugPage({ params }: { params: { slug: string } })
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:py-12">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      {card ? (
+        <MetaViewContent
+          contentName={card.card.name}
+          contentIds={[card.card.slug]}
+        />
+      ) : null}
 
       <header className="flex items-center gap-4 border-b border-slate-100 pb-6">
         {card && (

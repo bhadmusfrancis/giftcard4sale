@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money } from "@/lib/format";
+import { newMetaEventId, trackMeta } from "@/lib/metaPixel";
 import { ReceiptType } from "@gc4s/shared";
 
 const RECEIPT_LABELS: Record<ReceiptType, string> = {
@@ -133,10 +134,24 @@ function NewTradeInner() {
       if (files) Array.from(files).forEach((f) => fd.append("images", f));
       if (receiptFiles) Array.from(receiptFiles).forEach((f) => fd.append("receiptImages", f));
 
-      return api<{ trade: { id: string }; autoRejected?: boolean; message?: string }>("/trades", {
+      const eventId = newMetaEventId("lead");
+      const created = await api<{ trade: { id: string }; autoRejected?: boolean; message?: string }>("/trades", {
         body: fd,
         isForm: true,
+        metaEventId: eventId,
       });
+      if (created?.trade?.id && !created.autoRejected) {
+        trackMeta(
+          "Lead",
+          {
+            content_name: rateInfo?.cardType?.name || rateInfo?.cardName,
+            value: quote?.payoutAmount,
+            currency: payout,
+          },
+          { eventID: eventId }
+        );
+      }
+      return created;
     }, (r) =>
       r.autoRejected
         ? r.message || "Trade rejected — this card was already used in a previous trade."

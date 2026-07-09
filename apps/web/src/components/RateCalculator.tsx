@@ -6,6 +6,7 @@ import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findR
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
+import { trackMeta } from "@/lib/metaPixel";
 import { RateRefreshStatus, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
 import { CountryPicker } from "@/components/CountryPicker";
 
@@ -229,6 +230,14 @@ export function RateCalculator({
     if (isOtherCountry && otherCountryName.trim()) {
       params.set("otherCountryName", otherCountryName.trim());
     }
+    trackMeta("InitiateCheckout", {
+      content_name: cardName,
+      content_ids: [cardSellSlug],
+      content_type: "product",
+      value: quote?.payoutAmount,
+      currency: payoutCurrency,
+      num_items: 1,
+    });
     if (!user) {
       router.push(`/login?next=${encodeURIComponent(`/dashboard/trades/new?${params}`)}`);
     } else {

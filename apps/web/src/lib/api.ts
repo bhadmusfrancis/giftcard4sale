@@ -1,3 +1,5 @@
+import { getMetaClickIds } from "@/lib/metaPixel";
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 const TOKEN_KEY = "gc4s_token";
@@ -18,6 +20,29 @@ interface ApiOptions {
   body?: any;
   isForm?: boolean;
   auth?: boolean;
+  /** Shared Pixel/CAPI event id for deduplication. */
+  metaEventId?: string;
+}
+
+function appendMetaAttribution(
+  headers: Record<string, string>,
+  body: any,
+  isForm: boolean,
+  metaEventId?: string
+) {
+  if (typeof window === "undefined") return;
+  const { fbp, fbc } = getMetaClickIds();
+  if (fbp) headers["X-Meta-Fbp"] = fbp;
+  if (fbc) headers["X-Meta-Fbc"] = fbc;
+  if (metaEventId) headers["X-Meta-Event-Id"] = metaEventId;
+  headers["X-Meta-Event-Source-Url"] = window.location.href;
+
+  if (isForm && body instanceof FormData) {
+    if (fbp && !body.has("fbp")) body.append("fbp", fbp);
+    if (fbc && !body.has("fbc")) body.append("fbc", fbc);
+    if (metaEventId && !body.has("eventId")) body.append("eventId", metaEventId);
+    if (!body.has("eventSourceUrl")) body.append("eventSourceUrl", window.location.href);
+  }
 }
 
 export async function api<T = any>(path: string, opts: ApiOptions = {}): Promise<T> {
@@ -31,9 +56,24 @@ export async function api<T = any>(path: string, opts: ApiOptions = {}): Promise
       body = opts.body; // FormData
     } else {
       headers["Content-Type"] = "application/json";
-      body = JSON.stringify(opts.body);
+      const payload =
+        opts.body && typeof opts.body === "object" && !(opts.body instanceof FormData)
+          ? { ...opts.body }
+          : opts.body;
+      if (payload && typeof payload === "object" && opts.metaEventId && !payload.eventId) {
+        payload.eventId = opts.metaEventId;
+      }
+      if (payload && typeof payload === "object" && typeof window !== "undefined") {
+        const { fbp, fbc } = getMetaClickIds();
+        if (fbp && !payload.fbp) payload.fbp = fbp;
+        if (fbc && !payload.fbc) payload.fbc = fbc;
+        if (!payload.eventSourceUrl) payload.eventSourceUrl = window.location.href;
+      }
+      body = JSON.stringify(payload);
     }
   }
+
+  appendMetaAttribution(headers, body, Boolean(opts.isForm), opts.metaEventId);
 
   const res = await fetch(`${API_URL}/api${path}`, {
     method: opts.method || (opts.body ? "POST" : "GET"),

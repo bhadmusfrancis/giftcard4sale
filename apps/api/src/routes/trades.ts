@@ -22,6 +22,13 @@ import {
   primaryDuplicateReason,
   submittedCodeCreateData,
 } from "../services/cardValidation";
+import {
+  trackMetaEvent,
+  metaAttributionFromRequest,
+  clientIpFromRequest,
+  userAgentFromRequest,
+} from "../services/metaConversions";
+import { env } from "../env";
 
 export const tradesRouter = Router();
 
@@ -226,6 +233,34 @@ tradesRouter.post(
 
     // Notify admins of a new pending trade.
     res.status(201).json({ trade: serializeTrade(trade) });
+
+    const meta = metaAttributionFromRequest(req);
+    void prisma.user
+      .findUnique({ where: { id: req.userId! }, select: { email: true } })
+      .then((u) => {
+        trackMetaEvent({
+          eventName: "Lead",
+          eventId: meta.eventId || `lead_${trade.id}`,
+          eventSourceUrl: meta.eventSourceUrl || `${env.webUrl}/dashboard/trades/new`,
+          userData: {
+            email: u?.email,
+            externalId: req.userId!,
+            clientIpAddress: clientIpFromRequest(req),
+            clientUserAgent: userAgentFromRequest(req),
+            fbp: meta.fbp,
+            fbc: meta.fbc,
+          },
+          customData: {
+            value: Number(quote.payoutAmount),
+            currency: data.payoutCurrency,
+            content_name: rate.cardType.name,
+            content_ids: [rate.cardType.slug],
+            content_type: "product",
+            order_id: trade.tradeNumber || trade.id,
+          },
+        });
+      })
+      .catch((err) => console.error("[meta-capi] lead lookup failed:", (err as Error).message));
 
     void notifyAdmins({
       title: "New trade submitted",

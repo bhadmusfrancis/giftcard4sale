@@ -113,6 +113,16 @@ export const env = {
     model: process.env.OPENAI_MODEL || "gpt-4o-mini",
   },
 
+  /** Meta Pixel + Conversion API — CAPI no-ops until access token is set. */
+  meta: {
+    pixelId:
+      process.env.META_PIXEL_ID ||
+      process.env.NEXT_PUBLIC_META_PIXEL_ID ||
+      "2231976064046353",
+    capiAccessToken: process.env.META_CAPI_ACCESS_TOKEN || "",
+    capiTestEventCode: process.env.META_CAPI_TEST_EVENT_CODE || "",
+  },
+
   noones: {
     enabled: (process.env.NOONES_ENABLED || "false") === "true",
     clientId: process.env.NOONES_CLIENT_ID || process.env.NOONES_APP_ID || "",

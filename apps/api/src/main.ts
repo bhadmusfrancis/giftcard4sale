@@ -43,6 +43,14 @@ export function mountApi(app: Express): void {
         cb(new Error(`Origin not allowed by CORS: ${origin}`));
       },
       credentials: true,
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Meta-Fbp",
+        "X-Meta-Fbc",
+        "X-Meta-Event-Id",
+        "X-Meta-Event-Source-Url",
+      ],
     })
   );
   app.use(express.json({ limit: "2mb" }));

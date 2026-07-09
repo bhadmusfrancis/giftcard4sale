@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { AuthProvider } from "@/lib/auth";
 import { Navbar } from "@/components/Navbar";
+import { MetaPixel } from "@/components/MetaPixel";
 import { SUPPORT_EMAIL } from "@/lib/site";
 import { SITE_URL } from "@/lib/seo/site";
 
@@ -34,6 +35,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        {/* beforeInteractive injects the Meta Pixel base code into <head> on every page */}
+        <MetaPixel />
         <AuthProvider>
           <Navbar />
           <main className="min-h-[calc(100vh-4rem)]">{children}</main>

@@ -16,6 +16,12 @@ import { sendTransactionalEmail } from "../services/email";
 import { notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getUserRestriction } from "../services/userModeration";
+import {
+  trackMetaEvent,
+  metaAttributionFromRequest,
+  clientIpFromRequest,
+  userAgentFromRequest,
+} from "../services/metaConversions";
 import { authLimiter, apiLimiter } from "../lib/rateLimit";
 import {
   registerLimiter,
@@ -180,6 +186,22 @@ authRouter.post(
       ],
       ctaLabel: "Go to dashboard",
       ctaHref: `${env.webUrl}/dashboard`,
+    });
+
+    const meta = metaAttributionFromRequest(req);
+    trackMetaEvent({
+      eventName: "CompleteRegistration",
+      eventId: meta.eventId || `reg_${user.id}`,
+      eventSourceUrl: meta.eventSourceUrl || `${env.webUrl}/verify-email`,
+      userData: {
+        email: user.email,
+        externalId: user.id,
+        clientIpAddress: clientIpFromRequest(req),
+        clientUserAgent: userAgentFromRequest(req),
+        fbp: meta.fbp,
+        fbc: meta.fbc,
+      },
+      customData: { status: true },
     });
 
     res.json({ ok: true });

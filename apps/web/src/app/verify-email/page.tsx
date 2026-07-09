@@ -1,15 +1,17 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { newMetaEventId, trackMeta } from "@/lib/metaPixel";
 
 function VerifyInner() {
   const params = useSearchParams();
   const token = params.get("token");
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [message, setMessage] = useState("");
+  const tracked = useRef(false);
 
   useEffect(() => {
     if (!token) {
@@ -17,8 +19,15 @@ function VerifyInner() {
       setMessage("Missing verification token.");
       return;
     }
-    api("/auth/verify-email", { body: { token } })
-      .then(() => setState("ok"))
+    const eventId = newMetaEventId("reg");
+    api("/auth/verify-email", { body: { token }, metaEventId: eventId })
+      .then(() => {
+        setState("ok");
+        if (!tracked.current) {
+          tracked.current = true;
+          trackMeta("CompleteRegistration", { status: true }, { eventID: eventId });
+        }
+      })
       .catch((e) => {
         setState("error");
         setMessage(e.message);
