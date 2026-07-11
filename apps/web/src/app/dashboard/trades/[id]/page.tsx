@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { money, date, STATUS_COLORS, SELLER_STATUS_DESCRIPTIONS } from "@/lib/format";
+import { trackGoogleAdsPurchase } from "@/lib/googleAds";
 import { TradeChat } from "@/components/TradeChat";
 
 export default function TradeDetailPage() {
@@ -18,6 +19,18 @@ export default function TradeDetailPage() {
   useEffect(() => {
     api(`/trades/${id}`).then((d) => setTrade(d.trade)).finally(() => setLoading(false));
   }, [id]);
+
+  // Google Ads Purchase (event) — fires once when seller opens a PAID trade
+  useEffect(() => {
+    if (!trade || trade.status !== "PAID") return;
+    const value = Number(trade.finalPayout ?? trade.quotedPayout);
+    if (!Number.isFinite(value)) return;
+    trackGoogleAdsPurchase({
+      tradeId: trade.id,
+      value,
+      currency: trade.payoutCurrency || "NGN",
+    });
+  }, [trade]);
 
   async function cancel() {
     if (!trade || !confirm("Cancel this trade? This cannot be undone.")) return;

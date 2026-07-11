@@ -74,7 +74,7 @@ export async function payTrade(tradeId: string): Promise<void> {
       userId: t.userId,
       title: "Trade paid",
       body: `Your wallet has been credited ${Number(t.finalPayout ?? t.quotedPayout)} ${t.payoutCurrency}.`,
-      link: `/dashboard/wallet`,
+      link: `/dashboard/trades/${t.id}`,
       emailDetail: t.tradeNumber ? `Trade ID: ${t.tradeNumber}` : undefined,
       category: "tradeStatus",
     });

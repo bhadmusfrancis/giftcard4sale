@@ -8,6 +8,7 @@ import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money } from "@/lib/format";
 import { newMetaEventId, trackMeta } from "@/lib/metaPixel";
+import { trackGoogleAdsLead } from "@/lib/googleAds";
 import { ReceiptType } from "@gc4s/shared";
 
 const RECEIPT_LABELS: Record<ReceiptType, string> = {
@@ -150,6 +151,11 @@ function NewTradeInner() {
           },
           { eventID: eventId }
         );
+        trackGoogleAdsLead({
+          tradeId: created.trade.id,
+          value: quote?.payoutAmount,
+          currency: payout,
+        });
       }
       return created;
     }, (r) =>
