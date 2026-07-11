@@ -1,8 +1,9 @@
-/** Google Ads (gtag) helpers — no-ops until NEXT_PUBLIC_GOOGLE_ADS_ID is set. */
+/** Google Ads (gtag) helpers — defaults match Ads Manager Purchase snippet. */
 
-export const GOOGLE_ADS_ID = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim() || "";
+export const GOOGLE_ADS_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_ADS_ID?.trim() || "AW-18316111267";
 export const GOOGLE_ADS_PURCHASE_LABEL =
-  process.env.NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL?.trim() || "";
+  process.env.NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL?.trim() || "r8PhCJy64M4cEKPb5p1E";
 export const GOOGLE_ADS_LEAD_LABEL = process.env.NEXT_PUBLIC_GOOGLE_ADS_LEAD_LABEL?.trim() || "";
 
 declare global {
