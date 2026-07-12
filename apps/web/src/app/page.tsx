@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { apiServer } from "@/lib/api";
 import { PopularCards } from "@/components/PopularCards";
+import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 import type { GiftCard } from "@/components/GiftCardCatalog";
 
 export const metadata: Metadata = {
@@ -26,10 +27,12 @@ export default async function HomePage() {
       <section className="bg-gradient-to-b from-brand-700 to-brand-900 text-white">
         <div className="mx-auto max-w-6xl px-4 py-20 text-center">
           <h1 className="mx-auto max-w-3xl text-4xl font-extrabold leading-tight sm:text-5xl">
-            Sell your gift cards for <span className="text-brand-100">USDT, Naira</span> or <span className="text-brand-100">Cedi</span>
+            Sell your gift cards for <span className="text-brand-100">USDT, Naira</span> or{" "}
+            <span className="text-brand-100">Cedi</span>
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-brand-50/90">
-            Get the best rates in seconds. Calculate your payout, open a trade, and get paid fast — physical cards and e-codes welcome.
+            GiftCard4Sale is an independent exchange. Calculate your payout, open a trade on our platform, and get paid
+            fast — physical cards and e-codes welcome.
           </p>
           <form action="/cards" method="get" className="mx-auto mt-8 flex max-w-lg gap-2">
             <input
@@ -65,6 +68,10 @@ export default async function HomePage() {
       <section id="how" className="bg-white border-y border-slate-200">
         <div className="mx-auto max-w-6xl px-4 py-14">
           <h2 className="text-2xl font-bold text-center">How it works</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-slate-600">
+            Everything happens on GiftCard4Sale.com with your own account — we never ask for issuer passwords or bank
+            logins.
+          </p>
           <div className="mt-10 grid gap-6 md:grid-cols-4">
             {[
               ["1. Pick your card", "Choose the gift card type and country, then enter the amount."],
@@ -78,6 +85,18 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
+          <div className="mx-auto mt-10 max-w-3xl rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <BrandAffiliationDisclaimer />
+          </div>
+          <p className="mt-4 text-center text-sm">
+            <Link href="/about" className="font-semibold text-brand-700 hover:underline">
+              About GiftCard4Sale
+            </Link>
+            {" · "}
+            <Link href="/contact" className="font-semibold text-brand-700 hover:underline">
+              Contact support
+            </Link>
+          </p>
         </div>
       </section>
 

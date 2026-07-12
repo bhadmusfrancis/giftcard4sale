@@ -27,6 +27,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     entry("/insights", siteMod, "daily", 0.85),
     entry("/terms", siteMod, "monthly", 0.3),
     entry("/privacy", siteMod, "monthly", 0.3),
+    entry("/about", siteMod, "monthly", 0.5),
+    entry("/contact", siteMod, "monthly", 0.5),
   ];
 
   const seen = new Set<string>();

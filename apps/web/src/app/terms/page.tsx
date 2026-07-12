@@ -49,6 +49,15 @@ export default function TermsPage() {
           We may modify rates, supported brands, payout methods, or verification requirements at any time. Quotes shown
           on the site are estimates until a trade is reviewed and approved.
         </p>
+        <p>
+          GiftCard4Sale is an independent service. We are not affiliated with, endorsed by, or partners of Amazon,
+          Apple, Google, Microsoft, Steam, Sony, or any other gift card issuer. References to third-party brands are
+          solely to identify the types of gift cards we may buy. More information is available on our{" "}
+          <Link href="/about" className="text-brand-700 hover:underline">
+            About us
+          </Link>{" "}
+          page.
+        </p>
       </Section>
 
       <Section title="3. Account registration and security">

@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { MetaPixel } from "@/components/MetaPixel";
 import { GoogleAdsTag } from "@/components/GoogleAdsTag";
 import { GoogleAdsClickIdCapture } from "@/components/GoogleAdsClickIdCapture";
+import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 import { SUPPORT_EMAIL } from "@/lib/site";
 import { SITE_URL } from "@/lib/seo/site";
 
@@ -46,15 +47,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="min-h-[calc(100vh-4rem)]">{children}</main>
           <footer className="border-t border-slate-200 bg-white">
             <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <p>© {new Date().getFullYear()} GiftCard4Sale.com — Sell gift cards for USDT, Naira &amp; Cedi.</p>
-                <nav className="flex flex-wrap gap-x-4 gap-y-1">
-                  <a href="/terms" className="hover:text-brand-700">Terms of Service</a>
-                  <a href="/privacy" className="hover:text-brand-700">Privacy Policy</a>
-                  <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-brand-700">Contact</a>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="max-w-xl space-y-2">
+                  <p className="font-medium text-slate-700">
+                    © {new Date().getFullYear()} GiftCard4Sale.com — Independent gift card exchange
+                  </p>
+                  <BrandAffiliationDisclaimer />
+                </div>
+                <nav className="flex flex-wrap gap-x-4 gap-y-2 shrink-0">
+                  <a href="/about" className="hover:text-brand-700">About</a>
+                  <a href="/contact" className="hover:text-brand-700">Contact</a>
+                  <a href="/terms" className="hover:text-brand-700">Terms</a>
+                  <a href="/privacy" className="hover:text-brand-700">Privacy</a>
+                  <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-brand-700">Email</a>
                 </nav>
               </div>
-              <p className="mt-3 text-xs">Trade responsibly. Only submit valid gift cards.</p>
+              <p className="mt-4 text-xs">Trade responsibly. Only submit valid gift cards you legally own.</p>
             </div>
           </footer>
         </AuthProvider>
