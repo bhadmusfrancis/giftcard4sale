@@ -18,8 +18,6 @@ export function Navbar() {
 
         <nav className="hidden items-center gap-6 md:flex">
           <Link href="/cards" className="text-slate-600 hover:text-brand-700">Sell a card</Link>
-          <Link href="/about" className="text-slate-600 hover:text-brand-700">About</Link>
-          <Link href="/contact" className="text-slate-600 hover:text-brand-700">Contact</Link>
           <Link href="/insights" className="text-slate-600 hover:text-brand-700">Insights</Link>
           <Link href="/#how" className="text-slate-600 hover:text-brand-700">How it works</Link>
           {!loading && user ? (
@@ -51,8 +49,6 @@ export function Navbar() {
         <div className="border-t border-slate-200 bg-white px-4 py-3 md:hidden">
           <div className="flex flex-col gap-3">
             <Link href="/cards" onClick={() => setOpen(false)}>Sell a card</Link>
-            <Link href="/about" onClick={() => setOpen(false)}>About</Link>
-            <Link href="/contact" onClick={() => setOpen(false)}>Contact</Link>
             <Link href="/insights" onClick={() => setOpen(false)}>Insights</Link>
             {user ? (
               <>
