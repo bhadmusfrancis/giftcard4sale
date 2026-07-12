@@ -5,7 +5,6 @@ import { Navbar } from "@/components/Navbar";
 import { MetaPixel } from "@/components/MetaPixel";
 import { GoogleAdsTag } from "@/components/GoogleAdsTag";
 import { GoogleAdsClickIdCapture } from "@/components/GoogleAdsClickIdCapture";
-import { SUPPORT_EMAIL } from "@/lib/site";
 import { SITE_URL } from "@/lib/seo/site";
 
 const googleSiteVerification = process.env.GOOGLE_SITE_VERIFICATION?.trim();
@@ -55,7 +54,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <a href="/contact" className="hover:text-brand-700">Contact</a>
                   <a href="/terms" className="hover:text-brand-700">Terms</a>
                   <a href="/privacy" className="hover:text-brand-700">Privacy</a>
-                  <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-brand-700">Email</a>
                 </nav>
               </div>
               <p className="mt-4 text-xs">Trade responsibly. Only submit valid gift cards you legally own.</p>

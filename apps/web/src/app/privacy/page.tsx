@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -36,10 +35,10 @@ export default function PrivacyPage() {
 
       <Section title="1. Data controller">
         <p>
-          For questions about this Policy or to exercise your privacy rights, contact us at{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-700 hover:underline">
-            {SUPPORT_EMAIL}
-          </a>
+          For questions about this Policy or to exercise your privacy rights, use our{" "}
+          <Link href="/contact" className="text-brand-700 hover:underline">
+            Contact page
+          </Link>
           .
         </p>
       </Section>
@@ -135,8 +134,11 @@ export default function PrivacyPage() {
       <Section title="9. Your rights">
         <p>
           Depending on your jurisdiction, you may have rights to access, correct, delete, restrict, or port your personal
-          data, and to object to certain processing. To exercise these rights, email {SUPPORT_EMAIL}. We may
-          verify your identity before responding.
+          data, and to object to certain processing. To exercise these rights, use our{" "}
+          <Link href="/contact" className="text-brand-700 hover:underline">
+            Contact page
+          </Link>
+          . We may verify your identity before responding.
         </p>
         <p>
           If you are in the European Economic Area or UK, you may lodge a complaint with your local data protection
@@ -179,10 +181,11 @@ export default function PrivacyPage() {
 
       <Section title="14. Contact">
         <p>
-          Privacy inquiries:{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-700 hover:underline">
-            {SUPPORT_EMAIL}
-          </a>
+          Privacy inquiries: use our{" "}
+          <Link href="/contact" className="text-brand-700 hover:underline">
+            Contact page
+          </Link>
+          .
         </p>
       </Section>
     </div>

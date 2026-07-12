@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SUPPORT_EMAIL } from "@/lib/site";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
+import { EmailSupportButton } from "@/components/EmailSupportButton";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -14,30 +14,28 @@ export default function ContactPage() {
     <div className="mx-auto max-w-3xl px-4 py-12">
       <h1 className="text-3xl font-bold text-slate-900">Contact us</h1>
       <p className="mt-4 text-slate-600">
-        We&apos;re here to help with GiftCard4Sale accounts, trades, rates, and withdrawals. Reach us through the
-        channels below — we respond via email from our own domain.
+        We&apos;re here to help with GiftCard4Sale accounts, trades, rates, and withdrawals. Use the options below —
+        we respond from our official GiftCard4Sale support inbox only.
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <div className="card p-6">
           <h2 className="font-bold text-slate-900">Email support</h2>
-          <p className="mt-2 text-sm text-slate-600">Best for trade issues, withdrawals, and account help.</p>
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
-            className="mt-4 inline-block break-all text-lg font-semibold text-brand-700 hover:underline"
-          >
-            {SUPPORT_EMAIL}
-          </a>
+          <p className="mt-2 text-sm text-slate-600">
+            Best for trade issues, withdrawals, and account help. Tap the button to open your email app — we don&apos;t
+            publish the inbox address on the page to reduce spam and abuse.
+          </p>
+          <EmailSupportButton />
+          <p className="mt-3 text-xs text-slate-500">
+            Already trading with us? You can also message support from the chat on an open trade in your dashboard.
+          </p>
         </div>
         <div className="card p-6">
           <h2 className="font-bold text-slate-900">Website</h2>
           <p className="mt-2 text-sm text-slate-600">All trading happens only on our official site.</p>
-          <a
-            href="https://giftcard4sale.com"
-            className="mt-4 inline-block font-semibold text-brand-700 hover:underline"
-          >
+          <Link href="/" className="mt-4 inline-block font-semibold text-brand-700 hover:underline">
             giftcard4sale.com
-          </a>
+          </Link>
         </div>
       </div>
 

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SUPPORT_EMAIL } from "@/lib/site";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 
 export const metadata: Metadata = {
@@ -77,13 +76,7 @@ export default function AboutPage() {
       <section className="mt-10 space-y-3 text-slate-700">
         <h2 className="text-xl font-bold text-slate-900">Contact</h2>
         <p>
-          Questions about the Service, an account, or a trade:{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="font-medium text-brand-700 hover:underline">
-            {SUPPORT_EMAIL}
-          </a>
-        </p>
-        <p>
-          Or visit our{" "}
+          Questions about the Service, an account, or a trade: visit our{" "}
           <Link href="/contact" className="font-medium text-brand-700 hover:underline">
             Contact page
           </Link>

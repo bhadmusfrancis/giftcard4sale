@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SUPPORT_EMAIL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Terms of Service",
@@ -65,7 +64,13 @@ export default function TermsPage() {
           <li>You must provide accurate registration information and keep your account credentials confidential.</li>
           <li>You are responsible for all activity under your account.</li>
           <li>You must verify your email address before submitting trades or requesting withdrawals.</li>
-          <li>Notify us immediately at {SUPPORT_EMAIL} if you suspect unauthorized access.</li>
+          <li>
+            Notify us immediately via the{" "}
+            <Link href="/contact" className="text-brand-700 hover:underline">
+              Contact page
+            </Link>{" "}
+            if you suspect unauthorized access.
+          </li>
         </ul>
       </Section>
 
@@ -177,7 +182,11 @@ export default function TermsPage() {
 
       <Section title="15. Dispute resolution">
         <p>
-          Contact {SUPPORT_EMAIL} first to resolve trade or account disputes. If we cannot resolve a dispute
+          Contact us first via the{" "}
+          <Link href="/contact" className="text-brand-700 hover:underline">
+            Contact page
+          </Link>{" "}
+          to resolve trade or account disputes. If we cannot resolve a dispute
           informally, you agree that claims will be handled according to the governing law below, except where mandatory
           consumer protection laws in your jurisdiction provide otherwise.
         </p>
@@ -200,10 +209,11 @@ export default function TermsPage() {
 
       <Section title="18. Contact">
         <p>
-          Questions about these Terms:{" "}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-700 hover:underline">
-            {SUPPORT_EMAIL}
-          </a>
+          Questions about these Terms: use our{" "}
+          <Link href="/contact" className="text-brand-700 hover:underline">
+            Contact page
+          </Link>
+          .
         </p>
         <p className="mt-4 text-sm text-slate-500">
           See also our <Link href="/privacy" className="text-brand-700 hover:underline">Privacy Policy</Link>.
