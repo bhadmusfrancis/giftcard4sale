@@ -46,6 +46,7 @@ import {
 import { storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
 import { parseStoredQuotes } from "../services/noones";
 import { generateDailyInsights } from "../services/insights/generator";
+import { getTrafficReport, type TrafficRange } from "../services/analytics";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -61,6 +62,17 @@ adminRouter.get(
       prisma.cardType.count(),
     ]);
     res.json({ users, pendingTrades, pendingWithdrawals, cardTypes });
+  })
+);
+
+// ---------------------------------------------------------------- Traffic analytics
+adminRouter.get(
+  "/analytics/traffic",
+  asyncHandler(async (req, res) => {
+    const raw = String(req.query.range || "7d");
+    const range: TrafficRange = raw === "30d" || raw === "90d" ? raw : "7d";
+    const report = await getTrafficReport(range);
+    res.json(report);
   })
 );
 

@@ -492,3 +492,21 @@ model LandingPage {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
+
+// First-party website traffic (anonymous page views for admin analytics).
+model AnalyticsPageView {
+  id        String   @id @default(cuid())
+  path      String   // pathname only, e.g. "/sell-amazon"
+  referrer  String   @default("direct") // external hostname, "direct", or "internal"
+  device    String   // desktop | mobile | tablet
+  browser   String?  // short label, e.g. "Chrome"
+  visitorId String   // anonymous client id (localStorage UUID)
+  sessionId String   // anonymous session id (sessionStorage UUID)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([path, createdAt])
+  @@index([visitorId, createdAt])
+  @@index([referrer, createdAt])
+  @@index([device, createdAt])
+}

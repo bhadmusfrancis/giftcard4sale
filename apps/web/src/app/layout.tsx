@@ -5,6 +5,7 @@ import { Navbar } from "@/components/Navbar";
 import { MetaPixel } from "@/components/MetaPixel";
 import { GoogleAdsTag } from "@/components/GoogleAdsTag";
 import { GoogleAdsClickIdCapture } from "@/components/GoogleAdsClickIdCapture";
+import { SiteAnalytics } from "@/components/SiteAnalytics";
 import { SITE_URL } from "@/lib/seo/site";
 
 const googleSiteVerification = process.env.GOOGLE_SITE_VERIFICATION?.trim();
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <GoogleAdsTag />
         <GoogleAdsClickIdCapture />
         <AuthProvider>
+          <SiteAnalytics />
           <Navbar />
           <main className="min-h-[calc(100vh-4rem)]">{children}</main>
           <footer className="border-t border-slate-200 bg-white">

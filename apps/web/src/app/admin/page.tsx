@@ -37,6 +37,18 @@ export default function AdminHome() {
           </Link>
         ))}
       </div>
+      <Link
+        href="/admin/traffic"
+        className="card flex items-center justify-between gap-4 p-4 transition hover:border-brand-300 hover:shadow-md sm:p-5"
+      >
+        <div>
+          <div className="text-sm font-semibold text-slate-900">Website traffic</div>
+          <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
+            Page views, visitors, top pages, and referrers
+          </p>
+        </div>
+        <span className="shrink-0 text-sm font-medium text-brand-700">Open →</span>
+      </Link>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 
 const NAV = [
   { href: "/admin", label: "Overview" },
+  { href: "/admin/traffic", label: "Traffic" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/trades", label: "Trades" },
   { href: "/admin/withdrawals", label: "Withdrawals" },

@@ -58,7 +58,9 @@ export default function PrivacyPage() {
         </p>
         <p>
           <strong>Technical data:</strong> IP address, browser type, device information, and usage logs collected
-          automatically for security, fraud prevention, and service operation.
+          automatically for security, fraud prevention, and service operation. We also collect anonymous first-party
+          website analytics (page path, referrer hostname, device type, and anonymous visitor/session IDs) to understand
+          traffic on the public site.
         </p>
         <p>
           <strong>Communications:</strong> emails we send you (verification, password reset, trade and withdrawal updates)
@@ -73,6 +75,7 @@ export default function PrivacyPage() {
           <li>Process trades, calculate payouts, and operate your wallet.</li>
           <li>Send transactional notifications (email, in-app, and push where enabled).</li>
           <li>Detect fraud, abuse, and compliance risks.</li>
+          <li>Measure anonymous website traffic and improve the public site experience.</li>
           <li>Improve rates, catalog, and platform performance.</li>
           <li>Comply with legal obligations and respond to lawful requests.</li>
         </ul>
@@ -119,7 +122,8 @@ export default function PrivacyPage() {
         <p>
           We retain account and trade records while your account is active and as needed to comply with law, resolve
           disputes, and enforce agreements. Trade images and verification data may be retained for fraud prevention after
-          trade completion. You may request deletion subject to legal and operational requirements.
+          trade completion. Anonymous website analytics page views are typically retained for up to 90 days. You may
+          request deletion subject to legal and operational requirements.
         </p>
       </Section>
 
@@ -161,7 +165,9 @@ export default function PrivacyPage() {
       <Section title="11. Cookies and local storage">
         <p>
           We use essential cookies and local storage (e.g., authentication tokens) to keep you signed in and secure the
-          Service. We do not use third-party advertising cookies on the core platform.
+          Service. We also store anonymous visitor and session identifiers in local/session storage for first-party
+          website traffic analytics shown to administrators. We do not use third-party advertising cookies on the core
+          platform.
         </p>
       </Section>
 
