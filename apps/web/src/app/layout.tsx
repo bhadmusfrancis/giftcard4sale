@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { AuthProvider } from "@/lib/auth";
 import { Navbar } from "@/components/Navbar";
 import { MetaPixel } from "@/components/MetaPixel";
@@ -42,7 +43,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <GoogleAdsTag />
         <GoogleAdsClickIdCapture />
         <AuthProvider>
-          <SiteAnalytics />
+          <Suspense fallback={null}>
+            <SiteAnalytics />
+          </Suspense>
           <Navbar />
           <main className="min-h-[calc(100vh-4rem)]">{children}</main>
           <footer className="border-t border-slate-200 bg-white">

@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
+/** Cache homepage card list; avoids blocking every visit on a slow API round-trip. */
+export const revalidate = 300;
+
 interface Card {
   id: string;
   name: string;
@@ -18,7 +21,7 @@ interface Card {
 }
 
 export default async function HomePage() {
-  const data = await apiServer<{ cards: Card[] }>("/cards");
+  const data = await apiServer<{ cards: Card[] }>("/cards", { revalidate: 300, timeoutMs: 5000 });
   const cards = (data?.cards ?? []) as GiftCard[];
 
   return (

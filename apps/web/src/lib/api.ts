@@ -88,10 +88,26 @@ export async function api<T = any>(path: string, opts: ApiOptions = {}): Promise
   return data as T;
 }
 
+type ApiServerOptions = {
+  /** Abort the upstream request after this many ms (default 5s). */
+  timeoutMs?: number;
+  /** ISR revalidate seconds for Next.js fetch cache. Omit for no-store. */
+  revalidate?: number;
+};
+
 // Server-side fetch (no token) for SSR pages.
-export async function apiServer<T = any>(path: string): Promise<T | null> {
+export async function apiServer<T = any>(path: string, opts: ApiServerOptions = {}): Promise<T | null> {
+  const timeoutMs = opts.timeoutMs ?? 5000;
   try {
-    const res = await fetch(`${API_URL}/api${path}`, { cache: "no-store" });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(`${API_URL}/api${path}`, {
+      signal: controller.signal,
+      ...(opts.revalidate != null
+        ? { next: { revalidate: opts.revalidate } }
+        : { cache: "no-store" as const }),
+    });
+    clearTimeout(timer);
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
