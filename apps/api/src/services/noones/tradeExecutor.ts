@@ -6,6 +6,7 @@ import { env } from "../../env";
 import { UPLOAD_DIR } from "../../lib/upload";
 import { notify, notifyAdmins } from "../notify";
 import { payTrade } from "../payout";
+import { trackTradePurchaseConversion } from "../tradeConversions";
 import { rejectTradeWithBadScore } from "../tradeRejection";
 import { getRateConfig } from "../rateConfig";
 import { isAutoResellEnabledForCard, isNoOnesConfigured, noonesPost, noonesUpload, NoOnesApiError } from "./client";
@@ -468,6 +469,9 @@ async function finalizeSuccessfulResell(
       finalPayout: trade.finalPayout ?? trade.quotedPayout,
     },
   });
+
+  // NoOnes released crypto — count as Purchase for ads (before wallet credit).
+  trackTradePurchaseConversion(tradeId);
 
   // Automatically credit the wallet now that the marketplace trade is successful.
   try {

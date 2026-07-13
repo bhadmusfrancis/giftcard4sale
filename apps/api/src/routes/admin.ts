@@ -8,6 +8,7 @@ import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRe
 import { applyWalletChange } from "../services/wallet";
 import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
+import { trackTradePurchaseConversion } from "../services/tradeConversions";
 import { payoutNgnToBank } from "../services/payoutProvider";
 import { notify, notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
@@ -403,6 +404,10 @@ adminRouter.patch(
       await prisma.trade.update({ where: { id: trade.id }, data: patch });
     }
 
+    if (data.status === "APPROVED" && trade.status !== "APPROVED") {
+      trackTradePurchaseConversion(trade.id);
+    }
+
     if (data.status === "REJECTED" && trade.status !== "REJECTED") {
       await notify({
         userId: trade.userId,
@@ -572,7 +577,10 @@ adminRouter.post(
       },
     });
 
-    if (data.markPaid) await payTrade(trade.id);
+    if (data.markPaid) {
+      await payTrade(trade.id);
+      trackTradePurchaseConversion(trade.id);
+    }
     else if (data.startNoOnes && isNoOnesConfigured()) {
       executeNoOnesResell(trade.id, { force: true }).catch((err) =>
         console.error(`NoOnes resell background error (${trade.id}):`, err.message)

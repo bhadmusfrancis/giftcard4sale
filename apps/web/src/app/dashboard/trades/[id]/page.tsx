@@ -20,9 +20,9 @@ export default function TradeDetailPage() {
     api(`/trades/${id}`).then((d) => setTrade(d.trade)).finally(() => setLoading(false));
   }, [id]);
 
-  // Google Ads Purchase (event) — fires once when seller opens a PAID trade
+  // Google Ads Purchase — fires once when trade is approved or paid (seller opens trade)
   useEffect(() => {
-    if (!trade || trade.status !== "PAID") return;
+    if (!trade || (trade.status !== "APPROVED" && trade.status !== "PAID")) return;
     const value = Number(trade.finalPayout ?? trade.quotedPayout);
     if (!Number.isFinite(value)) return;
     trackGoogleAdsPurchase({

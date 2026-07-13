@@ -3,8 +3,7 @@ import { prisma } from "../prisma";
 import { applyWalletChange } from "./wallet";
 import { getRateConfig } from "./rateConfig";
 import { notify } from "./notify";
-import { trackMetaEvent } from "./metaConversions";
-import { env } from "../env";
+import { trackTradePurchaseConversion } from "./tradeConversions";
 
 /**
  * Credit a trade's payout to the seller's wallet and pay the referral bonus.
@@ -17,6 +16,7 @@ export async function payTrade(tradeId: string): Promise<void> {
     const trade = await tx.trade.findUnique({ where: { id: tradeId } });
     if (!trade) throw new Error("Trade not found");
     if (trade.status === "CANCELLED" || trade.status === "REJECTED") return { alreadyPaid: true, trade };
+    const statusBeforePay = trade.status;
 
     // A trade earns one good transaction score the first time it reaches PAID,
     // regardless of which path (fresh credit or self-heal) gets it there.
@@ -30,7 +30,7 @@ export async function payTrade(tradeId: string): Promise<void> {
         await tx.trade.update({ where: { id: trade.id }, data: { status: "PAID" } });
         await tx.user.update({ where: { id: trade.userId }, data: { goodScore: { increment: 1 } } });
       }
-      return { alreadyPaid: true, trade };
+      return { alreadyPaid: true, trade, statusBeforePay };
     }
 
     const amount = new Prisma.Decimal(trade.finalPayout ?? trade.quotedPayout);
@@ -65,10 +65,14 @@ export async function payTrade(tradeId: string): Promise<void> {
     if (firstTimePaid) {
       await tx.user.update({ where: { id: trade.userId }, data: { goodScore: { increment: 1 } } });
     }
-    return { alreadyPaid: false, trade, referredById: seller?.referredById ?? null, amount };
+    return { alreadyPaid: false, trade, statusBeforePay, referredById: seller?.referredById ?? null, amount };
   });
 
   if (!result.alreadyPaid) {
+    // Direct PAID (skip APPROVED) — still counts as a purchase for ads.
+    if (result.statusBeforePay !== "APPROVED") {
+      trackTradePurchaseConversion(tradeId);
+    }
     const t = result.trade;
     await notify({
       userId: t.userId,
@@ -87,50 +91,6 @@ export async function payTrade(tradeId: string): Promise<void> {
         category: "referral",
       });
     }
-
-    // Primary Meta conversion — Purchase + custom TradeCompleted (deduped by trade id).
-    void prisma.user
-      .findUnique({
-        where: { id: t.userId },
-        select: { email: true },
-      })
-      .then(async (u) => {
-        const card = await prisma.cardType.findUnique({
-          where: { id: t.cardTypeId },
-          select: { name: true, slug: true },
-        });
-        const value = Number(t.finalPayout ?? t.quotedPayout);
-        const eventId = `purchase_${t.id}`;
-        const userData = {
-          email: u?.email,
-          externalId: t.userId,
-        };
-        const customData = {
-          value,
-          currency: t.payoutCurrency,
-          content_name: card?.name,
-          content_ids: card?.slug ? [card.slug] : undefined,
-          content_type: "product",
-          order_id: t.tradeNumber || t.id,
-        };
-        trackMetaEvent({
-          eventName: "Purchase",
-          eventId,
-          eventSourceUrl: `${env.webUrl}/dashboard/trades/${t.id}`,
-          actionSource: "system_generated",
-          userData,
-          customData,
-        });
-        trackMetaEvent({
-          eventName: "TradeCompleted",
-          eventId: `trade_${t.id}`,
-          eventSourceUrl: `${env.webUrl}/dashboard/trades/${t.id}`,
-          actionSource: "system_generated",
-          userData,
-          customData,
-        });
-      })
-      .catch((err) => console.error("[meta-capi] purchase track failed:", (err as Error).message));
   }
 }
 
