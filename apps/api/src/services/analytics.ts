@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import geoip from "geoip-lite";
 
 const RETENTION_DAYS = 90;
 const BOT_UA =
@@ -25,11 +26,16 @@ export function normalizePath(raw: string): string | null {
     const path = raw.trim().split("?")[0].split("#")[0];
     if (!path.startsWith("/")) return null;
     if (path.length > 500) return path.slice(0, 500);
-    if (path.startsWith("/admin") || path.startsWith("/_next")) return null;
+    if (!isPublicTrafficPath(path)) return null;
     return path || "/";
   } catch {
     return null;
   }
+}
+
+/** Paths counted in the public traffic report (excludes admin console). */
+export function isPublicTrafficPath(path: string): boolean {
+  return !path.startsWith("/admin") && !path.startsWith("/_next");
 }
 
 export function normalizeReferrer(raw: string | undefined | null, siteHost?: string): string {
@@ -43,6 +49,24 @@ export function normalizeReferrer(raw: string | undefined | null, siteHost?: str
   } catch {
     return "direct";
   }
+}
+
+/** Resolve ISO 3166-1 alpha-2 country code from a client IP (offline GeoIP lookup). */
+export function resolveCountryFromIp(ip: string | undefined): string | null {
+  if (!ip?.trim()) return null;
+  const normalized = ip.trim().replace(/^::ffff:/i, "");
+  if (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized.startsWith("10.") ||
+    normalized.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(normalized)
+  ) {
+    return null;
+  }
+  const hit = geoip.lookup(normalized);
+  const code = hit?.country?.trim().toUpperCase();
+  return code && /^[A-Z]{2}$/.test(code) ? code : null;
 }
 
 export type TrafficRange = "7d" | "30d" | "90d";
@@ -84,6 +108,7 @@ async function summarize(from: Date, to: Date): Promise<Summary> {
       COUNT(DISTINCT "sessionId")::bigint AS sessions
     FROM "AnalyticsPageView"
     WHERE "createdAt" >= ${from} AND "createdAt" < ${to}
+      AND path NOT LIKE '/admin%'
   `;
   const row = rows[0];
   const pageViews = Number(row?.page_views ?? 0);
@@ -104,7 +129,7 @@ export async function getTrafficReport(range: TrafficRange) {
   const periodStart = addUtcDays(periodEnd, -days);
   const prevStart = addUtcDays(periodStart, -days);
 
-  const [summary, previous, timeseriesRows, topPagesRaw, topReferrersRaw, devicesRaw] =
+  const [summary, previous, timeseriesRows, topPagesRaw, topReferrersRaw, devicesRaw, countriesRaw] =
     await Promise.all([
       summarize(periodStart, periodEnd),
       summarize(prevStart, periodStart),
@@ -115,6 +140,7 @@ export async function getTrafficReport(range: TrafficRange) {
           COUNT(DISTINCT "visitorId")::bigint AS visitors
         FROM "AnalyticsPageView"
         WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
+          AND path NOT LIKE '/admin%'
         GROUP BY 1
         ORDER BY 1 ASC
       `,
@@ -125,6 +151,7 @@ export async function getTrafficReport(range: TrafficRange) {
           COUNT(DISTINCT "visitorId")::bigint AS visitors
         FROM "AnalyticsPageView"
         WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
+          AND path NOT LIKE '/admin%'
         GROUP BY path
         ORDER BY views DESC
         LIMIT 15
@@ -135,6 +162,7 @@ export async function getTrafficReport(range: TrafficRange) {
           COUNT(*)::bigint AS views
         FROM "AnalyticsPageView"
         WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
+          AND path NOT LIKE '/admin%'
         GROUP BY referrer
         ORDER BY views DESC
         LIMIT 10
@@ -145,8 +173,21 @@ export async function getTrafficReport(range: TrafficRange) {
           COUNT(*)::bigint AS views
         FROM "AnalyticsPageView"
         WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
+          AND path NOT LIKE '/admin%'
         GROUP BY device
         ORDER BY views DESC
+      `,
+      prisma.$queryRaw<Array<{ country: string | null; views: bigint; visitors: bigint }>>`
+        SELECT
+          country,
+          COUNT(*)::bigint AS views,
+          COUNT(DISTINCT "visitorId")::bigint AS visitors
+        FROM "AnalyticsPageView"
+        WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
+          AND path NOT LIKE '/admin%'
+        GROUP BY country
+        ORDER BY views DESC
+        LIMIT 15
       `,
     ]);
 
@@ -184,6 +225,18 @@ export async function getTrafficReport(range: TrafficRange) {
     };
   });
 
+  const totalCountryViews =
+    countriesRaw.reduce((a, r) => a + Number(r.views), 0) || 1;
+  const countries = countriesRaw.map((r) => {
+    const views = Number(r.views);
+    return {
+      country: r.country,
+      views,
+      visitors: Number(r.visitors),
+      pct: Math.round((views / totalCountryViews) * 1000) / 10,
+    };
+  });
+
   return {
     range,
     from: periodStart.toISOString(),
@@ -194,6 +247,7 @@ export async function getTrafficReport(range: TrafficRange) {
     topPages,
     topReferrers,
     devices,
+    countries,
   };
 }
 

@@ -9,7 +9,9 @@ import {
   normalizePath,
   normalizeReferrer,
   parseBrowser,
+  resolveCountryFromIp,
 } from "../services/analytics";
+import { clientIpFromRequest } from "../services/metaConversions";
 import { env } from "../env";
 
 export const analyticsRouter = Router();
@@ -63,6 +65,7 @@ analyticsRouter.post(
 
     const referrer = normalizeReferrer(data.referrer, siteHostFromEnv());
     const browser = parseBrowser(ua);
+    const country = resolveCountryFromIp(clientIpFromRequest(req));
 
     await prisma.analyticsPageView.create({
       data: {
@@ -70,6 +73,7 @@ analyticsRouter.post(
         referrer,
         device: data.device ?? "desktop",
         browser: browser ?? null,
+        country,
         visitorId: data.visitorId,
         sessionId: data.sessionId,
       },

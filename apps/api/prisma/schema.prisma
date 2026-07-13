@@ -500,6 +500,7 @@ model AnalyticsPageView {
   referrer  String   @default("direct") // external hostname, "direct", or "internal"
   device    String   // desktop | mobile | tablet
   browser   String?  // short label, e.g. "Chrome"
+  country   String?  // ISO 3166-1 alpha-2 from visitor IP, e.g. "NG"
   visitorId String   // anonymous client id (localStorage UUID)
   sessionId String   // anonymous session id (sessionStorage UUID)
   createdAt DateTime @default(now())
@@ -509,4 +510,5 @@ model AnalyticsPageView {
   @@index([visitorId, createdAt])
   @@index([referrer, createdAt])
   @@index([device, createdAt])
+  @@index([country, createdAt])
 }

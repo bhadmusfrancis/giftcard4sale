@@ -59,8 +59,8 @@ export default function PrivacyPage() {
         <p>
           <strong>Technical data:</strong> IP address, browser type, device information, and usage logs collected
           automatically for security, fraud prevention, and service operation. We also collect anonymous first-party
-          website analytics (page path, referrer hostname, device type, and anonymous visitor/session IDs) to understand
-          traffic on the public site.
+          website analytics (page path, referrer hostname, device type, approximate country derived from
+          IP address, and anonymous visitor/session IDs) to understand traffic on the public site.
         </p>
         <p>
           <strong>Communications:</strong> emails we send you (verification, password reset, trade and withdrawal updates)

@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "@/lib/api";
+import { CountryIcon } from "@/components/CountryIcon";
 
 type TrafficRange = "7d" | "30d" | "90d";
 
@@ -34,6 +35,7 @@ type TrafficReport = {
   topPages: Array<{ path: string; views: number; visitors: number }>;
   topReferrers: Array<{ referrer: string; views: number }>;
   devices: Array<{ device: string; views: number; pct: number }>;
+  countries: Array<{ country: string | null; views: number; visitors: number; pct: number }>;
 };
 
 const RANGES: Array<{ id: TrafficRange; label: string }> = [
@@ -127,6 +129,43 @@ function DeviceBar({ devices }: { devices: TrafficReport["devices"] }) {
   );
 }
 
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+function countryLabel(code: string | null): string {
+  if (!code) return "Unknown";
+  try {
+    return regionNames.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+function CountriesList({ countries }: { countries: TrafficReport["countries"] }) {
+  if (!countries.length) {
+    return <p className="text-sm text-slate-400">No country data yet.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {countries.map((row) => {
+        const key = row.country ?? "unknown";
+        return (
+          <li key={key} className="flex items-center justify-between gap-3 text-sm">
+            <span className="flex min-w-0 items-center gap-2 text-slate-700">
+              <CountryIcon country={row.country ?? "Other"} size="sm" />
+              <span className="truncate">{countryLabel(row.country)}</span>
+            </span>
+            <span className="shrink-0 text-right tabular-nums text-slate-500">
+              {row.views.toLocaleString()}
+              <span className="ml-2 hidden text-xs sm:inline">· {row.pct}%</span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function TrafficDashboard() {
   const [range, setRange] = useState<TrafficRange>("7d");
   const [data, setData] = useState<TrafficReport | null>(null);
@@ -170,7 +209,7 @@ function TrafficDashboard() {
         <div>
           <h2 className="text-xl font-bold sm:text-2xl">Website traffic</h2>
           <p className="mt-1 text-sm text-slate-500">
-            First-party page views across the public site (admin visits excluded)
+            Public site visitors only — admin console routes and logged-in admin browsing are excluded
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -345,6 +384,11 @@ function TrafficDashboard() {
         </div>
 
         <div className="space-y-4">
+          <div className="card p-4 sm:p-5">
+            <h3 className="mb-3 text-sm font-semibold text-slate-800">Countries</h3>
+            <CountriesList countries={data?.countries || []} />
+          </div>
+
           <div className="card p-4 sm:p-5">
             <h3 className="mb-3 text-sm font-semibold text-slate-800">Devices</h3>
             <DeviceBar devices={data?.devices || []} />
