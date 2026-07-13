@@ -106,7 +106,7 @@ function ConfigSection() {
               <span className="font-medium text-slate-800">Background auto-resell on NoOnes</span>
               <span className="mt-1 block text-slate-500">
                 When enabled, new trades are automatically opened on NoOnes (greeting, receipt upload when required,
-                then card delivery after the partner says &quot;send&quot;). When disabled, trades stay pending for
+                then card/code delivery only after the partner asks for it). When disabled, trades stay pending for
                 manual admin review; you can still start NoOnes from a trade detail page. Use the per-card
                 &quot;Auto-trade&quot; checkboxes below to choose which gift cards participate.
               </span>

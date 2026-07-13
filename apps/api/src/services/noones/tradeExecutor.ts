@@ -13,9 +13,13 @@ import { resolveOfferForCard } from "./rates";
 import { NoOnesTradeGetData } from "./types";
 
 interface NoOnesChatMessage {
+  id?: string;
   text?: string;
   message?: string;
   author?: string;
+  user_id?: string | number;
+  type?: string;
+  timestamp?: number;
   is_for_moderator?: boolean;
 }
 
@@ -107,13 +111,69 @@ async function grossUpNairaPerUnit(effectiveRate: number, payoutCurrency: string
   return effectiveRate / (1 - reduction / 100);
 }
 
-const PARTNER_SEND_PATTERNS = [/\bsend\b/i, /\bgo ahead\b/i, /\byou can send\b/i, /\bready when you are\b/i];
+/** Affirmative "send the card/code now" — not a bare "send" (offer terms often say "send"). */
+const PARTNER_ASK_SEND_PATTERNS = [
+  /\b(please\s+|pls\s+|kindly\s+)?send\s+(me\s+)?(the\s+)?(card|cards|code|codes|e-?codes?|pin|details|gc|it|them|now)\b/i,
+  /\b(card|cards|code|codes|e-?codes?|pin|details)\b.{0,24}\b(please|now|ready)\b/i,
+  /\byou can send\b/i,
+  /\bgo ahead\b/i,
+  /\bready when you are\b/i,
+  /\bi('?m| am)?\s+ready\b/i,
+  /\bok(ay)?\s+send\b/i,
+  /^(send|pls send|please send|send now|send please)[.!\s]*$/i,
+];
 
-function partnerSaidSend(messages: NoOnesChatMessage[]): boolean {
-  return messages.some((m) => {
-    const text = (m.text || m.message || "").trim();
-    if (!text || m.is_for_moderator) return false;
-    return PARTNER_SEND_PATTERNS.some((pattern) => pattern.test(text));
+/** Partner is telling us to wait — never treat these as a send request. */
+const PARTNER_HOLD_PATTERNS = [
+  /\b(don'?t|do not|never|not yet|wait|hold|before you)\b.{0,40}\bsend\b/i,
+  /\bsend\b.{0,40}\b(only after|when i|after i|once i|until i|later)\b/i,
+];
+
+const GREETING_PATTERN = /^Hi, got .+ gift card$/i;
+
+function messageText(m: NoOnesChatMessage): string {
+  return (m.text || m.message || "").trim();
+}
+
+function isUserChatMessage(m: NoOnesChatMessage): boolean {
+  if (m.is_for_moderator) return false;
+  const type = (m.type || "msg").toLowerCase();
+  return type === "msg" || type === "message" || !m.type;
+}
+
+function isOurChatMessage(m: NoOnesChatMessage, ourAuthors: Set<string>, ourUserIds: Set<string>): boolean {
+  if (m.author && ourAuthors.has(String(m.author).toLowerCase())) return true;
+  if (m.user_id != null && ourUserIds.has(String(m.user_id))) return true;
+  return false;
+}
+
+/**
+ * True only when the trade partner explicitly asks us to send card/code.
+ * Ignores system noise, our own messages, offer-term dumps, and anything before our greeting.
+ */
+function partnerAskedToSend(messages: NoOnesChatMessage[]): boolean {
+  const greetingIdx = messages.findIndex((m) => GREETING_PATTERN.test(messageText(m)));
+  // Require messages after our greeting so offer terms / open-trade noise never trigger delivery.
+  if (greetingIdx < 0) return false;
+  const scope = messages.slice(greetingIdx + 1);
+  if (scope.length === 0) return false;
+
+  const greeting = messages[greetingIdx];
+  const ourAuthors = new Set<string>();
+  const ourUserIds = new Set<string>();
+  if (greeting.author) ourAuthors.add(String(greeting.author).toLowerCase());
+  if (greeting.user_id != null) ourUserIds.add(String(greeting.user_id));
+
+  return scope.some((m) => {
+    if (!isUserChatMessage(m)) return false;
+    if (isOurChatMessage(m, ourAuthors, ourUserIds)) return false;
+
+    const text = messageText(m);
+    if (!text) return false;
+    // Offer terms / long auto-templates often contain "send" without asking us now.
+    if (text.length > 280) return false;
+    if (PARTNER_HOLD_PATTERNS.some((pattern) => pattern.test(text))) return false;
+    return PARTNER_ASK_SEND_PATTERNS.some((pattern) => pattern.test(text));
   });
 }
 
@@ -162,7 +222,7 @@ async function deliverCardToPartner(tradeId: string, tradeHash: string): Promise
 
 /**
  * Auto-resell a user's gift card on NoOnes (user never sees NoOnes).
- * Opens the trade with a greeting, uploads receipt when required, then waits for the partner to say "send".
+ * Opens the trade with a greeting, uploads receipt when required, then waits until the partner asks for card/code.
  */
 export async function executeNoOnesResell(
   tradeId: string,
@@ -250,7 +310,7 @@ export async function executeNoOnesResell(
     }
 
     const messages = await fetchTradeChatMessages(tradeHash);
-    if (partnerSaidSend(messages)) {
+    if (partnerAskedToSend(messages)) {
       await deliverCardToPartner(trade.id, tradeHash);
     }
 
@@ -268,7 +328,7 @@ export async function executeNoOnesResell(
   }
 }
 
-/** Check trades waiting for partner "send" and deliver when ready. */
+/** Check trades waiting for the partner to ask for card/code, then deliver. */
 export async function pollAwaitingSendTrades(): Promise<void> {
   if (!isNoOnesConfigured()) return;
 
@@ -283,7 +343,7 @@ export async function pollAwaitingSendTrades(): Promise<void> {
   for (const t of trades) {
     try {
       const messages = await fetchTradeChatMessages(t.noonesTradeHash!);
-      if (partnerSaidSend(messages)) {
+      if (partnerAskedToSend(messages)) {
         await deliverCardToPartner(t.id, t.noonesTradeHash!);
       }
     } catch (err) {
@@ -347,7 +407,7 @@ export async function handleNoOnesChatMessage(tradeHash: string): Promise<void> 
   if (!trade?.noonesAwaitingSend || trade.status === "CANCELLED") return;
 
   const messages = await fetchTradeChatMessages(tradeHash);
-  if (partnerSaidSend(messages)) {
+  if (partnerAskedToSend(messages)) {
     await deliverCardToPartner(trade.id, tradeHash);
   }
 }
