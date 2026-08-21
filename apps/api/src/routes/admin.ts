@@ -19,7 +19,6 @@ import {
   previewRateFromNoOnes,
   listNoOnesPaymentMethods,
   registerNoOnesWebhooks,
-  reapplyCountryTierVisibility,
 } from "../services/noones";
 import { syncCatalogRatesFromSogo } from "../services/sogo";
 import {
@@ -912,8 +911,6 @@ adminRouter.put(
         ghsReductionPercent: z.number().int().min(0).max(100),
         referralPercent: z.number().int().min(0).max(100),
         noonesRateRefreshHours: z.number().int().min(1).max(168),
-        noonesTopOffersForRate: z.number().int().min(1).max(50),
-        minCountryOffersForDisplay: z.number().int().min(1).max(100),
         defaultMaxConcurrentTrades: z.number().int().min(1).max(50),
         autoSuspendRejectThreshold: z.number().int().min(0).max(100),
         autoSuspendRejectWindowDays: z.number().int().min(1).max(365),
@@ -934,8 +931,6 @@ adminRouter.put(
         ghsReductionPercent: data.ghsReductionPercent,
         referralPercent: data.referralPercent,
         noonesRateRefreshHours: data.noonesRateRefreshHours,
-        noonesTopOffersForRate: data.noonesTopOffersForRate,
-        minCountryOffersForDisplay: data.minCountryOffersForDisplay,
         defaultMaxConcurrentTrades: data.defaultMaxConcurrentTrades,
         autoSuspendRejectThreshold: data.autoSuspendRejectThreshold,
         autoSuspendRejectWindowDays: data.autoSuspendRejectWindowDays,
@@ -947,11 +942,7 @@ adminRouter.put(
       },
     });
     const config = await getRateConfig();
-    // Respond immediately — tier visibility can touch thousands of rate rows.
-    res.json({ config, tierReapplyPending: true });
-    void reapplyCountryTierVisibility(data.minCountryOffersForDisplay).catch((err) =>
-      console.error("[admin/config] tier visibility reapply failed:", (err as Error).message)
-    );
+    res.json({ config });
   })
 );
 

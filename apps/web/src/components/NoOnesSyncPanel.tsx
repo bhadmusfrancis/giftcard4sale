@@ -167,9 +167,9 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
         <Stat label="Stored rate rows" value={database.noonesRates} />
         <Stat label="Active rates" value={database.activeNoonesRates} />
         <Stat
-          label="Stale cards"
+          label="Due for refresh"
           value={active.running ? "…" : database.staleCards}
-          hint={`>${database.refreshHours}h old`}
+          hint={`every ${database.refreshHours}h`}
         />
       </div>
 

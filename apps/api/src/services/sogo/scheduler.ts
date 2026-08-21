@@ -1,3 +1,4 @@
+import { getRateConfig } from "../rateConfig";
 import { env } from "../../env";
 import { isNoOnesSyncActive, tryStartNoOnesSyncRun, completeNoOnesSyncRun, failNoOnesSyncRun } from "../noones/syncStatus";
 import { syncCatalogRatesFromSogo } from "./rateSync";
@@ -5,16 +6,25 @@ import { syncCatalogRatesFromSogo } from "./rateSync";
 let wakeTimer: ReturnType<typeof setTimeout> | null = null;
 let schedulerStarted = false;
 
-function syncIntervalMs(): number {
-  const minutes = Math.max(5, env.sogo.syncMinutes);
-  return minutes * 60_000;
+const MIN_WAKE_MS = 5 * 60_000;
+
+async function refreshIntervalMs(): Promise<number> {
+  try {
+    const config = await getRateConfig();
+    const hours = Math.max(1, config.noonesRateRefreshHours || 1);
+    return Math.max(MIN_WAKE_MS, hours * 3_600_000);
+  } catch {
+    const minutes = Math.max(5, env.sogo.syncMinutes);
+    return minutes * 60_000;
+  }
 }
 
 async function planNextWake(): Promise<void> {
   if (!schedulerStarted) return;
+  const wakeMs = await refreshIntervalMs();
   wakeTimer = setTimeout(() => {
     void onSchedulerWake();
-  }, syncIntervalMs());
+  }, wakeMs);
 }
 
 async function onSchedulerWake(): Promise<void> {
@@ -53,7 +63,7 @@ async function onSchedulerWake(): Promise<void> {
 export function startSogoRateSyncScheduler(): void {
   if (schedulerStarted) return;
   schedulerStarted = true;
-  console.log(`Sogo rate sync scheduler on (every ${env.sogo.syncMinutes}m from ${env.sogo.ratesUrl})`);
+  console.log(`Sogo rate sync scheduler on (interval from admin refresh hours, source ${env.sogo.ratesUrl})`);
   wakeTimer = setTimeout(() => {
     void onSchedulerWake();
   }, 8_000);

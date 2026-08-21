@@ -45,8 +45,6 @@ function ConfigSection() {
           ghsReductionPercent: Number(config.reductions.ghsReductionPercent),
           referralPercent: Number(config.referralPercent),
           noonesRateRefreshHours: Number(config.noonesRateRefreshHours ?? 1),
-          noonesTopOffersForRate: Number(config.noonesTopOffersForRate ?? 3),
-          minCountryOffersForDisplay: Number(config.minCountryOffersForDisplay ?? 5),
           defaultMaxConcurrentTrades: Number(config.defaultMaxConcurrentTrades ?? 5),
           autoSuspendRejectThreshold: Number(config.autoSuspendRejectThreshold ?? 5),
           autoSuspendRejectWindowDays: Number(config.autoSuspendRejectWindowDays ?? 30),
@@ -69,8 +67,8 @@ function ConfigSection() {
       <h3 className="font-bold">Exchange rates &amp; deductions</h3>
       <p className="text-sm text-slate-500">
         Used to convert Naira card value to USDT/Cedi and to deduct the margin. Gift-card buy rates sync from
-        sogo.africa/rates; brands Sogo does not list use last traded rates from contacted partners. Use the sync panel
-        above to refresh stored rates, or sync a single card below.
+        sogo.africa/rates on the refresh interval below; brands Sogo does not list use last traded rates from
+        contacted partners.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <Field label="NGN per 1 USDT" value={config.rates.ngnPerUsdt} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerUsdt: v } })} />
@@ -80,19 +78,9 @@ function ConfigSection() {
         <Field label="USDT deduction %" value={config.reductions.usdtReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, usdtReductionPercent: v } })} />
         <Field label="Cedi deduction %" value={config.reductions.ghsReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, ghsReductionPercent: v } })} />
         <Field
-          label="Rate staleness (hours)"
+          label="Rate refresh interval (hours)"
           value={config.noonesRateRefreshHours ?? 1}
           onChange={(v) => setConfig({ ...config, noonesRateRefreshHours: v })}
-        />
-        <Field
-          label="NoOnes offers to average"
-          value={config.noonesTopOffersForRate ?? 3}
-          onChange={(v) => setConfig({ ...config, noonesTopOffersForRate: v })}
-        />
-        <Field
-          label="Min offers per country tier"
-          value={config.minCountryOffersForDisplay ?? 5}
-          onChange={(v) => setConfig({ ...config, minCountryOffersForDisplay: v })}
         />
         <div className="sm:col-span-3">
           <label className="flex items-start gap-3 text-sm">
