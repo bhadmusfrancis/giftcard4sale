@@ -1,7 +1,7 @@
 /**
  * Sync gift-card rates into the database:
  * - Primary: https://sogo.africa/rates (HTML scrape until SOGO_RATES_API_URL is set)
- * - Fallback: last successful trades with contacted NoOnes partners
+ * - Fallback: TOP10_TRADER live Eneba/Paysafecard offers, then last-traded contacted partners
  *
  * Usage:
  *   npm run sync:noones              # Sogo + partner fallback

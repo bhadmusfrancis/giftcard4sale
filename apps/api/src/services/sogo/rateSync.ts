@@ -17,6 +17,7 @@ import {
 } from "../noones/syncStatus";
 import { fetchSogoGiftCardRates, SOGO_RATE_SPEED, type SogoCardRates, type SogoCurrencyRate } from "./scraper";
 import { loadPartnerLastTradedRates, PARTNER_RATE_SPEED, type PartnerLastRate } from "./partnerFallback";
+import { loadTopTraderLiveRates, mergePartnerRates } from "./partnerLiveOffers";
 
 const SOGO_COVERED_OFFERS = 999;
 
@@ -25,6 +26,9 @@ const NAME_ALIASES: Record<string, string[]> = {
   itunes: ["apple-itunes", "apple", "apple-us-only"],
   "apple-us-only": ["apple-itunes", "itunes"],
   apple: ["apple-itunes", "itunes"],
+  eneba: ["eneba-gift-card"],
+  "eneba-gift-card": ["eneba"],
+  paysafecard: ["paysafe", "paysafe-card"],
   steam: ["steam-wallet", "steam-wallet-gift-card"],
   xbox: ["x-box"],
   playstation: ["playstation-network", "psn"],
@@ -335,8 +339,9 @@ export interface CatalogRateSyncOptions {
 }
 
 /**
- * Primary catalog rate sync: Sogo public rates, then last-traded rates from
- * contacted NoOnes partners for anything Sogo does not list.
+ * Primary catalog rate sync: Sogo public rates, then partner fallback
+ * (TOP10_TRADER live Eneba/Paysafecard offers, then last-traded contacted partners)
+ * for anything Sogo does not list.
  */
 export async function syncCatalogRatesFromSogo(options?: CatalogRateSyncOptions): Promise<RateSyncSummary> {
   const summary = emptySummary();
@@ -353,7 +358,8 @@ export async function syncCatalogRatesFromSogo(options?: CatalogRateSyncOptions)
 
   let partnerRates: PartnerLastRate[] = [];
   try {
-    partnerRates = await loadPartnerLastTradedRates();
+    const [traded, live] = await Promise.all([loadPartnerLastTradedRates(), loadTopTraderLiveRates()]);
+    partnerRates = mergePartnerRates(traded, live);
   } catch (err) {
     summary.errors.push(`Partner fallback: ${(err as Error).message}`);
   }

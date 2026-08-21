@@ -225,6 +225,38 @@ export const PREPAID_PROFILES: Record<string, GiftCardProfile> = {
     metaKeywords: ["Neosurf voucher balance", "sell Neosurf", "Neosurf code Nigeria"],
   }),
 
+  paysafecard: profile({
+    slug: "paysafecard",
+    category: "prepaid",
+    brand: "Paysafecard",
+    hook:
+      "Paysafecard PINs are Europe's most recognized cash voucher for gaming, entertainment, and online payments — prepaid codes bought at retail without a bank card.",
+    about:
+      "Paysafecard is a prepaid payment method from Paysafe Limited, sold as 16-digit PINs at convenience stores, kiosks, and online resellers across Europe and beyond. Holders spend PIN value at thousands of online merchants or deposit into a my paysafecard wallet. EUR denominations from €10 to €100 are the most traded; GBP and other currencies exist regionally. The product is popular with gamers who do not want to share card details and with P2P traders converting unused PINs to crypto. GiftCard4Sale lists live Paysafecard rates sourced from contacted NoOnes partners when Sogo does not publish the brand.",
+    balanceCheck: {
+      intro: "Paysafecard PIN status is checked through the official my paysafecard portal or at merchant checkout.",
+      steps: [
+        "Visit <strong>paysafecard.com</strong> and open Check PIN / my paysafecard.",
+        "Enter the 16-digit PIN to confirm unused value.",
+        "Do not deposit the PIN to a wallet if you plan to sell it.",
+        "Keep the retail receipt showing the paid denomination (commonly €50 or €100).",
+        "Call the support number on the voucher if the PIN does not validate.",
+      ],
+      tip: "Sell unused PINs only — deposited my paysafecard balance is a different product.",
+    },
+    whyWanted:
+      "European gamers fund Steam, PlayStation, and betting sites with cash-bought PINs. Unused holiday vouchers convert to USDT or Naira. Traders prefer Paysafecard because PIN validation is fast and denominations are standardized.",
+    redemptionNotes:
+      "PINs are typically EUR and merchant-specific once spent. Region and currency must match the rate tier. Do not scratch and share PINs before the trade is verified.",
+    faq: [
+      { q: "Can I sell Paysafecard PINs on GiftCard4Sale?", a: "Yes — unused EUR Paysafecard PINs when EUR rates appear in the calculator." },
+      { q: "Paysafecard vs my paysafecard wallet?", a: "We buy unused 16-digit PINs. Wallet balance is not the same product." },
+      { q: "Which denominations?", a: "Live offers currently cover common EUR amounts such as €10–€150. Enter your exact PIN value for a quote." },
+      { q: "GBP or USD Paysafecard?", a: "Only currencies listed in the calculator are accepted." },
+    ],
+    metaKeywords: ["Paysafecard PIN check", "sell Paysafecard", "Paysafecard to USDT"],
+  }),
+
   "cashlib-vouchers": profile({
     slug: "cashlib-vouchers",
     category: "prepaid",

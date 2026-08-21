@@ -3,10 +3,10 @@ import type { GiftCardProfile } from "./types";
 type Category = GiftCardProfile["category"];
 
 const CATEGORY_KEYWORDS: [RegExp, Category][] = [
-  [/game|gaming|xbox|playstation|steam|roblox|fortnite|valorant|apex|league|nexon|blizzard|discord|ea-play|vbucks|coins|jawaker|imvu|r2-games/i, "gaming"],
+  [/game|gaming|xbox|playstation|steam|roblox|fortnite|valorant|apex|league|nexon|blizzard|discord|ea-play|vbucks|coins|jawaker|imvu|r2-games|eneba/i, "gaming"],
   [/pizza|restaurant|food|grub|subway|domino|papa|olive|applebee|burger|kitchen/i, "food"],
   [/airline|air|hotel|booking|travel|uber|lyft|southwest|united|delta/i, "travel"],
-  [/visa|mastercard|prepaid|voucher|pin|moneypak|vanilla|flexepin|neosurf|cashlib|transcash|cashtocode|upi|refill|mobile|boost|t-mobile|bitjem|bitrefill|pcs|crypto/i, "prepaid"],
+  [/visa|mastercard|prepaid|voucher|pin|moneypak|vanilla|flexepin|neosurf|paysafe|cashlib|transcash|cashtocode|upi|refill|mobile|boost|t-mobile|bitjem|bitrefill|pcs|crypto/i, "prepaid"],
   [/netflix|itunes|google|apple|skype|nordvpn|tinder|discord|digital|subscription|vpn|credits/i, "digital"],
   [/amazon|ebay|walmart|target|marketplace|flipkart|ozon|wildberries|tmall|jd|americanas|ozon/i, "marketplace"],
   [/fashion|apparel|clothing|nike|gap|calvin|superdry|saks|zappos|old-navy|victoria|ulta|sephora/i, "fashion"],

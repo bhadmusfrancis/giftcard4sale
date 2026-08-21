@@ -25,6 +25,10 @@ const SLUG_MAP: Record<string, string> = {
   chime: "chime-gift-card",
   "cvs-pharmacy": "cvs-gift-card",
   "dollar-general": "dollar-general",
+  eneba: "eneba-gift-card",
+  "eneba-gift-card": "eneba-gift-card",
+  paysafecard: "paysafecard",
+  paysafe: "paysafecard",
 };
 
 const NAME_PATTERNS: [RegExp, string][] = [
@@ -49,6 +53,8 @@ const NAME_PATTERNS: [RegExp, string][] = [
   [/chime/i, "chime-gift-card"],
   [/cvs/i, "cvs-gift-card"],
   [/dollar\s?general/i, "dollar-general"],
+  [/eneba/i, "eneba-gift-card"],
+  [/paysafe/i, "paysafecard"],
   [/gamestop/i, "gamestop-gift-card"],
   [/lowes/i, "lowes-gift-card"],
   [/home\s?depot/i, "home-depot-gift-card"],

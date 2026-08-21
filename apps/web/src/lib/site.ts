@@ -3,4 +3,4 @@
  * address as visible text (avoids scraping admin/support inboxes).
  */
 export const SUPPORT_EMAIL =
-  process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || "support@giftcard4sale.com";
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || "admin@giftcard4sale.com";
