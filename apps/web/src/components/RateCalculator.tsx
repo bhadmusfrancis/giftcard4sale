@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { trackMeta } from "@/lib/metaPixel";
-import type { RateFreshnessMeta } from "@/components/RateRefreshStatus";
+import { IndicativeRateCaveat, isNonSogoMarketplaceRate, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
 import { CountryPicker } from "@/components/CountryPicker";
 
 interface Rate {
@@ -20,6 +20,7 @@ interface Rate {
   nairaPerUnit: number;
   storedQuotes?: StoredQuotes;
   countryOfferCount?: number;
+  speed?: string | null;
 }
 
 interface Config {
@@ -131,6 +132,11 @@ export function RateCalculator({
     () => (rangesReady && Number.isFinite(amount) ? findBoundedRateForAmount(candidates, boundedTiers, amount) : null),
     [candidates, boundedTiers, amount, rangesReady]
   );
+
+  const indicativeRate = useMemo(() => {
+    if (matched) return isNonSogoMarketplaceRate(matched.speed);
+    return candidates.length > 0 && candidates.every((row) => isNonSogoMarketplaceRate(row.speed));
+  }, [matched, candidates]);
 
   const receiptType: ReceiptType = useMemo(() => {
     if (hasReceipt !== true) return "NONE";
@@ -414,6 +420,9 @@ export function RateCalculator({
               <div className="mt-2 text-xs text-amber-300">
                 Estimate only — payout may change based on your card&apos;s country.
               </div>
+            ) : null}
+            {indicativeRate ? (
+              <IndicativeRateCaveat className="mt-2 text-xs text-amber-300/90" />
             ) : null}
             <div className="mt-2 text-xs text-slate-400">
               Rate: {quote.effectiveNairaPerUnit.toLocaleString()} ₦/unit

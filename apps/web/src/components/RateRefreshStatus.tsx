@@ -9,6 +9,18 @@ export interface RateFreshnessMeta {
   isStale: boolean;
 }
 
+/** Partner / leftover NoOnes quotes are not from the Sogo rate sheet. */
+export function isNonSogoMarketplaceRate(speed?: string | null): boolean {
+  return speed === "PARTNER" || speed === "NOONES";
+}
+
+export const INDICATIVE_RATE_CAVEAT =
+  "This rate is indicative and may have changed. A newer rate may be used instead.";
+
+export function IndicativeRateCaveat({ className }: { className?: string }) {
+  return <p className={className}>{INDICATIVE_RATE_CAVEAT}</p>;
+}
+
 export function RateRefreshStatus({ rateMeta }: { rateMeta: RateFreshnessMeta }) {
   if (!rateMeta.lastUpdatedAt) {
     return (

@@ -10,6 +10,7 @@ import { money } from "@/lib/format";
 import { newMetaEventId, trackMeta } from "@/lib/metaPixel";
 import { trackGoogleAdsLead } from "@/lib/googleAds";
 import { ReceiptType } from "@gc4s/shared";
+import { IndicativeRateCaveat, isNonSogoMarketplaceRate } from "@/components/RateRefreshStatus";
 
 const RECEIPT_LABELS: Record<ReceiptType, string> = {
   NONE: "No receipt",
@@ -207,6 +208,9 @@ function NewTradeInner() {
             <div className="text-2xl font-bold">
               {quoteLoading || !quoteReady ? "Calculating…" : quote ? money(quote.payoutAmount, payout) : "—"}
             </div>
+            {isNonSogoMarketplaceRate(rateInfo?.speed) ? (
+              <IndicativeRateCaveat className="mt-2 max-w-md text-xs text-amber-700" />
+            ) : null}
           </div>
           <span className="badge bg-amber-100 text-amber-800">{payout}</span>
         </div>

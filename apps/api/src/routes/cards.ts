@@ -174,6 +174,7 @@ cardsRouter.post(
         medium: rate.medium,
         cardName: rate.cardType.name,
         updatedAt: rate.updatedAt,
+        speed: rate.speed,
       },
       receiptPolicy,
       quoteSource: "stored",
