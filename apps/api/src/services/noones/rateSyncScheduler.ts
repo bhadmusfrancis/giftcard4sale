@@ -106,13 +106,9 @@ async function onSchedulerWake(): Promise<void> {
   await sleep(pauseBetweenBatchesMs);
 }
 
-/** Start server-side auto-resync when stored rates pass the staleness window. */
+/** Rate auto-sync is disabled — stored rates stay as last synced. Manual admin/CLI sync still works. */
 export function startNoOnesRateSyncScheduler(): void {
-  if (!isNoOnesConfigured()) return;
-  if (schedulerStarted) return;
-  schedulerStarted = true;
-  console.log("NoOnes rate auto-sync scheduler active (respects batch + connection limits)");
-  void onSchedulerWake();
+  console.log("NoOnes rate auto-sync scheduler is disabled; keeping stored rates");
 }
 
 export function stopNoOnesRateSyncScheduler(): void {

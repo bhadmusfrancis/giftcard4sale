@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { trackMeta } from "@/lib/metaPixel";
-import { RateRefreshStatus, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
+import type { RateFreshnessMeta } from "@/components/RateRefreshStatus";
 import { CountryPicker } from "@/components/CountryPicker";
 
 interface Rate {
@@ -41,7 +41,6 @@ export function RateCalculator({
   cardSellSlug,
   rates,
   config,
-  rateMeta,
   currencyMeta = [],
 }: {
   cardName: string;
@@ -249,7 +248,6 @@ export function RateCalculator({
     <div className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <h3 className="text-lg font-bold">Calculate your {cardName} rate</h3>
-        {rateMeta ? <RateRefreshStatus rateMeta={rateMeta} /> : null}
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
