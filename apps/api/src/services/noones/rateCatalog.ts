@@ -40,6 +40,10 @@ const CURRENCY_TIER_META: Record<
   THB: { country: "Thailand", sampleAmount: 500 },
   AED: { country: "UAE", sampleAmount: 100 },
   SAR: { country: "Saudi Arabia", sampleAmount: 100 },
+  DKK: { country: "Denmark", sampleAmount: 500, minDenom: 100, maxDenom: 10000 },
+  NOK: { country: "Norway", sampleAmount: 500, minDenom: 100, maxDenom: 10000 },
+  SEK: { country: "Sweden", sampleAmount: 500, minDenom: 100, maxDenom: 10000 },
+  TRY: { country: "Turkey", sampleAmount: 100, minDenom: 50, maxDenom: 5000 },
 };
 
 /** Build a sync tier for a fiat currency discovered on NoOnes offers. */

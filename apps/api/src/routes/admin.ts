@@ -12,17 +12,16 @@ import { trackTradePurchaseConversion } from "../services/tradeConversions";
 import { payoutNgnToBank } from "../services/payoutProvider";
 import { notify, notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
-import { getRateConfig, listStaleCardTypeIds } from "../services/rateConfig";
+import { getRateConfig } from "../services/rateConfig";
 import {
   executeNoOnesResell,
   isNoOnesConfigured,
-  syncRatesFromNoOnes,
-  syncCardRatesFromNoOnes,
   previewRateFromNoOnes,
   listNoOnesPaymentMethods,
   registerNoOnesWebhooks,
   reapplyCountryTierVisibility,
 } from "../services/noones";
+import { syncCatalogRatesFromSogo } from "../services/sogo";
 import {
   completeNoOnesSyncRun,
   failNoOnesSyncRun,
@@ -1084,46 +1083,26 @@ adminRouter.get(
   "/noones/sync-status",
   asyncHandler(async (req, res) => {
     const light = req.query.light === "1" || req.query.light === "true";
-    res.json(await getNoOnesSyncStatusResponse(isNoOnesConfigured(), { skipDb: light }));
+    res.json(await getNoOnesSyncStatusResponse(true, { skipDb: light }));
   })
 );
 
 adminRouter.post(
   "/noones/sync-rates",
   asyncHandler(async (req, res) => {
-    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
     if (isNoOnesSyncActive()) {
       return res.status(409).json({
-        error: "A NoOnes sync is already in progress",
+        error: "A rate sync is already in progress",
         status: await getNoOnesSyncStatusResponse(true),
       });
     }
 
     const force = Boolean(req.body?.force);
-    tryStartNoOnesSyncRun({ scope: "full", force, trigger: "admin" });
+    tryStartNoOnesSyncRun({ scope: "full", force: true, trigger: "admin" });
 
     void (async () => {
       try {
-        let syncOptions: { force: boolean; cardTypeIds?: string[] } = { force };
-        if (!force) {
-          const config = await getRateConfig();
-          const staleCards = await listStaleCardTypeIds(config.noonesRateRefreshHours);
-          if (!staleCards.length) {
-            completeNoOnesSyncRun({
-              created: 0,
-              updated: 0,
-              skipped: 0,
-              deleted: 0,
-              drafted: 0,
-              published: 0,
-              cardTypes: 0,
-              errors: [],
-            });
-            return;
-          }
-          syncOptions = { force: false, cardTypeIds: staleCards.map((c) => c.id) };
-        }
-        const summary = await syncRatesFromNoOnes(syncOptions);
+        const summary = await syncCatalogRatesFromSogo({ force });
         completeNoOnesSyncRun(summary);
       } catch (err) {
         failNoOnesSyncRun((err as Error).message);
@@ -1140,15 +1119,11 @@ adminRouter.post(
 adminRouter.post(
   "/card-types/:id/sync-rates",
   asyncHandler(async (req, res) => {
-    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
     const card = await prisma.cardType.findUnique({ where: { id: req.params.id } });
     if (!card) return res.status(404).json({ error: "Card not found" });
-    if (!card.noonesPaymentMethod) {
-      return res.status(400).json({ error: "This card has no NoOnes payment method mapped" });
-    }
     if (isNoOnesSyncActive()) {
       return res.status(409).json({
-        error: "A NoOnes sync is already in progress",
+        error: "A rate sync is already in progress",
         status: await getNoOnesSyncStatusResponse(true),
       });
     }
@@ -1162,7 +1137,7 @@ adminRouter.post(
       totalCards: 1,
     });
 
-    void syncCardRatesFromNoOnes(card.id, { force: true })
+    void syncCatalogRatesFromSogo({ force: true, cardTypeId: card.id })
       .then((summary) => completeNoOnesSyncRun(summary))
       .catch((err) => failNoOnesSyncRun((err as Error).message));
 

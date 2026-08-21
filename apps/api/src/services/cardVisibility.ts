@@ -12,10 +12,9 @@ export function isManualRateSpeed(speed: string | null | undefined): boolean {
   return speed == null || speed === "SLOW" || speed === "FAST";
 }
 
-/** Public catalog: NoOnes cards that have at least one quotable rate row. */
+/** Public catalog: any card that has at least one quotable rate row (Sogo, partner, or NoOnes). */
 export function noOnesCatalogWhere(): Prisma.CardTypeWhereInput {
   return {
-    ...noonesLinkedCardWhere(),
     active: true,
     rates: { some: { active: true } },
   };

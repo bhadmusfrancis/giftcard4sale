@@ -34,6 +34,7 @@ marketing/
 
 # Local scratch / design exports
 .cursor/
+reports/
 ChatGPT Image*.png
 WhatsApp Image*.jpeg
 WhatsApp Image*.jpg

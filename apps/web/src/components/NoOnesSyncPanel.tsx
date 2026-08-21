@@ -130,10 +130,10 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
     <div className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-bold">NoOnes synchronization</h3>
+          <h3 className="font-bold">Rate synchronization</h3>
           <p className="mt-1 text-sm text-slate-500">
-            Pull gift-card catalog and live rates from NoOnes into the database. Runs in the background — this panel
-            updates every few seconds while a sync is active.
+            Pull live gift-card rates from sogo.africa/rates, then fill missing brands from last trades with contacted
+            partners. Runs in the background — this panel updates every few seconds while a sync is active.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -143,7 +143,7 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
             disabled={!configured || startAction.busy || active.running}
             onClick={() => startSync(false)}
           >
-            {active.running ? "Syncing…" : "Sync stale cards"}
+            {active.running ? "Syncing…" : "Sync rates now"}
           </button>
           <button
             type="button"
@@ -151,21 +151,20 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
             disabled={!configured || startAction.busy || active.running}
             onClick={() => startSync(true)}
           >
-            Force refresh all
+            Force refresh
           </button>
         </div>
       </div>
 
       {!configured ? (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          NoOnes is not configured. Set <code className="text-xs">NOONES_ENABLED</code> and API credentials in the
-          API environment.
+          Rate sync is unavailable. Check the API process logs.
         </p>
       ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
         <Stat label="Linked cards" value={database.noonesCards} />
-        <Stat label="NoOnes rate rows" value={database.noonesRates} />
+        <Stat label="Stored rate rows" value={database.noonesRates} />
         <Stat label="Active rates" value={database.activeNoonesRates} />
         <Stat
           label="Stale cards"

@@ -150,6 +150,16 @@ export const env = {
       process.env.NOONES_WEBHOOK_URL ||
       `${process.env.API_URL || "http://localhost:4000"}/webhooks/noones`,
   },
+
+  /**
+   * Public Sogo rate table is the live gift-card rate source until a dedicated API exists.
+   * Set SOGO_RATES_API_URL to switch off HTML scraping.
+   */
+  sogo: {
+    ratesUrl: process.env.SOGO_RATES_URL || "https://sogo.africa/rates",
+    apiUrl: process.env.SOGO_RATES_API_URL || "",
+    syncMinutes: num(process.env.SOGO_RATE_SYNC_MINUTES, num(process.env.NOONES_RATE_SYNC_MINUTES, 15)),
+  },
 };
 
 // Fail fast on insecure production config.

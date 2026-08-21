@@ -68,9 +68,9 @@ function ConfigSection() {
     <form onSubmit={save} className="card p-6">
       <h3 className="font-bold">Exchange rates &amp; deductions</h3>
       <p className="text-sm text-slate-500">
-        Used to convert Naira card value to USDT/Cedi and to deduct the margin. NoOnes card rates are averaged from
-        the top offers by completed trades. Use the NoOnes sync panel above to refresh stored rates, or sync a single
-        card below.
+        Used to convert Naira card value to USDT/Cedi and to deduct the margin. Gift-card buy rates sync from
+        sogo.africa/rates; brands Sogo does not list use last traded rates from contacted partners. Use the sync panel
+        above to refresh stored rates, or sync a single card below.
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <Field label="NGN per 1 USDT" value={config.rates.ngnPerUsdt} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerUsdt: v } })} />
@@ -80,7 +80,7 @@ function ConfigSection() {
         <Field label="USDT deduction %" value={config.reductions.usdtReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, usdtReductionPercent: v } })} />
         <Field label="Cedi deduction %" value={config.reductions.ghsReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, ghsReductionPercent: v } })} />
         <Field
-          label="NoOnes rate staleness (hours)"
+          label="Rate staleness (hours)"
           value={config.noonesRateRefreshHours ?? 1}
           onChange={(v) => setConfig({ ...config, noonesRateRefreshHours: v })}
         />
@@ -299,7 +299,7 @@ function CardsSection() {
     setSyncMsg(null);
     try {
       await api(`/admin/card-types/${cardId}/sync-rates`, { method: "POST" });
-      setSyncMsg("Card sync started — see NoOnes synchronization panel for progress.");
+      setSyncMsg("Card sync started — see the rate synchronization panel for progress.");
     } catch (e) {
       setSyncMsg((e as Error).message);
     }

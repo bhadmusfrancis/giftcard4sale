@@ -19,6 +19,7 @@
     "setup": "npm install && npm run build:shared && npm run db:up && npm run db:migrate && npm run db:seed",
     "sync:noones": "npm run sync:noones -w @gc4s/api --",
     "sync:noones-rates": "npm run sync:noones -w @gc4s/api --",
+    "sync:sogo-rates": "npm run sync:sogo-rates -w @gc4s/api --",
     "import:noones-cards": "npm run import:noones-cards -w @gc4s/api"
   },
   "devDependencies": {

@@ -1,20 +1,18 @@
 /**
- * Sync all NoOnes gift-card data into the database:
- * - Card catalog (payment methods → card types, offer counts)
- * - Rate tiers (PHYSICAL + ECODE per country/currency)
- * - Stored quotes and currency denomination metadata
- *
- * Run on a schedule (cron) — not during user page loads.
+ * Sync gift-card rates into the database:
+ * - Primary: https://sogo.africa/rates (HTML scrape until SOGO_RATES_API_URL is set)
+ * - Fallback: last successful trades with contacted NoOnes partners
  *
  * Usage:
- *   npm run sync:noones              # sync stale or missing data only
- *   npm run sync:noones -- --force   # re-fetch all cards from NoOnes
+ *   npm run sync:noones              # Sogo + partner fallback
  *   npm run sync:noones -- --card=<cardTypeId>
+ *   npm run sync:noones -- --from-noones   # legacy NoOnes marketplace sync
  */
 import "dotenv/config";
 import { prisma } from "../src/prisma";
 import { isNoOnesConfigured } from "../src/services/noones/client";
 import { syncCardRatesFromNoOnes, syncRatesFromNoOnes } from "../src/services/noones/rateSync";
+import { syncCatalogRatesFromSogo } from "../src/services/sogo";
 import {
   completeNoOnesSyncRun,
   failNoOnesSyncRun,
@@ -23,6 +21,7 @@ import {
 
 const args = process.argv.slice(2);
 const force = args.includes("--force");
+const fromNoones = args.includes("--from-noones");
 const cardArg = args.find((a) => a.startsWith("--card="));
 const cardTypeId = cardArg?.split("=")[1];
 
@@ -38,24 +37,26 @@ function isDbConnectionError(err: unknown): boolean {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  if (!isNoOnesConfigured()) {
-    console.error("NoOnes is not configured. Set NOONES_ENABLED=true and NOONES_CLIENT_ID / NOONES_CLIENT_SECRET in apps/api/.env");
+  if (fromNoones && !isNoOnesConfigured()) {
+    console.error("NoOnes is not configured. Set NOONES_ENABLED=true and credentials, or omit --from-noones to sync from Sogo.");
     process.exit(1);
   }
 
   console.log(
-    cardTypeId
-      ? `Syncing NoOnes data for card ${cardTypeId}…`
-      : force
-        ? "Syncing all NoOnes gift-card data (force refresh)…"
-        : "Syncing stale or missing NoOnes gift-card data…"
+    fromNoones
+      ? cardTypeId
+        ? `Syncing NoOnes data for card ${cardTypeId}…`
+        : "Syncing gift-card data from NoOnes…"
+      : cardTypeId
+        ? `Syncing Sogo/partner rates for card ${cardTypeId}…`
+        : "Syncing gift-card rates from Sogo (partner last-traded fallback)…"
   );
 
   const started = Date.now();
   const scope = cardTypeId ? "card" : "full";
   tryStartNoOnesSyncRun({
     scope,
-    force: force || Boolean(cardTypeId),
+    force: true,
     trigger: "cli",
     cardTypeId,
     totalCards: scope === "card" ? 1 : undefined,
@@ -65,9 +66,13 @@ async function main() {
   try {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        summary = cardTypeId
-          ? await syncCardRatesFromNoOnes(cardTypeId, { force: true })
-          : await syncRatesFromNoOnes(force ? { force: true } : undefined);
+        if (fromNoones) {
+          summary = cardTypeId
+            ? await syncCardRatesFromNoOnes(cardTypeId, { force: true })
+            : await syncRatesFromNoOnes(force ? { force: true } : undefined);
+        } else {
+          summary = await syncCatalogRatesFromSogo({ force: true, cardTypeId });
+        }
         break;
       } catch (err) {
         if (attempt < 3 && isDbConnectionError(err)) {
@@ -87,7 +92,7 @@ async function main() {
   }
 
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
-  console.log(`\n--- NoOnes sync complete (${elapsed}s) ---`);
+  console.log(`\n--- Rate sync complete (${elapsed}s) ---`);
   console.log(`Card types: ${summary.cardTypes}`);
   console.log(`Rates created: ${summary.created}, updated: ${summary.updated}, skipped: ${summary.skipped}`);
   console.log(`Published: ${summary.published}, drafted: ${summary.drafted}`);

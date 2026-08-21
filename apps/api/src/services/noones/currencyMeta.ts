@@ -92,7 +92,7 @@ export async function listCardCurrencyMetaForDisplay(cardTypeId: string) {
     prisma.rate.findMany({
       where: {
         cardTypeId,
-        speed: "NOONES",
+        speed: { in: ["SOGO", "PARTNER", "NOONES"] },
         OR: [{ minDenom: { not: null } }, { maxDenom: { not: null } }],
       },
       select: {

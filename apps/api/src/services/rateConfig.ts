@@ -105,7 +105,7 @@ export async function getRateSyncDelayMs(refreshHours: number): Promise<number> 
   const windowMs = refreshHours * 3_600_000;
 
   const latestRate = await prisma.rate.findFirst({
-    where: { speed: "NOONES" },
+    where: { speed: { in: ["SOGO", "PARTNER", "NOONES"] } },
     orderBy: { updatedAt: "desc" },
     select: { updatedAt: true },
   });
@@ -151,7 +151,7 @@ export async function getCardRateStalenessInfo(
 ): Promise<{ stale: boolean; oldestAt: number }> {
   const [existingNoones, currencyMetaRows, cardType] = await Promise.all([
     prisma.rate.findMany({
-      where: { cardTypeId, speed: "NOONES" },
+      where: { cardTypeId, speed: { in: ["SOGO", "PARTNER", "NOONES"] } },
       select: {
         updatedAt: true,
         minDenom: true,
@@ -299,8 +299,8 @@ export function buildRateFreshnessMeta(
   rates: { updatedAt: Date; speed?: string | null }[],
   refreshHours: number
 ): RateFreshnessMeta {
-  const noonesRates = rates.filter((r) => r.speed === "NOONES");
-  const source = noonesRates.length ? noonesRates : rates;
+  const preferred = rates.filter((r) => r.speed === "SOGO" || r.speed === "PARTNER" || r.speed === "NOONES");
+  const source = preferred.length ? preferred : rates;
 
   let latest = 0;
   for (const rate of source) {
