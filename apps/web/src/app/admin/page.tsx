@@ -44,7 +44,9 @@ export default function AdminHome() {
         <div>
           <div className="text-sm font-semibold text-slate-900">Website traffic</div>
           <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-            Page views, visitors, top pages, and referrers
+            {stats?.last24h
+              ? `${Number(stats.last24h.pageViews ?? 0).toLocaleString()} views · ${Number(stats.last24h.uniqueVisitors ?? 0).toLocaleString()} visitors in last 24 hours`
+              : "Page views, visitors, top pages, and referrers"}
           </p>
         </div>
         <span className="shrink-0 text-sm font-medium text-brand-700">Open →</span>

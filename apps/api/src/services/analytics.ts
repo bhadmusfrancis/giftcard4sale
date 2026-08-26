@@ -69,9 +69,11 @@ export function resolveCountryFromIp(ip: string | undefined): string | null {
   return code && /^[A-Z]{2}$/.test(code) ? code : null;
 }
 
-export type TrafficRange = "7d" | "30d" | "90d";
+export type TrafficRange = "24h" | "7d" | "30d" | "90d";
+export type TrafficGranularity = "hour" | "day";
 
 export function rangeToDays(range: TrafficRange): number {
+  if (range === "24h") return 1;
   if (range === "30d") return 30;
   if (range === "90d") return 90;
   return 7;
@@ -81,14 +83,47 @@ function startOfUtcDay(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
+function startOfUtcHour(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours())
+  );
+}
+
 function addUtcDays(d: Date, days: number): Date {
   const next = new Date(d);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
 }
 
+function addUtcHours(d: Date, hours: number): Date {
+  return new Date(d.getTime() + hours * 60 * 60 * 1000);
+}
+
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+function hourBucketKey(raw: string | Date): string {
+  const value = raw instanceof Date ? raw.toISOString() : String(raw);
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return startOfUtcHour(parsed).toISOString();
+  const utcGuess = new Date(`${value.replace(" ", "T")}${value.endsWith("Z") ? "" : "Z"}`);
+  if (!Number.isNaN(utcGuess.getTime())) return startOfUtcHour(utcGuess).toISOString();
+  return value;
+}
+
+function rangeWindow(range: TrafficRange, now = new Date()) {
+  if (range === "24h") {
+    const periodEnd = now;
+    const periodStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const prevStart = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    return { periodStart, periodEnd, prevStart, granularity: "hour" as const };
+  }
+  const days = rangeToDays(range);
+  const periodEnd = addUtcDays(startOfUtcDay(now), 1);
+  const periodStart = addUtcDays(periodEnd, -days);
+  const prevStart = addUtcDays(periodStart, -days);
+  return { periodStart, periodEnd, prevStart, granularity: "day" as const };
 }
 
 type Summary = {
@@ -122,28 +157,50 @@ async function summarize(from: Date, to: Date): Promise<Summary> {
   };
 }
 
-export async function getTrafficReport(range: TrafficRange) {
-  const days = rangeToDays(range);
+export async function getLast24hSummary(): Promise<Summary> {
   const now = new Date();
-  const periodEnd = addUtcDays(startOfUtcDay(now), 1);
-  const periodStart = addUtcDays(periodEnd, -days);
-  const prevStart = addUtcDays(periodStart, -days);
+  return summarize(new Date(now.getTime() - 24 * 60 * 60 * 1000), now);
+}
+
+export async function getTrafficReport(range: TrafficRange) {
+  const { periodStart, periodEnd, prevStart, granularity } = rangeWindow(range);
+
+  const timeseriesQuery =
+    granularity === "hour"
+      ? prisma.$queryRaw<Array<{ bucket: string; views: bigint; visitors: bigint }>>`
+          SELECT
+            to_char(
+              date_trunc('hour', "createdAt" AT TIME ZONE 'UTC'),
+              'YYYY-MM-DD"T"HH24":00:00.000Z"'
+            ) AS bucket,
+            COUNT(*)::bigint AS views,
+            COUNT(DISTINCT "visitorId")::bigint AS visitors
+          FROM "AnalyticsPageView"
+          WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
+            AND path NOT LIKE '/admin%'
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `
+      : prisma.$queryRaw<Array<{ bucket: string; views: bigint; visitors: bigint }>>`
+          SELECT
+            to_char(
+              date_trunc('day', "createdAt" AT TIME ZONE 'UTC'),
+              'YYYY-MM-DD'
+            ) AS bucket,
+            COUNT(*)::bigint AS views,
+            COUNT(DISTINCT "visitorId")::bigint AS visitors
+          FROM "AnalyticsPageView"
+          WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
+            AND path NOT LIKE '/admin%'
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `;
 
   const [summary, previous, timeseriesRows, topPagesRaw, topReferrersRaw, devicesRaw, countriesRaw] =
     await Promise.all([
       summarize(periodStart, periodEnd),
       summarize(prevStart, periodStart),
-      prisma.$queryRaw<Array<{ day: Date; views: bigint; visitors: bigint }>>`
-        SELECT
-          date_trunc('day', "createdAt" AT TIME ZONE 'UTC') AS day,
-          COUNT(*)::bigint AS views,
-          COUNT(DISTINCT "visitorId")::bigint AS visitors
-        FROM "AnalyticsPageView"
-        WHERE "createdAt" >= ${periodStart} AND "createdAt" < ${periodEnd}
-          AND path NOT LIKE '/admin%'
-        GROUP BY 1
-        ORDER BY 1 ASC
-      `,
+      timeseriesQuery,
       prisma.$queryRaw<Array<{ path: string; views: bigint; visitors: bigint }>>`
         SELECT
           path,
@@ -191,18 +248,25 @@ export async function getTrafficReport(range: TrafficRange) {
       `,
     ]);
 
-  const byDay = new Map(
+  const byBucket = new Map(
     timeseriesRows.map((r) => [
-      ymd(new Date(r.day)),
+      granularity === "hour" ? hourBucketKey(r.bucket) : String(r.bucket).slice(0, 10),
       { views: Number(r.views), visitors: Number(r.visitors) },
     ])
   );
 
-  const timeseries = Array.from({ length: days }, (_, i) => {
-    const date = ymd(addUtcDays(periodStart, i));
-    const hit = byDay.get(date);
-    return { date, views: hit?.views ?? 0, visitors: hit?.visitors ?? 0 };
-  });
+  const timeseries =
+    granularity === "hour"
+      ? Array.from({ length: 24 }, (_, i) => {
+          const date = addUtcHours(startOfUtcHour(periodEnd), i - 23).toISOString();
+          const hit = byBucket.get(date);
+          return { date, views: hit?.views ?? 0, visitors: hit?.visitors ?? 0 };
+        })
+      : Array.from({ length: rangeToDays(range) }, (_, i) => {
+          const date = ymd(addUtcDays(periodStart, i));
+          const hit = byBucket.get(date);
+          return { date, views: hit?.views ?? 0, visitors: hit?.visitors ?? 0 };
+        });
 
   const topPages = topPagesRaw.map((r) => ({
     path: r.path,
@@ -239,6 +303,7 @@ export async function getTrafficReport(range: TrafficRange) {
 
   return {
     range,
+    granularity,
     from: periodStart.toISOString(),
     to: periodEnd.toISOString(),
     summary,

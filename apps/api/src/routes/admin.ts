@@ -45,7 +45,7 @@ import {
 import { storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
 import { parseStoredQuotes } from "../services/noones";
 import { generateDailyInsights } from "../services/insights/generator";
-import { getTrafficReport, type TrafficRange } from "../services/analytics";
+import { getLast24hSummary, getTrafficReport, type TrafficRange } from "../services/analytics";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -54,13 +54,14 @@ adminRouter.use(requireAuth, requireAdmin);
 adminRouter.get(
   "/stats",
   asyncHandler(async (_req, res) => {
-    const [users, pendingTrades, pendingWithdrawals, cardTypes] = await Promise.all([
+    const [users, pendingTrades, pendingWithdrawals, cardTypes, last24h] = await Promise.all([
       prisma.user.count(),
       prisma.trade.count({ where: { status: "PENDING" } }),
       prisma.withdrawal.count({ where: { status: "PENDING" } }),
       prisma.cardType.count(),
+      getLast24hSummary(),
     ]);
-    res.json({ users, pendingTrades, pendingWithdrawals, cardTypes });
+    res.json({ users, pendingTrades, pendingWithdrawals, cardTypes, last24h });
   })
 );
 
@@ -68,8 +69,9 @@ adminRouter.get(
 adminRouter.get(
   "/analytics/traffic",
   asyncHandler(async (req, res) => {
-    const raw = String(req.query.range || "7d");
-    const range: TrafficRange = raw === "30d" || raw === "90d" ? raw : "7d";
+    const raw = String(req.query.range || "24h");
+    const range: TrafficRange =
+      raw === "24h" || raw === "7d" || raw === "30d" || raw === "90d" ? raw : "24h";
     const report = await getTrafficReport(range);
     res.json(report);
   })

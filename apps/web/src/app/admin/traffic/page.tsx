@@ -13,10 +13,12 @@ import {
 import { api } from "@/lib/api";
 import { CountryIcon } from "@/components/CountryIcon";
 
-type TrafficRange = "7d" | "30d" | "90d";
+type TrafficRange = "24h" | "7d" | "30d" | "90d";
+type TrafficGranularity = "hour" | "day";
 
 type TrafficReport = {
   range: TrafficRange;
+  granularity?: TrafficGranularity;
   from: string;
   to: string;
   summary: {
@@ -39,6 +41,7 @@ type TrafficReport = {
 };
 
 const RANGES: Array<{ id: TrafficRange; label: string }> = [
+  { id: "24h", label: "24 hours" },
   { id: "7d", label: "7 days" },
   { id: "30d", label: "30 days" },
   { id: "90d", label: "90 days" },
@@ -49,18 +52,53 @@ function formatDateLabel(isoDay: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+function formatHourLabel(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, { hour: "numeric" });
+}
+
+function formatTickLabel(iso: string, hourly: boolean): string {
+  return hourly ? formatHourLabel(iso) : formatDateLabel(iso);
+}
+
+function formatTooltipLabel(iso: string, hourly: boolean): string {
+  if (!hourly) return formatDateLabel(iso);
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function priorLabel(range: TrafficRange): string {
+  if (range === "24h") return "vs prior 24h";
+  if (range === "7d") return "vs prior 7d";
+  if (range === "30d") return "vs prior 30d";
+  return "vs prior 90d";
+}
+
 function deltaPct(current: number, previous: number): number | null {
   if (previous <= 0) return current > 0 ? 100 : null;
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
-function DeltaBadge({ current, previous }: { current: number; previous: number }) {
+function DeltaBadge({
+  current,
+  previous,
+  prior,
+}: {
+  current: number;
+  previous: number;
+  prior: string;
+}) {
   const pct = deltaPct(current, previous);
-  if (pct === null) return <span className="text-xs text-slate-400">vs prior period</span>;
+  if (pct === null) return <span className="text-xs text-slate-400">{prior}</span>;
   const up = pct >= 0;
   return (
     <span className={`text-xs font-medium ${up ? "text-emerald-600" : "text-rose-600"}`}>
-      {up ? "↑" : "↓"} {Math.abs(pct)}% vs prior
+      {up ? "↑" : "↓"} {Math.abs(pct)}% {prior}
     </span>
   );
 }
@@ -70,11 +108,13 @@ function KpiCard({
   value,
   previous,
   hint,
+  prior,
 }: {
   label: string;
   value: number | string;
   previous: number;
   hint: string;
+  prior: string;
 }) {
   const numeric = typeof value === "number" ? value : Number(value);
   return (
@@ -84,7 +124,11 @@ function KpiCard({
         {typeof value === "number" ? value.toLocaleString() : value}
       </div>
       <div className="mt-2">
-        <DeltaBadge current={Number.isFinite(numeric) ? numeric : 0} previous={previous} />
+        <DeltaBadge
+          current={Number.isFinite(numeric) ? numeric : 0}
+          previous={previous}
+          prior={prior}
+        />
       </div>
       <p className="mt-1 hidden text-xs text-slate-400 sm:block">{hint}</p>
     </div>
@@ -167,7 +211,7 @@ function CountriesList({ countries }: { countries: TrafficReport["countries"] })
 }
 
 function TrafficDashboard() {
-  const [range, setRange] = useState<TrafficRange>("7d");
+  const [range, setRange] = useState<TrafficRange>("24h");
   const [data, setData] = useState<TrafficReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -191,17 +235,19 @@ function TrafficDashboard() {
     };
   }, [range]);
 
+  const hourly = range === "24h" || data?.granularity === "hour";
   const chartData = useMemo(
     () =>
       (data?.timeseries || []).map((row) => ({
         ...row,
-        label: formatDateLabel(row.date),
+        label: formatTickLabel(row.date, hourly),
       })),
-    [data]
+    [data, hourly]
   );
 
   const maxViews = Math.max(1, ...chartData.map((r) => r.views));
   const hasTraffic = (data?.summary.pageViews ?? 0) > 0;
+  const vsPrior = priorLabel(range);
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -209,7 +255,9 @@ function TrafficDashboard() {
         <div>
           <h2 className="text-xl font-bold sm:text-2xl">Website traffic</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Public site visitors only — admin console routes and logged-in admin browsing are excluded
+            {range === "24h"
+              ? "Last 24 hours of public site visitors — admin console routes are excluded"
+              : "Public site visitors only — admin console routes and logged-in admin browsing are excluded"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -240,30 +288,36 @@ function TrafficDashboard() {
           value={data?.summary.pageViews ?? (loading ? "—" : 0)}
           previous={data?.previous.pageViews ?? 0}
           hint="Total page loads in range"
+          prior={vsPrior}
         />
         <KpiCard
           label="Unique visitors"
           value={data?.summary.uniqueVisitors ?? (loading ? "—" : 0)}
           previous={data?.previous.uniqueVisitors ?? 0}
           hint="Anonymous visitor IDs"
+          prior={vsPrior}
         />
         <KpiCard
           label="Sessions"
           value={data?.summary.sessions ?? (loading ? "—" : 0)}
           previous={data?.previous.sessions ?? 0}
           hint="Browser sessions"
+          prior={vsPrior}
         />
         <KpiCard
           label="Pages / session"
           value={data?.summary.avgPagesPerSession ?? (loading ? "—" : 0)}
           previous={data?.previous.avgPagesPerSession ?? 0}
           hint="Average depth per visit"
+          prior={vsPrior}
         />
       </div>
 
       <div className="card p-4 sm:p-6">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-800 sm:text-base">Views over time</h3>
+          <h3 className="text-sm font-semibold text-slate-800 sm:text-base">
+            {hourly ? "Views by hour" : "Views over time"}
+          </h3>
           {loading && <span className="text-xs text-slate-400">Loading…</span>}
         </div>
         <div className="h-64 w-full sm:h-72">
@@ -286,8 +340,8 @@ function TrafficDashboard() {
                   tick={{ fill: "#64748b", fontSize: 11 }}
                   tickLine={false}
                   axisLine={{ stroke: "#e2e8f0" }}
-                  interval="preserveStartEnd"
-                  minTickGap={28}
+                  interval={hourly ? 2 : "preserveStartEnd"}
+                  minTickGap={hourly ? 8 : 28}
                 />
                 <YAxis
                   tick={{ fill: "#64748b", fontSize: 11 }}
@@ -306,7 +360,7 @@ function TrafficDashboard() {
                   }}
                   labelFormatter={(_, payload) => {
                     const row = payload?.[0]?.payload;
-                    return row?.date ? formatDateLabel(row.date) : "";
+                    return row?.date ? formatTooltipLabel(row.date, hourly) : "";
                   }}
                   formatter={(value, name) => [
                     Number(value ?? 0).toLocaleString(),
