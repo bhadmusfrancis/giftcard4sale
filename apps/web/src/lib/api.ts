@@ -79,6 +79,7 @@ export async function api<T = any>(path: string, opts: ApiOptions = {}): Promise
     method: opts.method || (opts.body ? "POST" : "GET"),
     headers,
     body,
+    cache: "no-store",
   });
 
   const data = await res.json().catch(() => ({}));

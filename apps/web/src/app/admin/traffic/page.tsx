@@ -213,6 +213,7 @@ function CountriesList({ countries }: { countries: TrafficReport["countries"] })
 function TrafficDashboard() {
   const [range, setRange] = useState<TrafficRange>("24h");
   const [data, setData] = useState<TrafficReport | null>(null);
+  const [loadedRange, setLoadedRange] = useState<TrafficRange | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -222,7 +223,10 @@ function TrafficDashboard() {
     setError(null);
     api<TrafficReport>(`/admin/analytics/traffic?range=${range}`)
       .then((report) => {
-        if (!cancelled) setData(report);
+        if (!cancelled) {
+          setData(report);
+          setLoadedRange(range);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err?.message || "Failed to load traffic");
@@ -235,19 +239,22 @@ function TrafficDashboard() {
     };
   }, [range]);
 
-  const hourly = range === "24h" || data?.granularity === "hour";
+  const report = loadedRange === range ? data : null;
+  const hourly = range === "24h";
+  const periodLabel = RANGES.find((r) => r.id === range)?.label ?? range;
   const chartData = useMemo(
     () =>
-      (data?.timeseries || []).map((row) => ({
+      (report?.timeseries || []).map((row) => ({
         ...row,
         label: formatTickLabel(row.date, hourly),
       })),
-    [data, hourly]
+    [report, hourly]
   );
 
   const maxViews = Math.max(1, ...chartData.map((r) => r.views));
-  const hasTraffic = (data?.summary.pageViews ?? 0) > 0;
+  const hasTraffic = (report?.summary.pageViews ?? 0) > 0;
   const vsPrior = priorLabel(range);
+  const switching = loading || (!report && !error);
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -285,29 +292,29 @@ function TrafficDashboard() {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <KpiCard
           label="Page views"
-          value={data?.summary.pageViews ?? (loading ? "—" : 0)}
-          previous={data?.previous.pageViews ?? 0}
+          value={report?.summary.pageViews ?? (switching ? "—" : 0)}
+          previous={report?.previous.pageViews ?? 0}
           hint="Total page loads in range"
           prior={vsPrior}
         />
         <KpiCard
           label="Unique visitors"
-          value={data?.summary.uniqueVisitors ?? (loading ? "—" : 0)}
-          previous={data?.previous.uniqueVisitors ?? 0}
+          value={report?.summary.uniqueVisitors ?? (switching ? "—" : 0)}
+          previous={report?.previous.uniqueVisitors ?? 0}
           hint="Anonymous visitor IDs"
           prior={vsPrior}
         />
         <KpiCard
           label="Sessions"
-          value={data?.summary.sessions ?? (loading ? "—" : 0)}
-          previous={data?.previous.sessions ?? 0}
+          value={report?.summary.sessions ?? (switching ? "—" : 0)}
+          previous={report?.previous.sessions ?? 0}
           hint="Browser sessions"
           prior={vsPrior}
         />
         <KpiCard
           label="Pages / session"
-          value={data?.summary.avgPagesPerSession ?? (loading ? "—" : 0)}
-          previous={data?.previous.avgPagesPerSession ?? 0}
+          value={report?.summary.avgPagesPerSession ?? (switching ? "—" : 0)}
+          previous={report?.previous.avgPagesPerSession ?? 0}
           hint="Average depth per visit"
           prior={vsPrior}
         />
@@ -318,10 +325,10 @@ function TrafficDashboard() {
           <h3 className="text-sm font-semibold text-slate-800 sm:text-base">
             {hourly ? "Views by hour" : "Views over time"}
           </h3>
-          {loading && <span className="text-xs text-slate-400">Loading…</span>}
+          {switching && <span className="text-xs text-slate-400">Loading…</span>}
         </div>
         <div className="h-64 w-full sm:h-72">
-          {!hasTraffic && !loading ? (
+          {!hasTraffic && !switching ? (
             <div className="flex h-full items-center justify-center text-sm text-slate-400">
               No traffic recorded yet. Browse the public site to start collecting data.
             </div>
@@ -399,10 +406,11 @@ function TrafficDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3" key={range}>
         <div className="card overflow-hidden lg:col-span-2">
           <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
             <h3 className="text-sm font-semibold text-slate-800">Top pages</h3>
+            <p className="mt-0.5 text-xs text-slate-400">{periodLabel}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -414,7 +422,7 @@ function TrafficDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(data?.topPages || []).map((row) => (
+                {(report?.topPages || []).map((row) => (
                   <tr key={row.path} className="hover:bg-slate-50/80">
                     <td className="max-w-[240px] truncate p-3 font-mono text-xs text-slate-800 sm:max-w-none sm:text-sm">
                       {row.path}
@@ -425,7 +433,14 @@ function TrafficDashboard() {
                     </td>
                   </tr>
                 ))}
-                {!loading && (data?.topPages.length ?? 0) === 0 && (
+                {switching && (
+                  <tr>
+                    <td colSpan={3} className="p-6 text-center text-slate-400">
+                      Loading {periodLabel}…
+                    </td>
+                  </tr>
+                )}
+                {!switching && (report?.topPages.length ?? 0) === 0 && (
                   <tr>
                     <td colSpan={3} className="p-6 text-center text-slate-400">
                       No pages yet.
@@ -439,21 +454,32 @@ function TrafficDashboard() {
 
         <div className="space-y-4">
           <div className="card p-4 sm:p-5">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">Countries</h3>
-            <CountriesList countries={data?.countries || []} />
+            <h3 className="text-sm font-semibold text-slate-800">Countries</h3>
+            <p className="mb-3 mt-0.5 text-xs text-slate-400">{periodLabel}</p>
+            {switching ? (
+              <p className="text-sm text-slate-400">Loading {periodLabel}…</p>
+            ) : (
+              <CountriesList countries={report?.countries || []} />
+            )}
           </div>
 
           <div className="card p-4 sm:p-5">
-            <h3 className="mb-3 text-sm font-semibold text-slate-800">Devices</h3>
-            <DeviceBar devices={data?.devices || []} />
+            <h3 className="text-sm font-semibold text-slate-800">Devices</h3>
+            <p className="mb-3 mt-0.5 text-xs text-slate-400">{periodLabel}</p>
+            {switching ? (
+              <p className="text-sm text-slate-400">Loading {periodLabel}…</p>
+            ) : (
+              <DeviceBar devices={report?.devices || []} />
+            )}
           </div>
 
           <div className="card overflow-hidden">
             <div className="border-b border-slate-100 px-4 py-3">
               <h3 className="text-sm font-semibold text-slate-800">Top referrers</h3>
+              <p className="mt-0.5 text-xs text-slate-400">{periodLabel}</p>
             </div>
             <ul className="divide-y divide-slate-100">
-              {(data?.topReferrers || []).map((row) => (
+              {(report?.topReferrers || []).map((row) => (
                 <li key={row.referrer} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
                   <span className="truncate text-slate-700">
                     {row.referrer === "direct"
@@ -465,7 +491,10 @@ function TrafficDashboard() {
                   <span className="shrink-0 tabular-nums text-slate-500">{row.views.toLocaleString()}</span>
                 </li>
               ))}
-              {!loading && (data?.topReferrers.length ?? 0) === 0 && (
+              {switching && (
+                <li className="px-4 py-6 text-center text-sm text-slate-400">Loading {periodLabel}…</li>
+              )}
+              {!switching && (report?.topReferrers.length ?? 0) === 0 && (
                 <li className="px-4 py-6 text-center text-sm text-slate-400">No referrers yet.</li>
               )}
             </ul>

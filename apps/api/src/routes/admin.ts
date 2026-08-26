@@ -73,6 +73,7 @@ adminRouter.get(
     const range: TrafficRange =
       raw === "24h" || raw === "7d" || raw === "30d" || raw === "90d" ? raw : "24h";
     const report = await getTrafficReport(range);
+    res.set("Cache-Control", "no-store");
     res.json(report);
   })
 );
