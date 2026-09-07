@@ -25,6 +25,9 @@ Thumbs.db
 *.tsbuildinfo
 text.txt
 
+# tesseract OCR language data (downloaded on first use at runtime)
+*.traineddata
+
 # prisma
 apps/api/prisma/*.db
 apps/api/prisma/migrations/dev.db*
@@ -38,5 +41,6 @@ reports/
 ChatGPT Image*.png
 WhatsApp Image*.jpeg
 WhatsApp Image*.jpg
+WhatsApp Video*.mp4
 git.txt
 
