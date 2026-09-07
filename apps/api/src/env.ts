@@ -132,7 +132,10 @@ export const env = {
     tokenUrl: process.env.NOONES_TOKEN_URL || "https://auth.noones.com/oauth2/token",
     cryptoCurrency: (process.env.NOONES_CRYPTO_CURRENCY || "USDT").toUpperCase(),
     rateSyncMinutes: num(process.env.NOONES_RATE_SYNC_MINUTES, 15),
-    tradePollMinutes: num(process.env.NOONES_TRADE_POLL_MINUTES, 2),
+    // Must stay above Neon's 5-minute scale-to-zero window, otherwise the poll
+    // alone keeps the database awake around the clock. Webhooks deliver trade
+    // updates promptly; this poll is the backstop.
+    tradePollMinutes: num(process.env.NOONES_TRADE_POLL_MINUTES, 10),
     syncBatchSize: num(process.env.NOONES_SYNC_BATCH_SIZE, 3),
     syncBatchPauseMs: num(process.env.NOONES_SYNC_BATCH_PAUSE_MS, 3000),
     syncCardPauseMs: num(process.env.NOONES_SYNC_CARD_PAUSE_MS, 400),
