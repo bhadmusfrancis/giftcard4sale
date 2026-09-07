@@ -9,9 +9,9 @@ export interface RateFreshnessMeta {
   isStale: boolean;
 }
 
-/** Partner / leftover NoOnes quotes are not from the Sogo rate sheet. */
+/** Marketplace quotes (SafeTheTrade, legacy partners) are not from the Sogo rate sheet. */
 export function isNonSogoMarketplaceRate(speed?: string | null): boolean {
-  return speed === "PARTNER" || speed === "NOONES";
+  return speed === "STT" || speed === "PARTNER";
 }
 
 export const INDICATIVE_RATE_CAVEAT =

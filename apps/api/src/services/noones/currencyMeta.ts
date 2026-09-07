@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type { CurrencyOfferMeta, OfferDenomRange } from "./offers";
+import { SYNCED_RATE_SPEEDS } from "../rateSources";
 
 export interface StoredDenomRange {
   min: number;
@@ -92,7 +93,7 @@ export async function listCardCurrencyMetaForDisplay(cardTypeId: string) {
     prisma.rate.findMany({
       where: {
         cardTypeId,
-        speed: { in: ["SOGO", "PARTNER", "NOONES"] },
+        speed: { in: SYNCED_RATE_SPEEDS },
         OR: [{ minDenom: { not: null } }, { maxDenom: { not: null } }],
       },
       select: {

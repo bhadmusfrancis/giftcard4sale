@@ -4,6 +4,7 @@ import { env } from "../env";
 import { getNoOnesSyncLimits, sleep } from "./noones/syncLimits";
 import { noonesLinkedCardWhere } from "./noones/exclusions";
 import { isOpenEndedCountryTier } from "./noones/rateCatalog";
+import { SYNCED_RATE_SPEEDS } from "./rateSources";
 
 const DEFAULT_NOONES_RATE_REFRESH_HOURS = 1;
 const DEFAULT_NOONES_TOP_OFFERS_FOR_RATE = 3;
@@ -105,7 +106,7 @@ export async function getRateSyncDelayMs(refreshHours: number): Promise<number> 
   const windowMs = refreshHours * 3_600_000;
 
   const latestRate = await prisma.rate.findFirst({
-    where: { speed: { in: ["SOGO", "PARTNER", "NOONES"] } },
+    where: { speed: { in: SYNCED_RATE_SPEEDS } },
     orderBy: { updatedAt: "desc" },
     select: { updatedAt: true },
   });
@@ -151,7 +152,7 @@ export async function getCardRateStalenessInfo(
 ): Promise<{ stale: boolean; oldestAt: number }> {
   const [existingNoones, currencyMetaRows, cardType] = await Promise.all([
     prisma.rate.findMany({
-      where: { cardTypeId, speed: { in: ["SOGO", "PARTNER", "NOONES"] } },
+      where: { cardTypeId, speed: { in: SYNCED_RATE_SPEEDS } },
       select: {
         updatedAt: true,
         minDenom: true,
@@ -299,7 +300,7 @@ export function buildRateFreshnessMeta(
   rates: { updatedAt: Date; speed?: string | null }[],
   refreshHours: number
 ): RateFreshnessMeta {
-  const preferred = rates.filter((r) => r.speed === "SOGO" || r.speed === "PARTNER" || r.speed === "NOONES");
+  const preferred = rates.filter((r) => r.speed && SYNCED_RATE_SPEEDS.includes(r.speed));
   const source = preferred.length ? preferred : rates;
 
   let latest = 0;

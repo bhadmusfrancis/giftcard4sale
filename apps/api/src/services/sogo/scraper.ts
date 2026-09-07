@@ -2,7 +2,7 @@ import { StoredQuotes } from "@gc4s/shared";
 import { env } from "../../env";
 import { currencyTierFromCode } from "../noones/rateCatalog";
 
-export const SOGO_RATE_SPEED = "SOGO";
+export { SOGO_RATE_SPEED } from "../rateSources";
 
 export interface SogoCurrencyRate {
   currency: string;

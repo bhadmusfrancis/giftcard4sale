@@ -15,9 +15,12 @@ import {
   setNoOnesSyncPhase,
   setNoOnesSyncTotalCards,
 } from "../noones/syncStatus";
-import { fetchSogoGiftCardRates, SOGO_RATE_SPEED, type SogoCardRates, type SogoCurrencyRate } from "./scraper";
-import { loadPartnerLastTradedRates, PARTNER_RATE_SPEED, type PartnerLastRate } from "./partnerFallback";
-import { loadTopTraderLiveRates, mergePartnerRates } from "./partnerLiveOffers";
+import { env } from "../../env";
+import { getRateConfig } from "../rateConfig";
+import { PARTNER_RATE_SPEED, SOGO_RATE_SPEED, STT_RATE_SPEED, SYNCED_RATE_SPEEDS } from "../rateSources";
+import type { SyncedCardRate } from "../rateTypes";
+import { fetchSafeTheTradeRates } from "../safethetrade";
+import { fetchSogoGiftCardRates, type SogoCardRates } from "./scraper";
 
 const SOGO_COVERED_OFFERS = 999;
 
@@ -111,6 +114,23 @@ async function ensureCardType(name: string, slugHint?: string) {
   });
 }
 
+/** Higher wins. A source may only supersede rows from a weaker source. */
+const SOURCE_PRIORITY: Record<string, number> = {
+  [SOGO_RATE_SPEED]: 3,
+  [STT_RATE_SPEED]: 2,
+  [PARTNER_RATE_SPEED]: 1,
+};
+
+function weakerSources(speed: string): string[] {
+  const rank = SOURCE_PRIORITY[speed] ?? 0;
+  return SYNCED_RATE_SPEEDS.filter((s) => (SOURCE_PRIORITY[s] ?? 0) < rank);
+}
+
+/**
+ * Write one rate row and retire only the weaker-source rows it actually
+ * replaces. Returns false when nothing was written, so callers never retire a
+ * row without a live replacement in hand.
+ */
 async function upsertSyncedRate(params: {
   cardTypeId: string;
   country: string;
@@ -120,9 +140,9 @@ async function upsertSyncedRate(params: {
   maxDenom: number;
   nairaPerUnit: number;
   storedQuotes: StoredQuotes;
-  speed: typeof SOGO_RATE_SPEED | typeof PARTNER_RATE_SPEED;
+  speed: string;
   summary: RateSyncSummary;
-}): Promise<void> {
+}): Promise<boolean> {
   const {
     cardTypeId,
     country,
@@ -136,22 +156,21 @@ async function upsertSyncedRate(params: {
     summary,
   } = params;
 
-  const manual = await prisma.rate.findFirst({
-    where: {
-      cardTypeId,
-      country,
-      medium,
-      OR: [{ speed: null }, { speed: { in: ["SLOW", "FAST"] } }],
-    },
-  });
-  if (manual && isManualRateSpeed(manual.speed)) {
+  if (!(nairaPerUnit > 0)) {
     summary.skipped++;
-    return;
+    return false;
   }
 
-  const existing = await prisma.rate.findFirst({
-    where: { cardTypeId, country, medium, speed },
+  // One read covers both the manual-rate guard and the existing-row lookup.
+  const siblings = await prisma.rate.findMany({
+    where: { cardTypeId, country, medium },
+    select: { id: true, speed: true },
   });
+
+  if (siblings.some((r) => isManualRateSpeed(r.speed))) {
+    summary.skipped++;
+    return false;
+  }
 
   const data = {
     currency,
@@ -164,30 +183,21 @@ async function upsertSyncedRate(params: {
     active: true,
   };
 
+  const existing = siblings.find((r) => r.speed === speed);
   if (existing) {
     await prisma.rate.update({ where: { id: existing.id }, data });
     summary.updated++;
   } else {
-    await prisma.rate.create({
-      data: {
-        cardTypeId,
-        country,
-        medium,
-        ...data,
-      },
-    });
+    await prisma.rate.create({ data: { cardTypeId, country, medium, ...data } });
     summary.created++;
   }
 
-  await prisma.rate.updateMany({
-    where: {
-      cardTypeId,
-      country,
-      medium,
-      speed: { in: speed === SOGO_RATE_SPEED ? ["NOONES", PARTNER_RATE_SPEED] : ["NOONES"] },
-    },
-    data: { active: false },
-  });
+  const supersede = weakerSources(speed);
+  const stale = siblings.filter((r) => r.speed && supersede.includes(r.speed)).map((r) => r.id);
+  if (stale.length) {
+    await prisma.rate.updateMany({ where: { id: { in: stale } }, data: { active: false } });
+  }
+  return true;
 }
 
 async function persistCurrencyMeta(
@@ -269,26 +279,24 @@ async function syncSogoCard(card: SogoCardRates, summary: RateSyncSummary): Prom
 
   await persistCurrencyMeta(dbCard.id, metaRows);
 
-  const currencies = [...new Set(card.currencies.map((row) => row.currency))];
-  if (currencies.length) {
-    await prisma.rate.updateMany({
-      where: {
-        cardTypeId: dbCard.id,
-        currency: { in: currencies },
-        speed: { in: ["NOONES", PARTNER_RATE_SPEED] },
-      },
-      data: { active: false },
-    });
-  }
-
   const visible = await refreshCardCatalogVisibility(dbCard.id);
   if (visible) summary.published++;
   else summary.drafted++;
   return dbCard.id;
 }
 
-async function syncPartnerRate(rate: PartnerLastRate, covered: Set<string>, summary: RateSyncSummary): Promise<void> {
-  const slug = canonicalCardSlug(rate.cardName);
+/**
+ * SafeTheTrade row for a card+currency Sogo does not publish.
+ *
+ * Only fills gaps for brands already in the catalog — this order book is thin
+ * and its long tail is not worth creating card types from.
+ */
+async function syncSecondaryRate(
+  rate: SyncedCardRate,
+  covered: Set<string>,
+  summary: RateSyncSummary
+): Promise<void> {
+  const slug = canonicalCardSlug(rate.slugHint || rate.cardName);
   for (const alias of aliasSlugs(slug)) {
     if (covered.has(`${alias}|${rate.currency}`)) {
       summary.skipped++;
@@ -296,7 +304,12 @@ async function syncPartnerRate(rate: PartnerLastRate, covered: Set<string>, summ
     }
   }
 
-  const dbCard = await ensureCardType(rate.cardName);
+  const dbCard = await findCardByName(rate.cardName, rate.slugHint);
+  if (!dbCard) {
+    summary.skipped++;
+    return;
+  }
+
   const alreadySogo = await prisma.rate.count({
     where: {
       cardTypeId: dbCard.id,
@@ -320,7 +333,7 @@ async function syncPartnerRate(rate: PartnerLastRate, covered: Set<string>, summ
       maxDenom: rate.maxDenom,
       nairaPerUnit: rate.nairaPerUnit,
       storedQuotes: rate.storedQuotes,
-      speed: PARTNER_RATE_SPEED,
+      speed: STT_RATE_SPEED,
       summary,
     });
   }
@@ -339,9 +352,12 @@ export interface CatalogRateSyncOptions {
 }
 
 /**
- * Primary catalog rate sync: Sogo public rates, then partner fallback
- * (TOP10_TRADER live Eneba/Paysafecard offers, then last-traded contacted partners)
- * for anything Sogo does not list.
+ * Primary catalog rate sync: Sogo public rates, then SafeTheTrade's public
+ * offer feed for anything Sogo does not list.
+ *
+ * Every source failure is non-destructive. A source that returns nothing simply
+ * leaves the rows it would have refreshed untouched, so the catalog keeps
+ * serving the last rates it had rather than emptying out.
  */
 export async function syncCatalogRatesFromSogo(options?: CatalogRateSyncOptions): Promise<RateSyncSummary> {
   const summary = emptySummary();
@@ -352,16 +368,22 @@ export async function syncCatalogRatesFromSogo(options?: CatalogRateSyncOptions)
     sogoCards = await fetchSogoGiftCardRates();
   } catch (err) {
     summary.errors.push(`Sogo rates: ${(err as Error).message}`);
-    if (isNoOnesSyncActive()) addNoOnesSyncErrors(summary.errors);
-    return summary;
   }
 
-  let partnerRates: PartnerLastRate[] = [];
-  try {
-    const [traded, live] = await Promise.all([loadPartnerLastTradedRates(), loadTopTraderLiveRates()]);
-    partnerRates = mergePartnerRates(traded, live);
-  } catch (err) {
-    summary.errors.push(`Partner fallback: ${(err as Error).message}`);
+  let secondaryRates: SyncedCardRate[] = [];
+  if (env.safeTheTrade.enabled) {
+    try {
+      const config = await getRateConfig();
+      secondaryRates = await fetchSafeTheTradeRates(config.rates.ngnPerUsdt);
+    } catch (err) {
+      summary.errors.push(`SafeTheTrade: ${(err as Error).message}`);
+    }
+  }
+
+  if (!sogoCards.length && !secondaryRates.length) {
+    summary.errors.push("No rate source returned data; keeping the rates already stored.");
+    if (isNoOnesSyncActive()) addNoOnesSyncErrors(summary.errors);
+    return summary;
   }
 
   const covered = sogoCoveredKeys(sogoCards);
@@ -375,10 +397,12 @@ export async function syncCatalogRatesFromSogo(options?: CatalogRateSyncOptions)
       const slugs = [canonicalCardSlug(card.name), ...(card.slugHint ? [canonicalCardSlug(card.slugHint)] : [])];
       return slugs.some((slug) => targetSlugs.has(slug) || aliasSlugs(slug).some((a) => targetSlugs.has(a)));
     });
-    partnerRates = partnerRates.filter((rate) => targetSlugs.has(canonicalCardSlug(rate.cardName)));
+    secondaryRates = secondaryRates.filter((rate) =>
+      targetSlugs.has(canonicalCardSlug(rate.slugHint || rate.cardName))
+    );
   }
 
-  const total = sogoCards.length + partnerRates.length;
+  const total = sogoCards.length + secondaryRates.length;
   summary.cardTypes = sogoCards.length;
   if (isNoOnesSyncActive()) {
     setNoOnesSyncTotalCards(Math.max(total, 1));
@@ -397,13 +421,13 @@ export async function syncCatalogRatesFromSogo(options?: CatalogRateSyncOptions)
     if (isNoOnesSyncActive()) mergeNoOnesSyncSummary(summary);
   }
 
-  for (const rate of partnerRates) {
+  for (const rate of secondaryRates) {
     processed++;
     if (isNoOnesSyncActive()) {
       setNoOnesSyncCurrentCard({ id: canonicalCardSlug(rate.cardName), name: rate.cardName }, processed);
     }
     try {
-      await syncPartnerRate(rate, covered, summary);
+      await syncSecondaryRate(rate, covered, summary);
     } catch (err) {
       summary.errors.push(`${rate.cardName} ${rate.currency}: ${(err as Error).message}`);
     }

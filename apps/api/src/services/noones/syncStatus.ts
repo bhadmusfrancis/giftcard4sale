@@ -1,5 +1,6 @@
 import { prisma } from "../../prisma";
 import { getRateConfig, isCardRateDataStale } from "../rateConfig";
+import { SYNCED_RATE_SPEEDS } from "../rateSources";
 import type { RateSyncSummary } from "./rateSync";
 
 export type NoOnesSyncPhase = "idle" | "discovering" | "syncing" | "completed" | "failed";
@@ -237,14 +238,14 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
       const refreshHours = config.noonesRateRefreshHours;
 
       const noonesCards = await prisma.cardType.count({
-        where: { rates: { some: { speed: { in: ["SOGO", "PARTNER", "NOONES"] } } } },
+        where: { rates: { some: { speed: { in: SYNCED_RATE_SPEEDS } } } },
       });
-      const noonesRates = await prisma.rate.count({ where: { speed: { in: ["SOGO", "PARTNER", "NOONES"] } } });
+      const noonesRates = await prisma.rate.count({ where: { speed: { in: SYNCED_RATE_SPEEDS } } });
       const activeNoones = await prisma.rate.count({
-        where: { speed: { in: ["SOGO", "PARTNER", "NOONES"] }, active: true },
+        where: { speed: { in: SYNCED_RATE_SPEEDS }, active: true },
       });
       const latestRate = await prisma.rate.findFirst({
-        where: { speed: { in: ["SOGO", "PARTNER", "NOONES"] } },
+        where: { speed: { in: SYNCED_RATE_SPEEDS } },
         orderBy: { updatedAt: "desc" },
         select: { updatedAt: true },
       });
@@ -252,7 +253,7 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
       let staleCards = 0;
       if (!isNoOnesSyncActive()) {
         const linkedCards = await prisma.cardType.findMany({
-          where: { rates: { some: { speed: { in: ["SOGO", "PARTNER", "NOONES"] } } } },
+          where: { rates: { some: { speed: { in: SYNCED_RATE_SPEEDS } } } },
           select: { id: true },
         });
         for (const c of linkedCards) {

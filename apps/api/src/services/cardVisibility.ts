@@ -2,15 +2,14 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { isCardPublishable } from "./noones/publishPolicy";
 import { noonesLinkedCardWhere } from "./noones/exclusions";
+import { isManualRateSpeed, SYNCED_RATE_SPEEDS } from "./rateSources";
 
-/** Rates imported from pasted rate text (not synced from NoOnes). */
+/** Rates imported from pasted rate text (never produced by a sync). */
 export const MANUAL_RATE_WHERE: Prisma.RateWhereInput = {
-  OR: [{ speed: null }, { speed: { in: ["SLOW", "FAST"] } }],
+  OR: [{ speed: null }, { speed: { notIn: SYNCED_RATE_SPEEDS } }],
 };
 
-export function isManualRateSpeed(speed: string | null | undefined): boolean {
-  return speed == null || speed === "SLOW" || speed === "FAST";
-}
+export { isManualRateSpeed };
 
 /** Public catalog: any card that has at least one quotable rate row (Sogo, partner, or NoOnes). */
 export function noOnesCatalogWhere(): Prisma.CardTypeWhereInput {
@@ -28,9 +27,37 @@ export async function cardHasQuotableRates(cardTypeId: string): Promise<boolean>
   return activeRates > 0;
 }
 
+/**
+ * Reinstate the newest retired rate per country+medium when a card has been
+ * left with nothing active. A card that once had rates should keep quoting its
+ * last known ones rather than vanishing from the catalog.
+ */
+export async function restoreLastKnownRates(cardTypeId: string): Promise<number> {
+  const retired = await prisma.rate.findMany({
+    where: { cardTypeId, active: false },
+    select: { id: true, country: true, medium: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (!retired.length) return 0;
+
+  const newestPerTier = new Map<string, string>();
+  for (const row of retired) {
+    const key = `${row.country}|${row.medium}`;
+    if (!newestPerTier.has(key)) newestPerTier.set(key, row.id);
+  }
+
+  const ids = [...newestPerTier.values()];
+  await prisma.rate.updateMany({ where: { id: { in: ids } }, data: { active: true } });
+  return ids.length;
+}
+
 /** Sync card.active from active rate rows. SEO landing pages stay published even when a card is inactive. */
 export async function refreshCardCatalogVisibility(cardTypeId: string): Promise<boolean> {
-  const activeRates = await prisma.rate.count({ where: { cardTypeId, active: true } });
+  let activeRates = await prisma.rate.count({ where: { cardTypeId, active: true } });
+
+  if (activeRates === 0) {
+    activeRates = await restoreLastKnownRates(cardTypeId);
+  }
 
   const visible = activeRates > 0;
   const card = await prisma.cardType.findUnique({
@@ -100,13 +127,7 @@ export async function applyNoOnesPublishState(
     },
   });
 
-  if (!publishable) {
-    await prisma.rate.updateMany({
-      where: { cardTypeId, speed: "NOONES" },
-      data: { active: false },
-    });
-    return { publishable: manualActive > 0, drafted: true };
-  }
+  if (!publishable) return { publishable: manualActive > 0, drafted: true };
 
   return { publishable: true, drafted: false };
 }

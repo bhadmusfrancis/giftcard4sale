@@ -163,6 +163,12 @@ export const env = {
     apiUrl: process.env.SOGO_RATES_API_URL || "",
     syncMinutes: num(process.env.SOGO_RATE_SYNC_MINUTES, num(process.env.NOONES_RATE_SYNC_MINUTES, 15)),
   },
+
+  /** Public JSON feed used to fill gaps Sogo does not list. No credentials needed. */
+  safeTheTrade: {
+    enabled: (process.env.SAFETHETRADE_ENABLED || "true") === "true",
+    apiUrl: (process.env.SAFETHETRADE_API_URL || "https://safethetrade.com/api/v1").replace(/\/$/, ""),
+  },
 };
 
 // Fail fast on insecure production config.

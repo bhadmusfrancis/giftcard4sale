@@ -28,6 +28,7 @@ import {
   syncNoOnesCatalogVisibilityFromStored,
 } from "./services/cardVisibility";
 import { repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
+import { purgeNoOnesRates } from "./services/noonesRatePurge";
 import { reconcilePaidTrades } from "./services/payout";
 import { getEmailTransport, isEmailConfigured, isEmailVerified, verifyEmailDelivery } from "./services/email";
 
@@ -82,7 +83,12 @@ export function mountApi(app: Express): void {
   });
 
   void verifyEmailDelivery();
-  repairManualRateCatalog()
+  purgeNoOnesRates()
+    .then(({ deleted, cardsAffected }) => {
+      if (deleted > 0) console.log(`Removed ${deleted} retired NoOnes rate row(s) across ${cardsAffected} card(s).`);
+    })
+    .catch((e) => console.warn("NoOnes rate purge:", (e as Error).message))
+    .then(() => repairManualRateCatalog())
     .then((n) => {
       if (n > 0) console.log(`Reactivated ${n} manually imported rate row(s).`);
     })

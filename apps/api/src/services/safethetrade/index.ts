@@ -1,0 +1,1 @@
+export { fetchSafeTheTradeRates } from "./client";

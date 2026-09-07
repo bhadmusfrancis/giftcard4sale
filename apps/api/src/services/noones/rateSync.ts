@@ -27,6 +27,15 @@ import {
 import { getNoOnesSyncLimits, sleep } from "./syncLimits";
 import { isExcludedNoOnesPaymentMethod, noonesLinkedCardWhere } from "./exclusions";
 
+/**
+ * NoOnes is retired as a rate source. The sync below is kept only for its
+ * shared types and payment-method helpers; the entry points refuse to run so
+ * nothing can write `speed = "NOONES"` rows back into the catalog.
+ */
+const NOONES_RATES_RETIRED = true;
+const NOONES_RETIRED_MESSAGE =
+  "NoOnes is no longer a rate source. Catalog rates come from Sogo, with SafeTheTrade filling gaps.";
+
 export interface RateSyncSummary {
   created: number;
   updated: number;
@@ -810,6 +819,11 @@ export async function syncRatesFromNoOnes(options?: RateSyncOptions): Promise<Ra
     errors: [],
   };
 
+  if (NOONES_RATES_RETIRED) {
+    summary.errors.push(NOONES_RETIRED_MESSAGE);
+    return summary;
+  }
+
   if (!isNoOnesConfigured()) return summary;
 
   if (isNoOnesSyncActive()) setNoOnesSyncPhase("discovering");
@@ -866,6 +880,19 @@ export async function syncCardRatesFromNoOnes(
   cardTypeId: string,
   options?: { force?: boolean }
 ): Promise<RateSyncSummary> {
+  if (NOONES_RATES_RETIRED) {
+    return {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      deleted: 0,
+      drafted: 0,
+      published: 0,
+      cardTypes: 0,
+      errors: [NOONES_RETIRED_MESSAGE],
+    };
+  }
+
   const inFlight = cardSyncInFlight.get(cardTypeId);
   if (inFlight) return inFlight;
 
