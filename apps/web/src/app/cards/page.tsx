@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { apiServer } from "@/lib/api";
+import { loadCatalogCards } from "@/lib/catalog";
 import { GiftCardCatalog } from "@/components/GiftCardCatalog";
 import { publicPageMetadata } from "@/lib/seo/public-metadata";
 
@@ -10,18 +10,8 @@ export const metadata = publicPageMetadata({
   canonical: "/cards",
 });
 
-interface Card {
-  id: string;
-  name: string;
-  slug: string;
-  sellSlug: string;
-  imageUrl?: string;
-  description?: string;
-}
-
 export default async function CardsPage({ searchParams }: { searchParams: { q?: string } }) {
-  const data = await apiServer<{ cards: Card[] }>("/cards");
-  const cards = data?.cards ?? [];
+  const { cards, stale } = await loadCatalogCards();
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12">
@@ -30,7 +20,7 @@ export default async function CardsPage({ searchParams }: { searchParams: { q?: 
 
       <Suspense fallback={<div className="mt-8 h-10 max-w-xl animate-pulse rounded-lg bg-slate-200" />}>
         <div className="mt-8">
-          <GiftCardCatalog cards={cards} initialQuery={searchParams.q ?? ""} syncUrl />
+          <GiftCardCatalog cards={cards} initialQuery={searchParams.q ?? ""} syncUrl stale={stale} />
         </div>
       </Suspense>
     </div>

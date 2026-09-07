@@ -1,9 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { apiServer } from "@/lib/api";
+import { loadCatalogCards } from "@/lib/catalog";
 import { PopularCards } from "@/components/PopularCards";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
-import type { GiftCard } from "@/components/GiftCardCatalog";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
@@ -12,17 +11,8 @@ export const metadata: Metadata = {
 /** Cache homepage card list; avoids blocking every visit on a slow API round-trip. */
 export const revalidate = 300;
 
-interface Card {
-  id: string;
-  name: string;
-  slug: string;
-  sellSlug: string;
-  imageUrl?: string;
-}
-
 export default async function HomePage() {
-  const data = await apiServer<{ cards: Card[] }>("/cards", { revalidate: 300, timeoutMs: 5000 });
-  const cards = (data?.cards ?? []) as GiftCard[];
+  const { cards } = await loadCatalogCards({ revalidate: 300, timeoutMs: 5000 });
 
   return (
     <div>

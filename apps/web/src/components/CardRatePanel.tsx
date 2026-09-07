@@ -1,7 +1,7 @@
 "use client";
 
 import { RateCalculator } from "@/components/RateCalculator";
-import type { RateFreshnessMeta } from "@/components/RateRefreshStatus";
+import { RateRefreshStatus, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
 
 interface CardRatePanelProps {
   cardName: string;
@@ -10,6 +10,8 @@ interface CardRatePanelProps {
   initialConfig: any;
   initialRateMeta?: RateFreshnessMeta;
   initialCurrencyMeta?: any[];
+  /** Rates came from the last-known-good snapshot, not a live API response. */
+  ratesAreStale?: boolean;
 }
 
 export function CardRatePanel({
@@ -19,6 +21,7 @@ export function CardRatePanel({
   initialConfig,
   initialRateMeta,
   initialCurrencyMeta = [],
+  ratesAreStale = false,
 }: CardRatePanelProps) {
   if (!initialRates.length) {
     return (
@@ -32,13 +35,22 @@ export function CardRatePanel({
   }
 
   return (
-    <RateCalculator
-      cardName={cardName}
-      cardSellSlug={cardSellSlug}
-      rates={initialRates}
-      config={initialConfig}
-      rateMeta={initialRateMeta}
-      currencyMeta={initialCurrencyMeta}
-    />
+    <div className="space-y-3">
+      {ratesAreStale && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Showing the last rate we recorded for this card. We&rsquo;ll confirm the current rate before your trade is
+          paid out.
+        </p>
+      )}
+      <RateCalculator
+        cardName={cardName}
+        cardSellSlug={cardSellSlug}
+        rates={initialRates}
+        config={initialConfig}
+        rateMeta={initialRateMeta}
+        currencyMeta={initialCurrencyMeta}
+      />
+      {initialRateMeta && <RateRefreshStatus rateMeta={initialRateMeta} />}
+    </div>
   );
 }

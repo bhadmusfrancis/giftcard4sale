@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { fixDuplicateSellSlug } from "@gc4s/shared";
 import { apiServer } from "@/lib/api";
+import { loadCardRates, loadCatalogCards, type CardRatesResponse } from "@/lib/catalog";
 import { CardRatePanel } from "@/components/CardRatePanel";
 import { BrandLogo } from "@/components/BrandLogo";
 import { GiftCardSearch } from "@/components/GiftCardSearch";
@@ -19,24 +20,7 @@ interface LandingResp {
   };
 }
 
-interface CardResp {
-  card: { id: string; name: string; slug: string; sellSlug: string; description?: string; imageUrl?: string };
-  rates: any[];
-  config: any;
-  rateMeta?: {
-    lastUpdatedAt: string | null;
-    nextRefreshAt: string | null;
-    refreshHours: number;
-    isStale: boolean;
-  };
-  currencyMeta?: {
-    country: string;
-    currency: string;
-    offerCount: number;
-    denomRanges: { min: number; max: number }[];
-    syncedAt: string;
-  }[];
-}
+type CardResp = CardRatesResponse;
 
 const RATE_BREAK = "<!--rate-break-->";
 
@@ -60,23 +44,25 @@ const articleProse =
   "[&_.faq-item_summary]:cursor-pointer [&_.faq-item_p]:mt-2 [&_.faq-item_p]:text-sm [&_.faq-item_p]:text-slate-600 " +
   "[&_.balance-steps]:my-4 [&_.sell-steps]:my-4";
 
-interface CatalogResp {
-  cards: { id: string; name: string; slug: string; sellSlug: string; imageUrl?: string; description?: string }[];
-}
-
 async function load(slug: string) {
   const landing = await apiServer<LandingResp>(`/landing/${slug}`);
   const cardSlug = landing?.page.cardType?.sellSlug || landing?.page.cardType?.slug || slug;
-  const [card, catalog] = await Promise.all([
-    apiServer<CardResp>(`/cards/${cardSlug}`),
-    apiServer<CatalogResp>("/cards"),
-  ]);
-  return { landing, card, catalogCards: catalog?.cards ?? [] };
+  const [card, catalog] = await Promise.all([loadCardRates(cardSlug), loadCatalogCards()]);
+  // Keeps known brand pages alive (instead of 404) while the API is unreachable.
+  const knownCard =
+    catalog.cards.find((c) => [slug, cardSlug].some((s) => c.sellSlug === s || c.slug === s)) ?? null;
+  return {
+    landing,
+    card: card.data,
+    ratesAreStale: card.stale,
+    catalogCards: catalog.cards,
+    knownCard,
+  };
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const slug = fixDuplicateSellSlug(params.slug);
-  const { landing, card } = await load(slug);
+  const { landing, card, knownCard } = await load(slug);
   const canonical = `/${slug}`;
   if (landing) {
     return {
@@ -86,13 +72,14 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       openGraph: { title: landing.page.metaTitle || landing.page.title, description: landing.page.metaDesc },
     };
   }
-  if (card) {
-    const desc = `Sell your ${card.card.name} gift card for USDT, Naira or Cedi at great rates.`;
+  const name = card?.card.name || knownCard?.name;
+  if (name) {
+    const desc = `Sell your ${name} gift card for USDT, Naira or Cedi at great rates.`;
     return {
-      title: `Sell ${card.card.name} Gift Card`,
+      title: `Sell ${name} Gift Card`,
       description: desc,
       alternates: { canonical },
-      openGraph: { title: `Sell ${card.card.name} Gift Card`, description: desc },
+      openGraph: { title: `Sell ${name} Gift Card`, description: desc },
     };
   }
   return { title: "Not found" };
@@ -104,11 +91,12 @@ export default async function SlugPage({ params }: { params: { slug: string } })
   const fixedSlug = fixDuplicateSellSlug(params.slug);
   if (fixedSlug !== params.slug) redirect(`/${fixedSlug}`);
 
-  const { landing, card, catalogCards } = await load(fixedSlug);
-  if (!landing && !card) notFound();
+  const { landing, card, ratesAreStale, catalogCards, knownCard } = await load(fixedSlug);
+  if (!landing && !card && !knownCard) notFound();
 
-  const title = landing?.page.title || `Sell ${card?.card.name} Gift Card`;
-  const cardName = card?.card.name || landing?.page.cardType?.name || "Gift Card";
+  const brand = card?.card ?? knownCard;
+  const cardName = brand?.name || landing?.page.cardType?.name || "Gift Card";
+  const title = landing?.page.title || `Sell ${cardName} Gift Card`;
   const bodyHtml = landing?.page.bodyHtml;
   const { leadHtml, restHtml } = bodyHtml ? splitArticleHtml(bodyHtml) : { leadHtml: "", restHtml: "" };
 
@@ -133,12 +121,15 @@ export default async function SlugPage({ params }: { params: { slug: string } })
       initialConfig={card.config}
       initialRateMeta={card.rateMeta}
       initialCurrencyMeta={card.currencyMeta}
+      ratesAreStale={ratesAreStale}
     />
   ) : (
     <div className="card p-6">
       <h3 className="text-lg font-bold">Calculate your payout</h3>
       <p className="mt-2 text-sm text-slate-600">
-        Browse our{" "}
+        {knownCard
+          ? `We're refreshing the ${cardName} rate right now. Check back in a few minutes, or `
+          : "Browse our "}
         <a href="/cards" className="text-brand-700 hover:underline">
           gift card catalog
         </a>{" "}
@@ -158,13 +149,8 @@ export default async function SlugPage({ params }: { params: { slug: string } })
       ) : null}
 
       <header className="flex items-center gap-4 border-b border-slate-100 pb-6">
-        {card && (
-          <BrandLogo
-            name={card.card.name}
-            slug={card.card.slug}
-            imageUrl={card.card.imageUrl}
-            className="h-14 w-14 shrink-0"
-          />
+        {brand && (
+          <BrandLogo name={brand.name} slug={brand.slug} imageUrl={brand.imageUrl} className="h-14 w-14 shrink-0" />
         )}
         <div>
           <h1 className="text-2xl font-bold sm:text-3xl">{title}</h1>
@@ -175,7 +161,7 @@ export default async function SlugPage({ params }: { params: { slug: string } })
       </header>
 
       <div className="mt-6">
-        <GiftCardSearch cards={catalogCards} currentSellSlug={card?.card.sellSlug ?? fixedSlug} />
+        <GiftCardSearch cards={catalogCards} currentSellSlug={brand?.sellSlug ?? fixedSlug} />
       </div>
 
       {/* Mobile: rate calculator immediately after header for conversion */}

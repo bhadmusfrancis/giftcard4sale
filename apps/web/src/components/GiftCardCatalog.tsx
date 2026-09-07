@@ -30,13 +30,21 @@ interface GiftCardCatalogProps {
   initialQuery?: string;
   /** Keep the URL in sync with the current search query. */
   syncUrl?: boolean;
+  /** `cards` came from the last-known-good snapshot, not a live API response. */
+  stale?: boolean;
 }
 
-export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: GiftCardCatalogProps) {
+export function GiftCardCatalog({
+  cards,
+  initialQuery = "",
+  syncUrl = false,
+  stale = false,
+}: GiftCardCatalogProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(initialQuery);
   const [liveCards, setLiveCards] = useState<GiftCard[] | null>(null);
+  const [showStaleNotice, setShowStaleNotice] = useState(stale && cards.length > 0);
   const [catalogState, setCatalogState] = useState<"idle" | "loading" | "error" | "ready">(
     cards.length > 0 ? "ready" : "idle"
   );
@@ -45,23 +53,29 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
     setQuery(searchParams.get("q") ?? initialQuery);
   }, [searchParams, initialQuery]);
 
-  // SSR can miss the API when the server starts before the API is ready.
+  // SSR can miss the API when the server starts before the API is ready. When it
+  // served a snapshot we keep showing it and refresh quietly in the background.
   useEffect(() => {
-    if (cards.length > 0) {
+    const isEmpty = cards.length === 0;
+    if (!isEmpty && !stale) {
       setCatalogState("ready");
       return;
     }
 
     let cancelled = false;
-    setCatalogState("loading");
+    if (isEmpty) setCatalogState("loading");
+
     api<{ cards: GiftCard[] }>("/cards")
       .then((data) => {
         if (cancelled) return;
-        setLiveCards(data.cards ?? []);
+        const fresh = data.cards ?? [];
+        if (fresh.length > 0 || isEmpty) setLiveCards(fresh);
+        if (fresh.length > 0) setShowStaleNotice(false);
         setCatalogState("ready");
       })
       .catch(() => {
         if (cancelled) return;
+        if (!isEmpty) return; // keep the snapshot on screen
         setLiveCards([]);
         setCatalogState("error");
       });
@@ -69,7 +83,7 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
     return () => {
       cancelled = true;
     };
-  }, [cards.length]);
+  }, [cards.length, stale]);
 
   const catalogCards = liveCards ?? cards;
   const filtered = useMemo(() => filterCards(catalogCards, query), [catalogCards, query]);
@@ -107,6 +121,12 @@ export function GiftCardCatalog({ cards, initialQuery = "", syncUrl = false }: G
           </button>
         )}
       </div>
+
+      {showStaleNotice && catalogCards.length > 0 && (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Showing our last known catalog — live rates are refreshing. Open a card to see the rate it was last traded at.
+        </p>
+      )}
 
       {query && (
         <p className="mt-3 text-sm text-slate-500">

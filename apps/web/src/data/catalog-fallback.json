@@ -1,0 +1,197 @@
+{
+  "generatedAt": "2026-09-07T22:04:28.684Z",
+  "cards": [
+    {
+      "id": "cmt2pw1a6003m2i048edzot6y",
+      "name": "Dicks",
+      "slug": "dicks",
+      "sellSlug": "sell-dicks-gift-card"
+    },
+    {
+      "id": "cmt2pw1f6003z2i043vctf3zh",
+      "name": "Footlocker",
+      "slug": "footlocker",
+      "sellSlug": "sell-footlocker-gift-card"
+    },
+    {
+      "id": "cmt2pw1vo005e2i049vmhpaov",
+      "name": "OffGamers",
+      "slug": "offgamers",
+      "sellSlug": "sell-offgamers-gift-card"
+    },
+    {
+      "id": "cmt2so6jf004ewqnj30rm2m7p",
+      "name": "Paysafecard",
+      "slug": "paysafecard",
+      "sellSlug": "sell-paysafecard-gift-card"
+    },
+    {
+      "id": "cmt2pw2cm007d2i04v70lgl0n",
+      "name": "Roblox",
+      "slug": "roblox",
+      "sellSlug": "sell-roblox-gift-card"
+    },
+    {
+      "id": "cmt2pw2tm00962i04balb2wlb",
+      "name": "Vanilla",
+      "slug": "vanilla",
+      "sellSlug": "sell-vanilla-gift-card"
+    },
+    {
+      "id": "cmqh9equh003lwahm8byyoxn9",
+      "name": "Xbox",
+      "slug": "xbox",
+      "sellSlug": "sell-xbox-gift-card"
+    },
+    {
+      "id": "cmqh9dvoa000bwahmxd471hp6",
+      "name": "Apple Store",
+      "slug": "apple-store",
+      "sellSlug": "sell-apple-store-gift-card"
+    },
+    {
+      "id": "cmqh9ea0y001swahmaofupo17",
+      "name": "iTunes",
+      "slug": "itunes",
+      "sellSlug": "sell-itunes-gift-card"
+    },
+    {
+      "id": "cmqh9ekpc002xwahmkmjs4qqo",
+      "name": "Steam Wallet",
+      "slug": "steam-wallet",
+      "sellSlug": "sell-steam-wallet-gift-card"
+    },
+    {
+      "id": "cmqh9eits002pwahmubtnqarw",
+      "name": "Razer Gold",
+      "slug": "razer-gold",
+      "sellSlug": "sell-razer-gold-gift-card"
+    },
+    {
+      "id": "cmqh9eibp002nwahmj8c8habs",
+      "name": "PlayStation Network",
+      "slug": "playstation-network",
+      "sellSlug": "sell-playstation-network-gift-card"
+    },
+    {
+      "id": "cmqh9ef1r002cwahmmqxlka60",
+      "name": "Nintendo eShop Card",
+      "slug": "nintendo-eshop-card",
+      "sellSlug": "sell-nintendo-eshop-card-gift-card"
+    },
+    {
+      "id": "cmqfchuxr003kpe6vxpuq3auv",
+      "name": "Amazon",
+      "slug": "amazon",
+      "sellSlug": "sell-amazon-gift-card"
+    },
+    {
+      "id": "cmqh9dvft000awahmerz3cjg2",
+      "name": "Apple Gift Card (US only)",
+      "slug": "apple-gift-card-us-only",
+      "sellSlug": "sell-apple-gift-card-us-only-gift-card"
+    },
+    {
+      "id": "cmqfch9fv002ppe6v110gmnbr",
+      "name": "DoorDash",
+      "slug": "doordash",
+      "sellSlug": "sell-doordash-gift-card"
+    },
+    {
+      "id": "cmqh9e54x001awahmb9pbeih0",
+      "name": "Eneba",
+      "slug": "eneba",
+      "sellSlug": "sell-eneba-gift-card"
+    },
+    {
+      "id": "cmqh9ened0037wahm5zit26h2",
+      "name": "Transcash Voucher",
+      "slug": "transcash-voucher",
+      "sellSlug": "sell-transcash-voucher-gift-card"
+    },
+    {
+      "id": "cmqfchb8k002spe6vrahhb1t3",
+      "name": "GameStop",
+      "slug": "gamestop",
+      "sellSlug": "sell-gamestop-gift-card"
+    },
+    {
+      "id": "cmqfchw0k003lpe6vw8u8bpyn",
+      "name": "eBay",
+      "slug": "ebay",
+      "sellSlug": "sell-ebay-gift-card"
+    },
+    {
+      "id": "cmqh9ebg9001ywahmgu8i74k5",
+      "name": "Lululemon",
+      "slug": "lululemon",
+      "sellSlug": "sell-lululemon-gift-card"
+    },
+    {
+      "id": "cmqh9e74b001iwahmtmgtp2em",
+      "name": "Google Play",
+      "slug": "google-play",
+      "sellSlug": "sell-google-play-gift-card"
+    },
+    {
+      "id": "cmqh9dxe4000iwahmhqlszeki",
+      "name": "Best Buy",
+      "slug": "best-buy",
+      "sellSlug": "sell-best-buy-gift-card"
+    },
+    {
+      "id": "cmqh9duje0007wahmuho8cppc",
+      "name": "American Express",
+      "slug": "american-express",
+      "sellSlug": "sell-american-express-gift-card"
+    },
+    {
+      "id": "cmqfcher8002ype6v5291qw6q",
+      "name": "Sephora",
+      "slug": "sephora",
+      "sellSlug": "sell-sephora-gift-card"
+    },
+    {
+      "id": "cmqh9elqq0030wahmk3y1bql7",
+      "name": "Target",
+      "slug": "target",
+      "sellSlug": "sell-target-gift-card"
+    },
+    {
+      "id": "cmqfchz6a003ope6vt7tb9z1d",
+      "name": "VISA",
+      "slug": "visa",
+      "sellSlug": "sell-visa-gift-card"
+    },
+    {
+      "id": "cmqh9ebxi0020wahmhlyv296j",
+      "name": "Macy's",
+      "slug": "macy-s",
+      "sellSlug": "sell-macy-s-gift-card"
+    },
+    {
+      "id": "cmqh9eb7i001xwahmsivn02h2",
+      "name": "Lowe's",
+      "slug": "lowe-s",
+      "sellSlug": "sell-lowe-s-gift-card"
+    },
+    {
+      "id": "cmqfchy44003npe6v5sk34h09",
+      "name": "Nike",
+      "slug": "nike",
+      "sellSlug": "sell-nike-gift-card"
+    },
+    {
+      "id": "cmqfchge50031pe6v3azfgn5m",
+      "name": "Nordstrom",
+      "slug": "nordstrom",
+      "sellSlug": "sell-nordstrom-gift-card"
+    },
+    {
+      "id": "cmqh9e3it0014wahm2y2q0gox",
+      "name": "Dollar General",
+      "slug": "dollar-general",
+      "sellSlug": "sell-dollar-general-gift-card"
+    }
+  ]
+}
