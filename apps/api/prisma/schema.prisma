@@ -220,6 +220,16 @@ model RateConfig {
   createdAt             DateTime @default(now())
 }
 
+// Last catalog rate sync. Kept out of RateConfig because an admin config save
+// inserts a fresh RateConfig row, which would drop the timestamp.
+model RateSyncState {
+  id            String    @id @default("singleton")
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  lastSources   String? // e.g. "STT,SOGO"
+  updatedAt     DateTime  @updatedAt
+}
+
 model Trade {
   id              String         @id @default(cuid())
   tradeNumber     String         @unique // Human-readable ID, e.g. GC4S-20260620-A1B2C3

@@ -4,22 +4,22 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
-import { NoOnesSyncPanel } from "@/components/NoOnesSyncPanel";
-import { NoOnesSyncProvider, useNoOnesSyncState } from "@/components/NoOnesSyncContext";
+import { RateSyncPanel } from "@/components/RateSyncPanel";
+import { RateSyncProvider, useRateSyncState } from "@/components/RateSyncContext";
 
 export default function AdminRatesPage() {
   const [cardsKey, setCardsKey] = useState(0);
 
   return (
-    <NoOnesSyncProvider>
+    <RateSyncProvider>
       <div className="space-y-8">
         <h2 className="text-2xl font-bold">Rates &amp; cards</h2>
-        <NoOnesSyncPanel onSyncFinished={() => setCardsKey((k) => k + 1)} />
+        <RateSyncPanel onSyncFinished={() => setCardsKey((k) => k + 1)} />
         <ConfigSection />
         <ImportSection />
         <CardsSection key={cardsKey} />
       </div>
-    </NoOnesSyncProvider>
+    </RateSyncProvider>
   );
 }
 
@@ -265,7 +265,7 @@ function CardsSection() {
   const [cards, setCards] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const { sync } = useNoOnesSyncState();
+  const { sync } = useRateSyncState();
 
   async function load() {
     const d = await api("/admin/cards");
@@ -283,7 +283,7 @@ function CardsSection() {
     load();
   }
 
-  async function syncFromNoones(cardId: string) {
+  async function syncCardRates(cardId: string) {
     setSyncMsg(null);
     try {
       await api(`/admin/card-types/${cardId}/sync-rates`, { method: "POST" });
@@ -355,7 +355,7 @@ function CardsSection() {
                   <button
                     type="button"
                     disabled={sync.running}
-                    onClick={() => syncFromNoones(c.id)}
+                    onClick={() => syncCardRates(c.id)}
                     className="btn-ghost text-xs"
                   >
                     {sync.running && sync.scope === "card" && sync.cardTypeId === c.id

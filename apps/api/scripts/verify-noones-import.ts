@@ -2,7 +2,7 @@ import "dotenv/config";
 import { canonicalCardSlug } from "@gc4s/shared";
 import { prisma } from "../src/prisma";
 import { noonesPost } from "../src/services/noones/client";
-import { listGiftCardPaymentMethods } from "../src/services/noones/rateSync";
+import { listGiftCardPaymentMethods } from "../src/services/noones/giftCardMethods";
 import { paymentMethodToCardName } from "../src/services/noones/rateCatalog";
 import { NoOnesOfferAllData } from "../src/services/noones/types";
 

@@ -1,27 +1,22 @@
 /**
  * Sync gift-card rates into the database:
- * - Primary: https://sogo.africa/rates (HTML scrape until SOGO_RATES_API_URL is set)
- * - Fallback: TOP10_TRADER live Eneba/Paysafecard offers, then last-traded contacted partners
+ * - Primary: SafeTheTrade public offer feed (https://safethetrade.com/api/v1)
+ * - Then: https://sogo.africa/rates for every card + currency SafeTheTrade skips
  *
  * Usage:
- *   npm run sync:noones              # Sogo + partner fallback
- *   npm run sync:noones -- --card=<cardTypeId>
- *   npm run sync:noones -- --from-noones   # legacy NoOnes marketplace sync
+ *   npm run sync:rates
+ *   npm run sync:rates -- --card=<cardTypeId>
  */
 import "dotenv/config";
 import { prisma } from "../src/prisma";
-import { isNoOnesConfigured } from "../src/services/noones/client";
-import { syncCardRatesFromNoOnes, syncRatesFromNoOnes } from "../src/services/noones/rateSync";
-import { syncCatalogRatesFromSogo } from "../src/services/sogo";
+import { syncCatalogRates } from "../src/services/rateSync";
 import {
-  completeNoOnesSyncRun,
-  failNoOnesSyncRun,
-  tryStartNoOnesSyncRun,
-} from "../src/services/noones/syncStatus";
+  completeRateSyncRun,
+  failRateSyncRun,
+  tryStartRateSyncRun,
+} from "../src/services/rateSyncStatus";
 
 const args = process.argv.slice(2);
-const force = args.includes("--force");
-const fromNoones = args.includes("--from-noones");
 const cardArg = args.find((a) => a.startsWith("--card="));
 const cardTypeId = cardArg?.split("=")[1];
 
@@ -37,24 +32,15 @@ function isDbConnectionError(err: unknown): boolean {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  if (fromNoones && !isNoOnesConfigured()) {
-    console.error("NoOnes is not configured. Set NOONES_ENABLED=true and credentials, or omit --from-noones to sync from Sogo.");
-    process.exit(1);
-  }
-
   console.log(
-    fromNoones
-      ? cardTypeId
-        ? `Syncing NoOnes data for card ${cardTypeId}…`
-        : "Syncing gift-card data from NoOnes…"
-      : cardTypeId
-        ? `Syncing Sogo/partner rates for card ${cardTypeId}…`
-        : "Syncing gift-card rates from Sogo (partner last-traded fallback)…"
+    cardTypeId
+      ? `Syncing rates for card ${cardTypeId} (SafeTheTrade, then Sogo)…`
+      : "Syncing gift-card rates from SafeTheTrade, then Sogo…"
   );
 
   const started = Date.now();
   const scope = cardTypeId ? "card" : "full";
-  tryStartNoOnesSyncRun({
+  tryStartRateSyncRun({
     scope,
     force: true,
     trigger: "cli",
@@ -66,13 +52,7 @@ async function main() {
   try {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        if (fromNoones) {
-          summary = cardTypeId
-            ? await syncCardRatesFromNoOnes(cardTypeId, { force: true })
-            : await syncRatesFromNoOnes(force ? { force: true } : undefined);
-        } else {
-          summary = await syncCatalogRatesFromSogo({ force: true, cardTypeId });
-        }
+        summary = await syncCatalogRates({ force: true, cardTypeId });
         break;
       } catch (err) {
         if (attempt < 3 && isDbConnectionError(err)) {
@@ -85,9 +65,9 @@ async function main() {
       }
     }
     if (!summary) throw new Error("Sync did not produce a summary");
-    completeNoOnesSyncRun(summary);
+    completeRateSyncRun(summary);
   } catch (err) {
-    failNoOnesSyncRun((err as Error).message);
+    failRateSyncRun((err as Error).message);
     throw err;
   }
 

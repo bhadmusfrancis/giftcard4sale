@@ -10,7 +10,7 @@ import { prisma } from "../src/prisma";
 import { isNoOnesConfigured } from "../src/services/noones/client";
 import { paymentMethodToCardName } from "../src/services/noones/rateCatalog";
 import { findExistingCardType } from "../src/services/cardTypeDedup";
-import { listGiftCardPaymentMethods } from "../src/services/noones/rateSync";
+import { listGiftCardPaymentMethods } from "../src/services/noones/giftCardMethods";
 import { countNoOnesOffers } from "../src/services/noones/offers";
 import { isCardPublishable, MAX_OFFERS_FOR_PUBLISH } from "../src/services/noones/publishPolicy";
 

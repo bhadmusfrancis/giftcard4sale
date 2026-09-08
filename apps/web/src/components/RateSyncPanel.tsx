@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { date } from "@/lib/format";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
-import { useNoOnesSyncState } from "@/components/NoOnesSyncContext";
+import { useRateSyncState } from "@/components/RateSyncContext";
 
 interface SyncProgress {
   running: boolean;
@@ -40,10 +40,11 @@ interface SyncStatus {
   active: SyncProgress;
   lastCompleted: SyncProgress | null;
   database: {
-    noonesCards: number;
-    noonesRates: number;
-    activeNoonesRates: number;
+    cards: number;
+    rateRows: number;
+    activeRates: number;
     latestRateUpdate: string | null;
+    lastSuccessfulSyncAt: string | null;
     staleCards: number;
     refreshHours: number;
   };
@@ -60,7 +61,7 @@ function formatDuration(ms: number): string {
 function phaseLabel(phase: string): string {
   switch (phase) {
     case "discovering":
-      return "Discovering cards";
+      return "Fetching rate sources";
     case "syncing":
       return "Syncing rates";
     case "completed":
@@ -72,15 +73,15 @@ function phaseLabel(phase: string): string {
   }
 }
 
-export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void }) {
+export function RateSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void }) {
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const startAction = useAsyncAction();
   const [wasRunning, setWasRunning] = useState(false);
-  const { setSync } = useNoOnesSyncState();
+  const { setSync } = useRateSyncState();
 
   const load = useCallback(async (light = false) => {
     try {
-      const path = light ? "/admin/noones/sync-status?light=1" : "/admin/noones/sync-status";
+      const path = light ? "/admin/rates/sync-status?light=1" : "/admin/rates/sync-status";
       const d = await api<SyncStatus>(path);
       setStatus(d);
       setSync({
@@ -115,7 +116,7 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
 
   async function startSync(force: boolean) {
     await startAction.run(async () => {
-      await api("/admin/noones/sync-rates", { method: "POST", body: { force } });
+      await api("/admin/rates/sync", { method: "POST", body: { force } });
       await load();
     }, force ? "Force refresh started." : "Sync started.");
   }
@@ -123,7 +124,6 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
   if (!status) return null;
 
   const { configured, active, lastCompleted, database } = status;
-  const run = active.running ? active : lastCompleted;
   const showRun = active.running || lastCompleted;
 
   return (
@@ -132,8 +132,8 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
         <div>
           <h3 className="font-bold">Rate synchronization</h3>
           <p className="mt-1 text-sm text-slate-500">
-            Pull live gift-card rates from sogo.africa/rates, then fill missing brands from last trades with contacted
-            partners. Runs in the background — this panel updates every few seconds while a sync is active.
+            Pull live gift-card rates from safethetrade.com first, then sogo.africa/rates for every card and currency
+            it does not price. Runs in the background — this panel updates every few seconds while a sync is active.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -163,9 +163,9 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
       ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
-        <Stat label="Linked cards" value={database.noonesCards} />
-        <Stat label="Stored rate rows" value={database.noonesRates} />
-        <Stat label="Active rates" value={database.activeNoonesRates} />
+        <Stat label="Cards with synced rates" value={database.cards} />
+        <Stat label="Stored rate rows" value={database.rateRows} />
+        <Stat label="Active rates" value={database.activeRates} />
         <Stat
           label="Due for refresh"
           value={active.running ? "…" : database.staleCards}
@@ -173,11 +173,14 @@ export function NoOnesSyncPanel({ onSyncFinished }: { onSyncFinished?: () => voi
         />
       </div>
 
-      {database.latestRateUpdate ? (
-        <p className="mt-2 text-xs text-slate-500">
-          Latest rate in DB: {date(database.latestRateUpdate)}
-        </p>
-      ) : null}
+      <div className="mt-2 space-y-1 text-xs text-slate-500">
+        {database.lastSuccessfulSyncAt ? (
+          <p>Last successful sync: {date(database.lastSuccessfulSyncAt)}</p>
+        ) : (
+          <p>No successful sync recorded yet.</p>
+        )}
+        {database.latestRateUpdate ? <p>Latest rate in DB: {date(database.latestRateUpdate)}</p> : null}
+      </div>
 
       {active.running ? (
         <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50/50 p-4">

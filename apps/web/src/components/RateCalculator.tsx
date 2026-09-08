@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { trackMeta } from "@/lib/metaPixel";
-import { IndicativeRateCaveat, isNonSogoMarketplaceRate, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
+import { IndicativeRateCaveat, isLegacyPartnerRate, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
 import { CountryPicker } from "@/components/CountryPicker";
 
 interface Rate {
@@ -134,8 +134,8 @@ export function RateCalculator({
   );
 
   const indicativeRate = useMemo(() => {
-    if (matched) return isNonSogoMarketplaceRate(matched.speed);
-    return candidates.length > 0 && candidates.every((row) => isNonSogoMarketplaceRate(row.speed));
+    if (matched) return isLegacyPartnerRate(matched.speed);
+    return candidates.length > 0 && candidates.every((row) => isLegacyPartnerRate(row.speed));
   }, [matched, candidates]);
 
   const receiptType: ReceiptType = useMemo(() => {

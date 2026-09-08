@@ -1,8 +1,6 @@
 import { ExchangeRates, RateReductions } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { env } from "../env";
-import { getNoOnesSyncLimits, sleep } from "./noones/syncLimits";
-import { noonesLinkedCardWhere } from "./noones/exclusions";
 import { isOpenEndedCountryTier } from "./noones/rateCatalog";
 import { SYNCED_RATE_SPEEDS } from "./rateSources";
 
@@ -101,29 +99,6 @@ export function isRateSyncFresh(updatedAt: Date, refreshHours: number): boolean 
   return Date.now() - updatedAt.getTime() < refreshHours * 3_600_000;
 }
 
-/** Ms until the next scheduled sync; 0 when refresh is overdue or no stored rates exist. */
-export async function getRateSyncDelayMs(refreshHours: number): Promise<number> {
-  const windowMs = refreshHours * 3_600_000;
-
-  const latestRate = await prisma.rate.findFirst({
-    where: { speed: { in: SYNCED_RATE_SPEEDS } },
-    orderBy: { updatedAt: "desc" },
-    select: { updatedAt: true },
-  });
-  const latestMeta = await prisma.cardCurrencyMeta.findFirst({
-    orderBy: { syncedAt: "desc" },
-    select: { syncedAt: true },
-  });
-
-  let latest = 0;
-  if (latestRate) latest = Math.max(latest, latestRate.updatedAt.getTime());
-  if (latestMeta) latest = Math.max(latest, latestMeta.syncedAt.getTime());
-
-  if (!latest) return 0;
-
-  return Math.max(0, latest + windowMs - Date.now());
-}
-
 export interface RateFreshnessMeta {
   lastUpdatedAt: string | null;
   nextRefreshAt: string | null;
@@ -131,26 +106,28 @@ export interface RateFreshnessMeta {
   isStale: boolean;
 }
 
-/** True when a card's stored NoOnes rates or currency meta are missing or past the refresh window. */
+/** True when a card's stored rates or currency meta are missing or past the refresh window. */
 export async function isCardRateDataStale(
   cardTypeId: string,
-  refreshHours: number
+  refreshHours: number,
+  lastSyncAt?: Date | null
 ): Promise<boolean> {
-  return (await getCardRateStalenessInfo(cardTypeId, refreshHours)).stale;
+  return (await getCardRateStalenessInfo(cardTypeId, refreshHours, lastSyncAt)).stale;
 }
 
-function recentlySyncedNoOnes(
-  noonesSyncedAt: Date | null | undefined,
-  refreshHours: number
-): boolean {
-  return noonesSyncedAt != null && isRateSyncFresh(noonesSyncedAt, refreshHours);
-}
-
+/**
+ * Staleness of one card's stored rates.
+ *
+ * `lastSyncAt` is when the catalog last finished a sync. A source that drops a
+ * card leaves its rows untouched, so a card counts as fresh while syncs are
+ * still completing on schedule.
+ */
 export async function getCardRateStalenessInfo(
   cardTypeId: string,
-  refreshHours: number
+  refreshHours: number,
+  lastSyncAt?: Date | null
 ): Promise<{ stale: boolean; oldestAt: number }> {
-  const [existingNoones, currencyMetaRows, cardType] = await Promise.all([
+  const [syncedRates, currencyMetaRows] = await Promise.all([
     prisma.rate.findMany({
       where: { cardTypeId, speed: { in: SYNCED_RATE_SPEEDS } },
       select: {
@@ -166,42 +143,35 @@ export async function getCardRateStalenessInfo(
       where: { cardTypeId },
       select: { currency: true, syncedAt: true },
     }),
-    prisma.cardType.findUnique({
-      where: { id: cardTypeId },
-      select: { noonesSyncedAt: true },
-    }),
   ]);
 
-  const syncCooldownAt = cardType?.noonesSyncedAt?.getTime() ?? 0;
+  const syncedRecently = lastSyncAt != null && isRateSyncFresh(lastSyncAt, refreshHours);
+  const lastSyncMs = lastSyncAt?.getTime() ?? 0;
 
-  if (!existingNoones.length && !currencyMetaRows.length) {
-    if (recentlySyncedNoOnes(cardType?.noonesSyncedAt, refreshHours)) {
-      return { stale: false, oldestAt: syncCooldownAt };
-    }
+  if (!syncedRates.length && !currencyMetaRows.length) {
+    if (syncedRecently) return { stale: false, oldestAt: lastSyncMs };
     return { stale: true, oldestAt: 0 };
   }
 
-  const hasOpenEnded = existingNoones.some(
+  const hasOpenEnded = syncedRates.some(
     (r) =>
       r.active &&
       r.minDenom == null &&
       r.maxDenom == null &&
       !isOpenEndedCountryTier(r.country)
   );
-  const activeNoones = existingNoones.filter((r) => r.active);
-  if (!activeNoones.length) {
-    if (recentlySyncedNoOnes(cardType?.noonesSyncedAt, refreshHours)) {
-      return { stale: false, oldestAt: syncCooldownAt };
-    }
-    const oldestAt = existingNoones.length
-      ? Math.min(...existingNoones.map((r) => r.updatedAt.getTime()))
+  const activeRates = syncedRates.filter((r) => r.active);
+  if (!activeRates.length) {
+    if (syncedRecently) return { stale: false, oldestAt: lastSyncMs };
+    const oldestAt = syncedRates.length
+      ? Math.min(...syncedRates.map((r) => r.updatedAt.getTime()))
       : currencyMetaRows.length
         ? Math.min(...currencyMetaRows.map((m) => m.syncedAt.getTime()))
         : 0;
     return { stale: true, oldestAt };
   }
 
-  const activeCurrencies = [...new Set(activeNoones.map((r) => r.currency))];
+  const activeCurrencies = [...new Set(activeRates.map((r) => r.currency))];
   const metaByCurrency = new Map(currencyMetaRows.map((m) => [m.currency, m]));
   const metaFresh =
     activeCurrencies.length === 0 ||
@@ -209,12 +179,12 @@ export async function getCardRateStalenessInfo(
       const meta = metaByCurrency.get(currency);
       return meta != null && isRateSyncFresh(meta.syncedAt, refreshHours);
     });
-  const ratesFresh = activeNoones.every((r) => isRateSyncFresh(r.updatedAt, refreshHours));
+  const ratesFresh = activeRates.every((r) => isRateSyncFresh(r.updatedAt, refreshHours));
   const cardFullyFresh = !hasOpenEnded && metaFresh && ratesFresh;
 
   // Sort priority: oldest stale *component* (expired rate/meta), not newest display timestamp.
   let oldestAt = Infinity;
-  for (const r of activeNoones) {
+  for (const r of activeRates) {
     if (!isRateSyncFresh(r.updatedAt, refreshHours)) {
       oldestAt = Math.min(oldestAt, r.updatedAt.getTime());
     }
@@ -226,7 +196,7 @@ export async function getCardRateStalenessInfo(
     }
   }
   if (hasOpenEnded) {
-    for (const r of activeNoones) {
+    for (const r of activeRates) {
       if (
         r.minDenom == null &&
         r.maxDenom == null &&
@@ -242,63 +212,25 @@ export async function getCardRateStalenessInfo(
     return { stale: false, oldestAt };
   }
 
-  if (recentlySyncedNoOnes(cardType?.noonesSyncedAt, refreshHours)) {
-    return { stale: false, oldestAt: syncCooldownAt };
+  if (syncedRecently) {
+    return { stale: false, oldestAt: lastSyncMs };
   }
 
   return { stale: true, oldestAt };
 }
 
-/** Drop cards whose NoOnes data is still within the refresh window. */
-export async function filterStaleCardTypes<T extends { id: string }>(
-  cards: T[],
-  refreshHours: number
-): Promise<T[]> {
-  const { staleCheckBatchSize, staleCheckPauseMs } = getNoOnesSyncLimits();
-  const stale: T[] = [];
-
-  for (let i = 0; i < cards.length; i += staleCheckBatchSize) {
-    const batch = cards.slice(i, i + staleCheckBatchSize);
-    for (const card of batch) {
-      const info = await getCardRateStalenessInfo(card.id, refreshHours);
-      if (info.stale) stale.push(card);
-    }
-    if (i + staleCheckBatchSize < cards.length) await sleep(staleCheckPauseMs);
-  }
-
-  return stale;
-}
-
-/** Cards linked to NoOnes that need a refresh, oldest stale data first (not by popularity). */
-export async function listStaleCardTypeIds(
-  refreshHours: number
-): Promise<{ id: string; name: string }[]> {
-  const { staleCheckBatchSize, staleCheckPauseMs } = getNoOnesSyncLimits();
-
-  const cards = await prisma.cardType.findMany({
-    where: noonesLinkedCardWhere(),
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
-
-  const stale: { id: string; name: string; oldestAt: number }[] = [];
-  for (let i = 0; i < cards.length; i += staleCheckBatchSize) {
-    const batch = cards.slice(i, i + staleCheckBatchSize);
-    for (const card of batch) {
-      const info = await getCardRateStalenessInfo(card.id, refreshHours);
-      if (info.stale) stale.push({ ...card, oldestAt: info.oldestAt });
-    }
-    if (i + staleCheckBatchSize < cards.length) await sleep(staleCheckPauseMs);
-  }
-
-  stale.sort((a, b) => a.oldestAt - b.oldestAt || a.name.localeCompare(b.name));
-  return stale.map(({ id, name }) => ({ id, name }));
-}
-
-/** Build user-facing rate freshness from stored rate rows (no live API calls). */
+/**
+ * User-facing rate freshness, from stored rows only (no live API calls).
+ *
+ * `lastSyncAt` is when the catalog last finished a sync. It suppresses the
+ * "rate may be outdated" notice while syncs keep completing: a source can stop
+ * listing a card without its rate being wrong, and a warning the site cannot
+ * clear by syncing is just noise.
+ */
 export function buildRateFreshnessMeta(
   rates: { updatedAt: Date; speed?: string | null }[],
-  refreshHours: number
+  refreshHours: number,
+  lastSyncAt?: Date | null
 ): RateFreshnessMeta {
   const preferred = rates.filter((r) => r.speed && SYNCED_RATE_SPEEDS.includes(r.speed));
   const source = preferred.length ? preferred : rates;
@@ -318,7 +250,10 @@ export function buildRateFreshnessMeta(
     };
   }
 
-  const next = latest + refreshHours * 3_600_000;
+  const windowMs = refreshHours * 3_600_000;
+  const freshUntilFrom = Math.max(latest, lastSyncAt?.getTime() ?? 0);
+  const next = freshUntilFrom + windowMs;
+
   return {
     lastUpdatedAt: new Date(latest).toISOString(),
     nextRefreshAt: new Date(next).toISOString(),

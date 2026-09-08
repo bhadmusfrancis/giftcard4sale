@@ -21,7 +21,7 @@ import { analyticsRouter } from "./routes/analytics";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
 import { startInsightsScheduler } from "./services/insights/scheduler";
-import { startSogoRateSyncScheduler } from "./services/sogo";
+import { startRateSyncScheduler } from "./services/rateSyncScheduler";
 import {
   ensureCardSeoLandingPagesPublished,
   repairManualRateCatalog,
@@ -122,7 +122,7 @@ export function mountApi(app: Express): void {
     .catch((e) => console.warn("SEO landing publish:", (e as Error).message))
     .finally(() => {
       startNoOnesJobs();
-      startSogoRateSyncScheduler();
+      startRateSyncScheduler();
       startInsightsScheduler();
     });
 }

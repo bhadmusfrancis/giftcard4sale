@@ -16,18 +16,17 @@ import { getRateConfig } from "../services/rateConfig";
 import {
   executeNoOnesResell,
   isNoOnesConfigured,
-  previewRateFromNoOnes,
-  listNoOnesPaymentMethods,
+  listGiftCardPaymentMethods,
   registerNoOnesWebhooks,
 } from "../services/noones";
-import { syncCatalogRatesFromSogo } from "../services/sogo";
+import { syncCatalogRates } from "../services/rateSync";
 import {
-  completeNoOnesSyncRun,
-  failNoOnesSyncRun,
-  getNoOnesSyncStatusResponse,
-  isNoOnesSyncActive,
-  tryStartNoOnesSyncRun,
-} from "../services/noones/syncStatus";
+  completeRateSyncRun,
+  failRateSyncRun,
+  getRateSyncStatusResponse,
+  isRateSyncActive,
+  tryStartRateSyncRun,
+} from "../services/rateSyncStatus";
 import { publicUser, adminUserListItem } from "./auth";
 import { serializeTrade, serializeMessage } from "./trades";
 import { rejectTradeWithBadScore } from "../services/tradeRejection";
@@ -1062,7 +1061,79 @@ adminRouter.get(
   })
 );
 
-// ---------------------------------------------------------------- NoOnes integration
+// ---------------------------------------------------------------- Rate sync
+const rateSyncStatusHandler = asyncHandler(async (req, res) => {
+  const light = req.query.light === "1" || req.query.light === "true";
+  res.json(await getRateSyncStatusResponse(true, { skipDb: light }));
+});
+
+const startRateSyncHandler = asyncHandler(async (req, res) => {
+  if (isRateSyncActive()) {
+    return res.status(409).json({
+      error: "A rate sync is already in progress",
+      status: await getRateSyncStatusResponse(true),
+    });
+  }
+
+  const force = Boolean(req.body?.force);
+  tryStartRateSyncRun({ scope: "full", force: true, trigger: "admin" });
+
+  void (async () => {
+    try {
+      const summary = await syncCatalogRates({ force });
+      completeRateSyncRun(summary);
+    } catch (err) {
+      failRateSyncRun((err as Error).message);
+    }
+  })();
+
+  res.status(202).json({
+    started: true,
+    status: await getRateSyncStatusResponse(true),
+  });
+});
+
+adminRouter.get("/rates/sync-status", rateSyncStatusHandler);
+adminRouter.post("/rates/sync", startRateSyncHandler);
+
+// Legacy paths: the admin app deploys separately from the API, so an older
+// bundle can still be live for a few minutes after a release.
+adminRouter.get("/noones/sync-status", rateSyncStatusHandler);
+adminRouter.post("/noones/sync-rates", startRateSyncHandler);
+
+adminRouter.post(
+  "/card-types/:id/sync-rates",
+  asyncHandler(async (req, res) => {
+    const card = await prisma.cardType.findUnique({ where: { id: req.params.id } });
+    if (!card) return res.status(404).json({ error: "Card not found" });
+    if (isRateSyncActive()) {
+      return res.status(409).json({
+        error: "A rate sync is already in progress",
+        status: await getRateSyncStatusResponse(true),
+      });
+    }
+
+    tryStartRateSyncRun({
+      scope: "card",
+      force: true,
+      trigger: "admin",
+      cardTypeId: card.id,
+      cardName: card.name,
+      totalCards: 1,
+    });
+
+    void syncCatalogRates({ force: true, cardTypeId: card.id })
+      .then((summary) => completeRateSyncRun(summary))
+      .catch((err) => failRateSyncRun((err as Error).message));
+
+    res.status(202).json({
+      started: true,
+      status: await getRateSyncStatusResponse(true),
+    });
+  })
+);
+
+// ---------------------------------------------------------------- NoOnes trades
 adminRouter.get(
   "/noones/status",
   asyncHandler(async (_req, res) => {
@@ -1074,89 +1145,11 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  "/noones/sync-status",
-  asyncHandler(async (req, res) => {
-    const light = req.query.light === "1" || req.query.light === "true";
-    res.json(await getNoOnesSyncStatusResponse(true, { skipDb: light }));
-  })
-);
-
-adminRouter.post(
-  "/noones/sync-rates",
-  asyncHandler(async (req, res) => {
-    if (isNoOnesSyncActive()) {
-      return res.status(409).json({
-        error: "A rate sync is already in progress",
-        status: await getNoOnesSyncStatusResponse(true),
-      });
-    }
-
-    const force = Boolean(req.body?.force);
-    tryStartNoOnesSyncRun({ scope: "full", force: true, trigger: "admin" });
-
-    void (async () => {
-      try {
-        const summary = await syncCatalogRatesFromSogo({ force });
-        completeNoOnesSyncRun(summary);
-      } catch (err) {
-        failNoOnesSyncRun((err as Error).message);
-      }
-    })();
-
-    res.status(202).json({
-      started: true,
-      status: await getNoOnesSyncStatusResponse(true),
-    });
-  })
-);
-
-adminRouter.post(
-  "/card-types/:id/sync-rates",
-  asyncHandler(async (req, res) => {
-    const card = await prisma.cardType.findUnique({ where: { id: req.params.id } });
-    if (!card) return res.status(404).json({ error: "Card not found" });
-    if (isNoOnesSyncActive()) {
-      return res.status(409).json({
-        error: "A rate sync is already in progress",
-        status: await getNoOnesSyncStatusResponse(true),
-      });
-    }
-
-    tryStartNoOnesSyncRun({
-      scope: "card",
-      force: true,
-      trigger: "admin",
-      cardTypeId: card.id,
-      cardName: card.name,
-      totalCards: 1,
-    });
-
-    void syncCatalogRatesFromSogo({ force: true, cardTypeId: card.id })
-      .then((summary) => completeNoOnesSyncRun(summary))
-      .catch((err) => failNoOnesSyncRun((err as Error).message));
-
-    res.status(202).json({
-      started: true,
-      status: await getNoOnesSyncStatusResponse(true),
-    });
-  })
-);
-
-adminRouter.get(
   "/noones/payment-methods",
   asyncHandler(async (_req, res) => {
     if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
-    const methods = await listNoOnesPaymentMethods();
+    const methods = await listGiftCardPaymentMethods();
     res.json({ methods });
-  })
-);
-
-adminRouter.get(
-  "/noones/preview-rate/:rateId",
-  asyncHandler(async (req, res) => {
-    if (!isNoOnesConfigured()) return res.status(400).json({ error: "NoOnes is not configured" });
-    const preview = await previewRateFromNoOnes(req.params.rateId);
-    res.json({ preview });
   })
 );
 

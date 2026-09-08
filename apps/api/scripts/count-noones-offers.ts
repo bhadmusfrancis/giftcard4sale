@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { noonesPost } from "../src/services/noones/client";
-import { listGiftCardPaymentMethods } from "../src/services/noones/rateSync";
+import { listGiftCardPaymentMethods } from "../src/services/noones/giftCardMethods";
 import { NoOnesOfferAllData } from "../src/services/noones/types";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { catalogCardWhere } from "../services/cardVisibility";
 import { buildRateFreshnessMeta, getRateConfig } from "../services/rateConfig";
+import { getLastRateSyncAt } from "../services/rateSyncState";
 import { parseStoredQuotes, receiptPolicyFromStored } from "../services/noones";
 import { listCardCurrencyMetaForDisplay } from "../services/noones/currencyMeta";
 import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
@@ -43,7 +44,11 @@ async function loadCardBySlug(slug: string, opts: { catalogOnly?: boolean } = {}
     : card.rates;
 
   const config = await getRateConfig();
-  const rateMeta = buildRateFreshnessMeta(visibleRates, config.noonesRateRefreshHours);
+  const rateMeta = buildRateFreshnessMeta(
+    visibleRates,
+    config.noonesRateRefreshHours,
+    await getLastRateSyncAt()
+  );
   const currencyMeta = await listCardCurrencyMetaForDisplay(card.id);
 
   return {
@@ -96,7 +101,7 @@ const quoteSchema = z.object({
   preferNoReceipt: z.boolean().optional(),
 });
 
-// Fetch one card by slug or sellSlug (database only — no live NoOnes calls).
+// Fetch one card by slug or sellSlug (database only — no live source calls).
 cardsRouter.get(
   "/:slug",
   asyncHandler(async (req, res) => {
@@ -106,7 +111,7 @@ cardsRouter.get(
   })
 );
 
-// Compute a payout quote for a specific rate row (stored NoOnes data only).
+// Compute a payout quote for a specific rate row (stored rate data only).
 cardsRouter.post(
   "/quote",
   asyncHandler(async (req, res) => {
@@ -179,7 +184,11 @@ cardsRouter.post(
       receiptPolicy,
       quoteSource: "stored",
       storedQuotes,
-      rateMeta: buildRateFreshnessMeta([rate], config.noonesRateRefreshHours),
+      rateMeta: buildRateFreshnessMeta(
+        [rate],
+        config.noonesRateRefreshHours,
+        await getLastRateSyncAt()
+      ),
     });
   })
 );

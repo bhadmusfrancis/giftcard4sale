@@ -8,7 +8,7 @@ import { registerNoOnesWebhooks } from "./webhooks";
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-/** Start background NoOnes jobs when enabled (trade polling only — rate auto-sync is off). */
+/** Start background NoOnes jobs when enabled. NoOnes handles trades only — never rates. */
 export function startNoOnesJobs(): void {
   if (!isNoOnesConfigured()) {
     console.log("NoOnes integration disabled (set NOONES_ENABLED=true + credentials)");
@@ -25,9 +25,7 @@ export function startNoOnesJobs(): void {
     registerNoOnesWebhooks().catch((e) => console.warn("NoOnes webhook setup:", e.message));
   }
 
-  console.log(
-    `NoOnes integration active (rate auto-sync disabled, trade poll every ${env.noones.tradePollMinutes}m)`
-  );
+  console.log(`NoOnes integration active (trades only, poll every ${env.noones.tradePollMinutes}m)`);
 }
 
 export function stopNoOnesJobs(): void {
@@ -46,9 +44,7 @@ export * from "./rates";
 
 export * from "./storedQuotes";
 
-export * from "./syncStatus";
-
-export * from "./rateSync";
+export * from "./giftCardMethods";
 
 export * from "./tradeExecutor";
 

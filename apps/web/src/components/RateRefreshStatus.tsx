@@ -9,9 +9,12 @@ export interface RateFreshnessMeta {
   isStale: boolean;
 }
 
-/** Marketplace quotes (SafeTheTrade, legacy partners) are not from the Sogo rate sheet. */
-export function isNonSogoMarketplaceRate(speed?: string | null): boolean {
-  return speed === "STT" || speed === "PARTNER";
+/**
+ * Legacy partner rows: last-traded prices from contacted partners, which nothing
+ * refreshes any more. Live sources (SafeTheTrade, Sogo) quote firm rates.
+ */
+export function isLegacyPartnerRate(speed?: string | null): boolean {
+  return speed === "PARTNER";
 }
 
 export const INDICATIVE_RATE_CAVEAT =

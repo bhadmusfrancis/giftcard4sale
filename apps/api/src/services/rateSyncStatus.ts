@@ -1,17 +1,18 @@
-import { prisma } from "../../prisma";
-import { getRateConfig, isCardRateDataStale } from "../rateConfig";
-import { SYNCED_RATE_SPEEDS } from "../rateSources";
-import type { RateSyncSummary } from "./rateSync";
+import { prisma } from "../prisma";
+import { getRateConfig, isCardRateDataStale, isRateSyncFresh } from "./rateConfig";
+import { SYNCED_RATE_SPEEDS } from "./rateSources";
+import { getLastRateSyncAt } from "./rateSyncState";
+import { emptyRateSyncSummary, type RateSyncSummary } from "./rateTypes";
 
-export type NoOnesSyncPhase = "idle" | "discovering" | "syncing" | "completed" | "failed";
-export type NoOnesSyncScope = "full" | "card";
-export type NoOnesSyncTrigger = "admin" | "cli" | "cron";
+export type RateSyncPhase = "idle" | "discovering" | "syncing" | "completed" | "failed";
+export type RateSyncScope = "full" | "card";
+export type RateSyncTrigger = "admin" | "cli" | "cron";
 
-export interface NoOnesSyncProgress {
+export interface RateSyncProgress {
   running: boolean;
-  phase: NoOnesSyncPhase;
-  scope: NoOnesSyncScope | null;
-  trigger: NoOnesSyncTrigger | null;
+  phase: RateSyncPhase;
+  scope: RateSyncScope | null;
+  trigger: RateSyncTrigger | null;
   force: boolean;
   startedAt: string | null;
   finishedAt: string | null;
@@ -26,34 +27,25 @@ export interface NoOnesSyncProgress {
   lastError: string | null;
 }
 
-export interface NoOnesSyncDbStats {
-  noonesCards: number;
-  noonesRates: number;
-  activeNoonesRates: number;
+export interface RateSyncDbStats {
+  cards: number;
+  rateRows: number;
+  activeRates: number;
   latestRateUpdate: string | null;
+  /** Last sync that wrote rows, from the database, so it survives restarts. */
+  lastSuccessfulSyncAt: string | null;
   staleCards: number;
   refreshHours: number;
 }
 
-export interface NoOnesSyncStatusResponse {
+export interface RateSyncStatusResponse {
   configured: boolean;
-  active: NoOnesSyncProgress;
-  lastCompleted: NoOnesSyncProgress | null;
-  database: NoOnesSyncDbStats;
+  active: RateSyncProgress;
+  lastCompleted: RateSyncProgress | null;
+  database: RateSyncDbStats;
 }
 
-const emptySummary = (): RateSyncSummary => ({
-  created: 0,
-  updated: 0,
-  skipped: 0,
-  deleted: 0,
-  drafted: 0,
-  published: 0,
-  cardTypes: 0,
-  errors: [],
-});
-
-function idleProgress(): NoOnesSyncProgress {
+function idleProgress(): RateSyncProgress {
   return {
     running: false,
     phase: "idle",
@@ -68,23 +60,23 @@ function idleProgress(): NoOnesSyncProgress {
     processedCards: 0,
     totalCards: 0,
     progressPercent: null,
-    summary: emptySummary(),
+    summary: emptyRateSyncSummary(),
     recentErrors: [],
     lastError: null,
   };
 }
 
-let active: NoOnesSyncProgress = idleProgress();
-let lastCompleted: NoOnesSyncProgress | null = null;
+let active: RateSyncProgress = idleProgress();
+let lastCompleted: RateSyncProgress | null = null;
 
 const MAX_RECENT_ERRORS = 30;
 const DB_STATS_TTL_MS = 60_000;
 
-let cachedDbStats: NoOnesSyncDbStats | null = null;
+let cachedDbStats: RateSyncDbStats | null = null;
 let cachedDbStatsAt = 0;
-let dbStatsInFlight: Promise<NoOnesSyncDbStats> | null = null;
+let dbStatsInFlight: Promise<RateSyncDbStats> | null = null;
 
-function snapshot(p: NoOnesSyncProgress): NoOnesSyncProgress {
+function snapshot(p: RateSyncProgress): RateSyncProgress {
   return {
     ...p,
     summary: { ...p.summary, errors: [...p.summary.errors] },
@@ -96,14 +88,14 @@ function snapshot(p: NoOnesSyncProgress): NoOnesSyncProgress {
   };
 }
 
-export function isNoOnesSyncActive(): boolean {
+export function isRateSyncActive(): boolean {
   return active.running;
 }
 
-export function tryStartNoOnesSyncRun(params: {
-  scope: NoOnesSyncScope;
+export function tryStartRateSyncRun(params: {
+  scope: RateSyncScope;
   force?: boolean;
-  trigger: NoOnesSyncTrigger;
+  trigger: RateSyncTrigger;
   cardTypeId?: string;
   cardName?: string;
   totalCards?: number;
@@ -127,34 +119,34 @@ export function tryStartNoOnesSyncRun(params: {
     processedCards: 0,
     totalCards: params.totalCards ?? (params.scope === "card" ? 1 : 0),
     progressPercent: null,
-    summary: emptySummary(),
+    summary: emptyRateSyncSummary(),
     recentErrors: [],
     lastError: null,
   };
   if (!cachedDbStats) {
-    void getNoOnesSyncDbStats().catch(() => {});
+    void getRateSyncDbStats().catch(() => {});
   }
   return true;
 }
 
-export function setNoOnesSyncPhase(phase: NoOnesSyncPhase): void {
+export function setRateSyncPhase(phase: RateSyncPhase): void {
   if (!active.running) return;
   active.phase = phase;
 }
 
-export function setNoOnesSyncTotalCards(total: number): void {
+export function setRateSyncTotalCards(total: number): void {
   if (!active.running) return;
   active.totalCards = total;
 }
 
-export function setNoOnesSyncCurrentCard(card: { id: string; name: string }, processed: number): void {
+export function setRateSyncCurrentCard(card: { id: string; name: string }, processed: number): void {
   if (!active.running) return;
   active.phase = "syncing";
   active.currentCard = card;
   active.processedCards = processed;
 }
 
-export function mergeNoOnesSyncSummary(partial: Partial<RateSyncSummary>): void {
+export function mergeRateSyncSummary(partial: Partial<RateSyncSummary>): void {
   if (!active.running) return;
   const s = active.summary;
   if (partial.created != null) s.created = partial.created;
@@ -165,7 +157,7 @@ export function mergeNoOnesSyncSummary(partial: Partial<RateSyncSummary>): void 
   if (partial.cardTypes != null) s.cardTypes = partial.cardTypes;
 }
 
-export function addNoOnesSyncErrors(errors: string[]): void {
+export function addRateSyncErrors(errors: string[]): void {
   if (!active.running || !errors.length) return;
   active.summary.errors.push(...errors);
   for (const err of errors) {
@@ -177,10 +169,10 @@ export function addNoOnesSyncErrors(errors: string[]): void {
   }
 }
 
-export function completeNoOnesSyncRun(summary: RateSyncSummary): void {
+export function completeRateSyncRun(summary: RateSyncSummary): void {
   if (!active.running) return;
   active.running = false;
-  active.phase = summary.errors.length ? "completed" : "completed";
+  active.phase = "completed";
   active.finishedAt = new Date().toISOString();
   active.summary = { ...summary, errors: [...summary.errors] };
   active.processedCards = active.totalCards || active.processedCards;
@@ -190,7 +182,7 @@ export function completeNoOnesSyncRun(summary: RateSyncSummary): void {
   cachedDbStatsAt = 0;
 }
 
-export function failNoOnesSyncRun(message: string): void {
+export function failRateSyncRun(message: string): void {
   if (!active.running) {
     lastCompleted = {
       ...idleProgress(),
@@ -198,7 +190,7 @@ export function failNoOnesSyncRun(message: string): void {
       finishedAt: new Date().toISOString(),
       lastError: message,
       recentErrors: [message],
-      summary: { ...emptySummary(), errors: [message] },
+      summary: { ...emptyRateSyncSummary(), errors: [message] },
     };
     cachedDbStatsAt = 0;
     return;
@@ -207,20 +199,20 @@ export function failNoOnesSyncRun(message: string): void {
   active.phase = "failed";
   active.finishedAt = new Date().toISOString();
   active.lastError = message;
-  addNoOnesSyncErrors([message]);
+  addRateSyncErrors([message]);
   lastCompleted = snapshot(active);
   active = idleProgress();
   cachedDbStatsAt = 0;
 }
 
-export function getNoOnesSyncProgress(): NoOnesSyncProgress {
+export function getRateSyncProgress(): RateSyncProgress {
   return snapshot(active);
 }
 
-export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promise<NoOnesSyncDbStats> {
+export async function getRateSyncDbStats(options?: { force?: boolean }): Promise<RateSyncDbStats> {
   const now = Date.now();
 
-  if (isNoOnesSyncActive() && cachedDbStats && !options?.force) {
+  if (isRateSyncActive() && cachedDbStats && !options?.force) {
     return cachedDbStats;
   }
 
@@ -236,12 +228,13 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
     try {
       const config = await getRateConfig();
       const refreshHours = config.noonesRateRefreshHours;
+      const lastSyncAt = await getLastRateSyncAt();
 
-      const noonesCards = await prisma.cardType.count({
+      const cards = await prisma.cardType.count({
         where: { rates: { some: { speed: { in: SYNCED_RATE_SPEEDS } } } },
       });
-      const noonesRates = await prisma.rate.count({ where: { speed: { in: SYNCED_RATE_SPEEDS } } });
-      const activeNoones = await prisma.rate.count({
+      const rateRows = await prisma.rate.count({ where: { speed: { in: SYNCED_RATE_SPEEDS } } });
+      const activeRates = await prisma.rate.count({
         where: { speed: { in: SYNCED_RATE_SPEEDS }, active: true },
       });
       const latestRate = await prisma.rate.findFirst({
@@ -250,22 +243,26 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
         select: { updatedAt: true },
       });
 
+      // A sync inside the refresh window makes every card fresh by definition,
+      // so skip the per-card checks entirely rather than query for each one.
+      const syncedRecently = lastSyncAt != null && isRateSyncFresh(lastSyncAt, refreshHours);
       let staleCards = 0;
-      if (!isNoOnesSyncActive()) {
-        const linkedCards = await prisma.cardType.findMany({
+      if (!isRateSyncActive() && !syncedRecently) {
+        const syncedCards = await prisma.cardType.findMany({
           where: { rates: { some: { speed: { in: SYNCED_RATE_SPEEDS } } } },
           select: { id: true },
         });
-        for (const c of linkedCards) {
-          if (await isCardRateDataStale(c.id, refreshHours)) staleCards++;
+        for (const c of syncedCards) {
+          if (await isCardRateDataStale(c.id, refreshHours, lastSyncAt)) staleCards++;
         }
       }
 
-      const stats: NoOnesSyncDbStats = {
-        noonesCards,
-        noonesRates,
-        activeNoonesRates: activeNoones,
+      const stats: RateSyncDbStats = {
+        cards,
+        rateRows,
+        activeRates,
         latestRateUpdate: latestRate?.updatedAt.toISOString() ?? null,
+        lastSuccessfulSyncAt: lastSyncAt?.toISOString() ?? null,
         staleCards,
         refreshHours,
       };
@@ -281,27 +278,28 @@ export async function getNoOnesSyncDbStats(options?: { force?: boolean }): Promi
   return dbStatsInFlight;
 }
 
-export async function getNoOnesSyncStatusResponse(
+export async function getRateSyncStatusResponse(
   configured: boolean,
   options?: { skipDb?: boolean }
-): Promise<NoOnesSyncStatusResponse> {
+): Promise<RateSyncStatusResponse> {
   const database =
     options?.skipDb && cachedDbStats
       ? cachedDbStats
-      : options?.skipDb && isNoOnesSyncActive()
+      : options?.skipDb && isRateSyncActive()
         ? cachedDbStats ?? {
-            noonesCards: 0,
-            noonesRates: 0,
-            activeNoonesRates: 0,
+            cards: 0,
+            rateRows: 0,
+            activeRates: 0,
             latestRateUpdate: null,
+            lastSuccessfulSyncAt: null,
             staleCards: 0,
             refreshHours: 1,
           }
-        : await getNoOnesSyncDbStats({ force: options?.skipDb ? false : undefined });
+        : await getRateSyncDbStats({ force: options?.skipDb ? false : undefined });
 
   return {
     configured,
-    active: getNoOnesSyncProgress(),
+    active: getRateSyncProgress(),
     lastCompleted,
     database,
   };

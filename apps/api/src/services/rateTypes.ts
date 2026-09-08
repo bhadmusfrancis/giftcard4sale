@@ -12,3 +12,28 @@ export interface SyncedCardRate {
   nairaPerUnit: number;
   storedQuotes: StoredQuotes;
 }
+
+/** Counters reported by a sync run (admin panel, CLI output, progress polling). */
+export interface RateSyncSummary {
+  created: number;
+  updated: number;
+  skipped: number;
+  deleted: number;
+  drafted: number;
+  published: number;
+  cardTypes: number;
+  errors: string[];
+}
+
+export function emptyRateSyncSummary(): RateSyncSummary {
+  return {
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    deleted: 0,
+    drafted: 0,
+    published: 0,
+    cardTypes: 0,
+    errors: [],
+  };
+}

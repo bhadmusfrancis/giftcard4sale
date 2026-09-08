@@ -131,19 +131,10 @@ export const env = {
     apiBase: (process.env.NOONES_API_BASE || "https://api.noones.com/noones/v1").replace(/\/$/, ""),
     tokenUrl: process.env.NOONES_TOKEN_URL || "https://auth.noones.com/oauth2/token",
     cryptoCurrency: (process.env.NOONES_CRYPTO_CURRENCY || "USDT").toUpperCase(),
-    rateSyncMinutes: num(process.env.NOONES_RATE_SYNC_MINUTES, 15),
     // Must stay above Neon's 5-minute scale-to-zero window, otherwise the poll
     // alone keeps the database awake around the clock. Webhooks deliver trade
     // updates promptly; this poll is the backstop.
     tradePollMinutes: num(process.env.NOONES_TRADE_POLL_MINUTES, 10),
-    syncBatchSize: num(process.env.NOONES_SYNC_BATCH_SIZE, 3),
-    syncBatchPauseMs: num(process.env.NOONES_SYNC_BATCH_PAUSE_MS, 3000),
-    syncCardPauseMs: num(process.env.NOONES_SYNC_CARD_PAUSE_MS, 400),
-    syncTargetPauseMs: num(process.env.NOONES_SYNC_TARGET_PAUSE_MS, 200),
-    staleCheckPauseMs: num(process.env.NOONES_STALE_CHECK_PAUSE_MS, 50),
-    staleCheckBatchSize: num(process.env.NOONES_STALE_CHECK_BATCH_SIZE, 5),
-    /** Max stale cards synced per scheduled cron wake (remaining stale cards run on later wakes). */
-    scheduledStaleCardsPerRun: num(process.env.NOONES_SCHEDULED_STALE_CARDS_PER_RUN, 5),
     /** When NoOnes has no separate e-code offers, ECODE rate = PHYSICAL × this factor. */
     ecodeRateFactor: num(process.env.NOONES_ECODE_RATE_FACTOR, 0.88),
     webhookPublicKey:
@@ -154,20 +145,24 @@ export const env = {
       `${process.env.API_URL || "http://localhost:4000"}/webhooks/noones`,
   },
 
+  /** Catalog rate sync cadence. The admin refresh interval wins; this is the fallback. */
+  rateSync: {
+    fallbackMinutes: num(process.env.RATE_SYNC_MINUTES, num(process.env.SOGO_RATE_SYNC_MINUTES, 15)),
+  },
+
+  /** Primary gift-card rate source: public JSON feed, no credentials needed. */
+  safeTheTrade: {
+    enabled: (process.env.SAFETHETRADE_ENABLED || "true") === "true",
+    apiUrl: (process.env.SAFETHETRADE_API_URL || "https://safethetrade.com/api/v1").replace(/\/$/, ""),
+  },
+
   /**
-   * Public Sogo rate table is the live gift-card rate source until a dedicated API exists.
+   * Secondary source for cards and currencies SafeTheTrade does not price.
    * Set SOGO_RATES_API_URL to switch off HTML scraping.
    */
   sogo: {
     ratesUrl: process.env.SOGO_RATES_URL || "https://sogo.africa/rates",
     apiUrl: process.env.SOGO_RATES_API_URL || "",
-    syncMinutes: num(process.env.SOGO_RATE_SYNC_MINUTES, num(process.env.NOONES_RATE_SYNC_MINUTES, 15)),
-  },
-
-  /** Public JSON feed used to fill gaps Sogo does not list. No credentials needed. */
-  safeTheTrade: {
-    enabled: (process.env.SAFETHETRADE_ENABLED || "true") === "true",
-    apiUrl: (process.env.SAFETHETRADE_API_URL || "https://safethetrade.com/api/v1").replace(/\/$/, ""),
   },
 };
 
