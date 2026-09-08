@@ -191,28 +191,30 @@ async function upsertSyncedRate(params: {
 }
 
 /**
- * Retire weaker-source rows for a card + currency once a stronger source has
- * written its own. Sources label the same currency with different country names
- * (for example EUR as "Euro" or "Germany"), so matching on currency alone is
- * what keeps a card from listing the same currency twice.
+ * Retire weaker-source rows for a card + currency + medium once a stronger
+ * source has written its own. Sources label the same currency with different
+ * country names (EUR as "Euro" or "Germany", say), so matching on currency
+ * rather than country is what keeps a card from listing the same tier twice.
  */
-async function retireWeakerRatesForCurrency(
+async function retireWeakerRates(
   cardTypeId: string,
   currency: string,
+  medium: CardMedium,
   speed: string
 ): Promise<void> {
   const weaker = weakerRateSources(speed);
   if (!weaker.length) return;
   await prisma.rate.updateMany({
-    where: { cardTypeId, currency, active: true, speed: { in: weaker } },
+    where: { cardTypeId, currency, medium, active: true, speed: { in: weaker } },
     data: { active: false },
   });
 }
 
 /**
- * Latest Sogo rate per medium for a card + currency, used as the resale-value
- * ceiling for SafeTheTrade. Retired rows count: Sogo keeps refreshing them even
- * where SafeTheTrade quotes, precisely so this reference stays current.
+ * Latest Sogo rate per medium for a card + currency: the resale value that
+ * bounds SafeTheTrade from both sides. Retired rows count — Sogo keeps
+ * refreshing them even where SafeTheTrade quotes, precisely so this reference
+ * stays current.
  */
 async function sogoReferenceRates(
   cardTypeId: string,
@@ -269,6 +271,11 @@ async function persistCurrencyMeta(
  *
  * Only touches brands already in the catalog: this order book's long tail is
  * not worth creating card types from, and Sogo defines which brands we list.
+ *
+ * Sogo's rate bounds the result on both sides. Above `MAX_PREMIUM_OVER_SOGO`
+ * the SafeTheTrade rate is capped; at or below Sogo's rate it is dropped
+ * entirely, leaving Sogo's row — with its own denomination tiers and receipt
+ * variants — quoting instead of replacing it with a worse flat rate.
  */
 async function syncPrimaryRate(
   rate: SyncedCardRate,
@@ -289,6 +296,12 @@ async function syncPrimaryRate(
   for (const medium of ["PHYSICAL", "ECODE"] as CardMedium[]) {
     const other: CardMedium = medium === "PHYSICAL" ? "ECODE" : "PHYSICAL";
     const sogoRate = reference.get(medium) ?? reference.get(other);
+
+    if (sogoRate && rate.nairaPerUnit <= sogoRate) {
+      summary.skipped++;
+      continue;
+    }
+
     const ceiling = sogoRate ? sogoRate * (1 + MAX_PREMIUM_OVER_SOGO) : Infinity;
     const nairaPerUnit = Math.min(rate.nairaPerUnit, ceiling);
     if (nairaPerUnit < rate.nairaPerUnit) capped.count++;
@@ -305,14 +318,15 @@ async function syncPrimaryRate(
       speed: STT_RATE_SPEED,
       summary,
     });
-    wrote = wrote || written;
+    if (!written) continue;
+
+    covered.add(`${dbCard.id}|${rate.currency}|${medium}`);
+    await retireWeakerRates(dbCard.id, rate.currency, medium, STT_RATE_SPEED);
+    wrote = true;
   }
   if (!wrote) return;
 
-  covered.add(`${dbCard.id}|${rate.currency}`);
   touchedCards.add(dbCard.id);
-  await retireWeakerRatesForCurrency(dbCard.id, rate.currency, STT_RATE_SPEED);
-
   await persistCurrencyMeta(dbCard.id, [
     { country: rate.country, currency: rate.currency, minDenom: rate.minDenom, maxDenom: rate.maxDenom },
   ]);
@@ -324,9 +338,9 @@ async function syncPrimaryRate(
 /**
  * Sogo rates for a card.
  *
- * Currencies SafeTheTrade already priced are still written, but retired rather
- * than quotable: they are the resale-value reference that caps SafeTheTrade, and
- * a reference nothing refreshes would drift further off every cycle.
+ * Tiers SafeTheTrade already priced are still written, but retired rather than
+ * quotable: they are the resale-value reference that bounds SafeTheTrade, and a
+ * reference nothing refreshes would drift further off every cycle.
  */
 async function syncSogoCard(
   card: SogoCardRates,
@@ -338,7 +352,8 @@ async function syncSogoCard(
   const metaRows: Array<{ country: string; currency: string; minDenom: number; maxDenom: number }> = [];
 
   for (const row of card.currencies) {
-    const activate = !covered.has(`${dbCard.id}|${row.currency}`);
+    const physicalActive = !covered.has(`${dbCard.id}|${row.currency}|PHYSICAL`);
+    const ecodeActive = !covered.has(`${dbCard.id}|${row.currency}|ECODE`);
     if (row.physical) {
       await upsertSyncedRate({
         cardTypeId: dbCard.id,
@@ -351,7 +366,7 @@ async function syncSogoCard(
         storedQuotes: row.physical.storedQuotes,
         speed: SOGO_RATE_SPEED,
         summary,
-        activate,
+        activate: physicalActive,
       });
     }
     if (row.ecode) {
@@ -366,11 +381,11 @@ async function syncSogoCard(
         storedQuotes: row.ecode.storedQuotes,
         speed: SOGO_RATE_SPEED,
         summary,
-        activate,
+        activate: ecodeActive,
       });
     }
-    // SafeTheTrade already recorded denominations for the currencies it priced.
-    if (!activate) continue;
+    // SafeTheTrade already recorded denominations for the tiers it priced.
+    if (!physicalActive && !ecodeActive) continue;
     metaRows.push({
       country: row.country,
       currency: row.currency,
@@ -448,7 +463,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     setRateSyncPhase("syncing");
   }
 
-  /** `cardTypeId|currency` pairs SafeTheTrade priced, so Sogo does not quote them. */
+  /** `cardTypeId|currency|medium` tiers SafeTheTrade priced, so Sogo does not quote them. */
   const covered = new Set<string>();
   const touchedCards = new Set<string>();
   const capped = { count: 0 };
