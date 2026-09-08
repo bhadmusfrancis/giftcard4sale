@@ -145,9 +145,15 @@ export const env = {
       `${process.env.API_URL || "http://localhost:4000"}/webhooks/noones`,
   },
 
-  /** Catalog rate sync cadence. The admin refresh interval wins; this is the fallback. */
   rateSync: {
+    /** Sync cadence. The admin refresh interval wins; this is the fallback. */
     fallbackMinutes: num(process.env.RATE_SYNC_MINUTES, num(process.env.SOGO_RATE_SYNC_MINUTES, 15)),
+    /**
+     * How far above Sogo a SafeTheTrade rate may be quoted. Sogo is the price a
+     * card actually resells at, so this bounds what a thin marketplace book can
+     * commit us to paying.
+     */
+    sttMaxPremiumPercent: num(process.env.STT_MAX_PREMIUM_PERCENT, 20),
   },
 
   /** Primary gift-card rate source: public JSON feed, no credentials needed. */

@@ -25,6 +25,15 @@ import { fetchSogoGiftCardRates, type SogoCardRates } from "./sogo/scraper";
 /** Rows a sync writes are always quotable, so they clear the display threshold. */
 const SYNCED_OFFER_COUNT = 999;
 
+/**
+ * How far a SafeTheTrade rate may sit above Sogo's for the same card.
+ *
+ * SafeTheTrade outranks Sogo, but Sogo is the price a card actually resells at,
+ * and SafeTheTrade's thin order book routinely prices well above it. Without a
+ * ceiling we would commit to payouts we cannot recover.
+ */
+const MAX_PREMIUM_OVER_SOGO = Math.max(0, env.rateSync.sttMaxPremiumPercent) / 100;
+
 const NAME_ALIASES: Record<string, string[]> = {
   "apple-itunes": ["itunes", "apple", "apple-us-only", "apple-gift-card-us-only"],
   itunes: ["apple-itunes", "apple", "apple-us-only"],
@@ -118,6 +127,8 @@ async function upsertSyncedRate(params: {
   storedQuotes: StoredQuotes;
   speed: string;
   summary: RateSyncSummary;
+  /** False keeps the row current without quoting it (see `syncSogoCard`). */
+  activate?: boolean;
 }): Promise<boolean> {
   const {
     cardTypeId,
@@ -131,6 +142,7 @@ async function upsertSyncedRate(params: {
     speed,
     summary,
   } = params;
+  const activate = params.activate !== false;
 
   if (!(nairaPerUnit > 0)) {
     summary.skipped++;
@@ -156,7 +168,7 @@ async function upsertSyncedRate(params: {
     storedQuotes: storedQuotesToJson(storedQuotes),
     countryOfferCount: SYNCED_OFFER_COUNT,
     speed,
-    active: true,
+    active: activate,
   };
 
   const existing = siblings.find((r) => r.speed === speed);
@@ -167,6 +179,8 @@ async function upsertSyncedRate(params: {
     await prisma.rate.create({ data: { cardTypeId, country, medium, ...data } });
     summary.created++;
   }
+
+  if (!activate) return true;
 
   const supersede = weakerRateSources(speed);
   const stale = siblings.filter((r) => r.speed && supersede.includes(r.speed)).map((r) => r.id);
@@ -193,6 +207,39 @@ async function retireWeakerRatesForCurrency(
     where: { cardTypeId, currency, active: true, speed: { in: weaker } },
     data: { active: false },
   });
+}
+
+/**
+ * Latest Sogo rate per medium for a card + currency, used as the resale-value
+ * ceiling for SafeTheTrade. Retired rows count: Sogo keeps refreshing them even
+ * where SafeTheTrade quotes, precisely so this reference stays current.
+ */
+async function sogoReferenceRates(
+  cardTypeId: string,
+  currency: string
+): Promise<Map<CardMedium, number>> {
+  const rows = await prisma.rate.findMany({
+    where: { cardTypeId, currency, speed: SOGO_RATE_SPEED },
+    select: { medium: true, nairaPerUnit: true },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const byMedium = new Map<CardMedium, number>();
+  for (const row of rows) {
+    const value = Number(row.nairaPerUnit);
+    if (value > 0 && !byMedium.has(row.medium)) byMedium.set(row.medium, value);
+  }
+  return byMedium;
+}
+
+/** Scale a rate and its receipt variants by the same factor. */
+function scaleQuotes(quotes: StoredQuotes, factor: number): StoredQuotes {
+  if (factor >= 1) return quotes;
+  const scaled: StoredQuotes = {};
+  if (quotes.NONE != null) scaled.NONE = quotes.NONE * factor;
+  if (quotes.CASH != null) scaled.CASH = quotes.CASH * factor;
+  if (quotes.DEBIT != null) scaled.DEBIT = quotes.DEBIT * factor;
+  return scaled;
 }
 
 async function persistCurrencyMeta(
@@ -227,6 +274,7 @@ async function syncPrimaryRate(
   rate: SyncedCardRate,
   covered: Set<string>,
   touchedCards: Set<string>,
+  capped: { count: number },
   summary: RateSyncSummary
 ): Promise<void> {
   const dbCard = await findCardByName(rate.cardName, rate.slugHint);
@@ -235,8 +283,16 @@ async function syncPrimaryRate(
     return;
   }
 
+  const reference = await sogoReferenceRates(dbCard.id, rate.currency);
+
   let wrote = false;
   for (const medium of ["PHYSICAL", "ECODE"] as CardMedium[]) {
+    const other: CardMedium = medium === "PHYSICAL" ? "ECODE" : "PHYSICAL";
+    const sogoRate = reference.get(medium) ?? reference.get(other);
+    const ceiling = sogoRate ? sogoRate * (1 + MAX_PREMIUM_OVER_SOGO) : Infinity;
+    const nairaPerUnit = Math.min(rate.nairaPerUnit, ceiling);
+    if (nairaPerUnit < rate.nairaPerUnit) capped.count++;
+
     const written = await upsertSyncedRate({
       cardTypeId: dbCard.id,
       country: rate.country,
@@ -244,8 +300,8 @@ async function syncPrimaryRate(
       medium,
       minDenom: rate.minDenom,
       maxDenom: rate.maxDenom,
-      nairaPerUnit: rate.nairaPerUnit,
-      storedQuotes: rate.storedQuotes,
+      nairaPerUnit,
+      storedQuotes: scaleQuotes(rate.storedQuotes, nairaPerUnit / rate.nairaPerUnit),
       speed: STT_RATE_SPEED,
       summary,
     });
@@ -265,7 +321,13 @@ async function syncPrimaryRate(
   else summary.drafted++;
 }
 
-/** Sogo rates for every currency SafeTheTrade did not price this run. */
+/**
+ * Sogo rates for a card.
+ *
+ * Currencies SafeTheTrade already priced are still written, but retired rather
+ * than quotable: they are the resale-value reference that caps SafeTheTrade, and
+ * a reference nothing refreshes would drift further off every cycle.
+ */
 async function syncSogoCard(
   card: SogoCardRates,
   covered: Set<string>,
@@ -276,10 +338,7 @@ async function syncSogoCard(
   const metaRows: Array<{ country: string; currency: string; minDenom: number; maxDenom: number }> = [];
 
   for (const row of card.currencies) {
-    if (covered.has(`${dbCard.id}|${row.currency}`)) {
-      summary.skipped++;
-      continue;
-    }
+    const activate = !covered.has(`${dbCard.id}|${row.currency}`);
     if (row.physical) {
       await upsertSyncedRate({
         cardTypeId: dbCard.id,
@@ -292,6 +351,7 @@ async function syncSogoCard(
         storedQuotes: row.physical.storedQuotes,
         speed: SOGO_RATE_SPEED,
         summary,
+        activate,
       });
     }
     if (row.ecode) {
@@ -306,8 +366,11 @@ async function syncSogoCard(
         storedQuotes: row.ecode.storedQuotes,
         speed: SOGO_RATE_SPEED,
         summary,
+        activate,
       });
     }
+    // SafeTheTrade already recorded denominations for the currencies it priced.
+    if (!activate) continue;
     metaRows.push({
       country: row.country,
       currency: row.currency,
@@ -385,9 +448,10 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     setRateSyncPhase("syncing");
   }
 
-  /** `cardTypeId|currency` pairs SafeTheTrade priced, so Sogo leaves them alone. */
+  /** `cardTypeId|currency` pairs SafeTheTrade priced, so Sogo does not quote them. */
   const covered = new Set<string>();
   const touchedCards = new Set<string>();
+  const capped = { count: 0 };
   let processed = 0;
 
   for (const rate of primaryRates) {
@@ -396,7 +460,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
       setRateSyncCurrentCard({ id: canonicalCardSlug(rate.cardName), name: rate.cardName }, processed);
     }
     try {
-      await syncPrimaryRate(rate, covered, touchedCards, summary);
+      await syncPrimaryRate(rate, covered, touchedCards, capped, summary);
     } catch (err) {
       summary.errors.push(`${rate.cardName} ${rate.currency}: ${(err as Error).message}`);
     }
@@ -415,6 +479,11 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
   }
 
   summary.cardTypes = touchedCards.size;
+  if (capped.count) {
+    console.log(
+      `Capped ${capped.count} SafeTheTrade rate(s) at Sogo + ${env.rateSync.sttMaxPremiumPercent}%.`
+    );
+  }
   await ensureCardSeoLandingPagesPublished();
 
   // A full run that wrote rows is what clears the public "rate may be outdated"
