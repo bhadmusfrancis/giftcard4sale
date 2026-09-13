@@ -12,6 +12,11 @@ export interface GeneratedInsight {
   sourceUrls: string[];
 }
 
+/** True when a stored post body came from the deterministic template, not the OpenAI writer. */
+export function isTemplateInsightBody(bodyHtml: string): boolean {
+  return /<small>Published /i.test(bodyHtml);
+}
+
 const MONTH_TOPICS = [
   "early-year promotions and loyalty refreshes",
   "spring product launches and seasonal campaigns",
@@ -534,7 +539,7 @@ Official research snippets (cite these with links):
 ${researchBrief}
 
 Requirements:
-- A compelling, specific title (never generic; must differ from other brands' insight titles)
+- A compelling, specific title (never generic; must differ from other brands' insight titles) that includes the brand name and a phrase shoppers actually search for
 - Cover recent news, trends, products, or events inferred from the research
 - Use fresh, brand-specific section headings — never the same heading wording used for another card
 - A section on what this means for holders, framed uniquely for this brand
@@ -598,9 +603,12 @@ Then the HTML body.`;
 
     const sourceUrls = [...bodyHtml.matchAll(/href="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
 
+    // Unique title tag per post — a single shared template gets pages flagged as duplicates.
+    const metaTitle = title.length > 45 ? title : `${title} | GiftCard4Sale`;
+
     return {
       title,
-      metaTitle: `${profile.brand} Gift Card News & Trends | GiftCard4Sale Insights`,
+      metaTitle,
       metaDesc,
       excerpt,
       bodyHtml,
@@ -621,7 +629,9 @@ export async function writeInsightArticle(opts: {
   batchDate: Date;
   /** Brands already published in the same daily batch — used to avoid repetitive phrasing. */
   siblingBrands?: string[];
-}): Promise<GeneratedInsight> {
+  /** When true, return null instead of the template fallback if OpenAI can't write. */
+  aiOnly?: boolean;
+}): Promise<GeneratedInsight | null> {
   // Position in the daily batch — also used to give each post its own RNG stream.
   const ordinal = opts.siblingBrands?.length ?? 0;
 
@@ -635,6 +645,7 @@ export async function writeInsightArticle(opts: {
     opts.siblingBrands
   );
   if (ai) return ai;
+  if (opts.aiOnly) return null;
 
   return buildFallbackInsight(
     opts.cardName,

@@ -9,7 +9,7 @@ export const insightsRouter = Router();
 insightsRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const limit = Math.min(1000, Math.max(1, Number(req.query.limit) || 20));
     const offset = Math.max(0, Number(req.query.offset) || 0);
     const batchDate = (req.query.batchDate as string | undefined)?.trim();
 
@@ -111,6 +111,7 @@ insightsRouter.get(
         batchDate: page.batchDate.toISOString().slice(0, 10),
         sourceUrls: page.sourceUrls,
         publishedAt: page.publishedAt,
+        updatedAt: page.updatedAt,
         cardType: page.cardType,
       },
       relatedSameDay: related.map((r) => ({

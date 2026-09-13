@@ -28,16 +28,21 @@ async function getRotationState() {
 }
 
 /** Pick up to 7 active catalog cards not yet featured in the current rotation cycle. */
-export async function pickDailyCards(count = DAILY_INSIGHT_COUNT): Promise<{
+export async function pickDailyCards(
+  count = DAILY_INSIGHT_COUNT,
+  excludeIds: Set<string> = new Set()
+): Promise<{
   cards: CardPick[];
   cycleNumber: number;
   cycleReset: boolean;
 }> {
-  const allActive = await prisma.cardType.findMany({
-    where: catalogCardWhere(),
-    select: { id: true, name: true, slug: true, sellSlug: true },
-    orderBy: { name: "asc" },
-  });
+  const allActive = (
+    await prisma.cardType.findMany({
+      where: catalogCardWhere(),
+      select: { id: true, name: true, slug: true, sellSlug: true },
+      orderBy: { name: "asc" },
+    })
+  ).filter((c) => !excludeIds.has(c.id));
 
   if (allActive.length === 0) {
     return { cards: [], cycleNumber: 1, cycleReset: false };

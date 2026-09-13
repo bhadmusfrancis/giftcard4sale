@@ -28,6 +28,13 @@ export const metadata: Metadata = {
   title: "Gift Card Insights & News | GiftCard4Sale",
   description:
     "Daily gift card news, trends, and market briefs researched from official websites and social channels across our active catalog.",
+  keywords: [
+    "gift card news",
+    "gift card market trends",
+    "sell gift cards",
+    "gift card rates",
+    "gift card insights",
+  ],
   alternates: { canonical: "/insights" },
   openGraph: {
     title: "Gift Card Insights & News",
@@ -41,9 +48,19 @@ function formatBatchLabel(iso: string): string {
   return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 }
 
+function monthLabel(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 export default async function InsightsPage() {
   const [list, batches] = await Promise.all([
-    apiServer<InsightListResp>("/insights?limit=28"),
+    apiServer<InsightListResp>("/insights?limit=1000"),
     apiServer<BatchesResp>("/insights/batches"),
   ]);
 
@@ -52,15 +69,37 @@ export default async function InsightsPage() {
   const featured = latestBatch ? posts.filter((p) => p.batchDate === latestBatch) : posts.slice(0, 7);
   const archive = latestBatch ? posts.filter((p) => p.batchDate !== latestBatch) : posts.slice(7);
 
-  const byBatch = new Map<string, typeof posts>();
+  // Archive grouped by month so every past edition stays linked and crawlable.
+  const byMonth = new Map<string, typeof posts>();
   for (const p of archive) {
-    const arr = byBatch.get(p.batchDate) ?? [];
+    const key = monthLabel(p.batchDate);
+    const arr = byMonth.get(key) ?? [];
     arr.push(p);
-    byBatch.set(p.batchDate, arr);
+    byMonth.set(key, arr);
   }
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "Gift Card Insights & News",
+    description:
+      "Daily gift card news, trends, and market briefs researched from official websites and social channels.",
+    url: `${SITE}/insights`,
+    mainEntity: {
+      "@type": "ItemList",
+      itemListElement: posts.slice(0, 100).map((p, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        url: `${SITE}/insights/${p.slug}`,
+        name: p.title,
+      })),
+    },
+  };
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+
       <header className="mb-10">
         <p className="text-sm font-semibold uppercase tracking-wide text-brand-600">Insights</p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
@@ -117,23 +156,26 @@ export default async function InsightsPage() {
         </section>
       )}
 
-      {byBatch.size > 0 && (
+      {byMonth.size > 0 && (
         <section>
           <h2 className="mb-6 text-xl font-bold text-slate-900">Archive</h2>
-          <div className="space-y-8">
-            {[...byBatch.entries()].map(([batchDate, batchPosts]) => (
-              <div key={batchDate}>
-                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                  {formatBatchLabel(batchDate)}
+          <div className="space-y-10">
+            {[...byMonth.entries()].map(([month, monthPosts]) => (
+              <div key={month}>
+                <h3 className="mb-3 border-b border-slate-200 pb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  {month}
                 </h3>
                 <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-                  {batchPosts.map((post) => (
+                  {monthPosts.map((post) => (
                     <li key={post.slug}>
                       <Link
                         href={`/insights/${post.slug}`}
-                        className="flex flex-col gap-1 px-4 py-4 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
+                        className="flex flex-col gap-1 px-4 py-3 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:gap-4"
                       >
-                        <span className="font-medium text-slate-900">{post.title}</span>
+                        <span className="w-16 shrink-0 text-sm text-slate-400">
+                          {dayLabel(post.batchDate)}
+                        </span>
+                        <span className="flex-1 font-medium text-slate-900">{post.title}</span>
                         <span className="text-sm text-slate-500">{post.cardType?.name}</span>
                       </Link>
                     </li>

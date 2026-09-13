@@ -2,7 +2,7 @@ import { prisma } from "../../prisma";
 import { resolveProfile } from "../../content/profiles";
 import { formatResearchBrief, researchBrand } from "./research";
 import { writeInsightArticle } from "../../content/insightWriter";
-import { pickDailyCards, DAILY_INSIGHT_COUNT } from "./rotation";
+import { pickDailyCards, DAILY_INSIGHT_COUNT, type CardPick } from "./rotation";
 
 export interface GenerateInsightsResult {
   batchDate: string;
@@ -38,21 +38,18 @@ export async function generateDailyInsights(opts: GenerateOptions = {}): Promise
   const batchDate = toDateOnly(opts.batchDate ?? new Date());
   const count = opts.count ?? DAILY_INSIGHT_COUNT;
 
-  const existing = await prisma.insightPost.count({
+  const existingPosts = await prisma.insightPost.findMany({
     where: { batchDate, published: true },
+    include: { cardType: { select: { id: true, name: true, slug: true, sellSlug: true } } },
+    orderBy: { createdAt: "asc" },
   });
 
-  if (existing >= count && !opts.force) {
-    const posts = await prisma.insightPost.findMany({
-      where: { batchDate },
-      include: { cardType: { select: { name: true, slug: true } } },
-      orderBy: { createdAt: "asc" },
-    });
+  if (existingPosts.length >= count && !opts.force) {
     return {
       batchDate: batchDate.toISOString().slice(0, 10),
       created: 0,
-      skipped: posts.length,
-      cards: posts.map((p) => ({
+      skipped: existingPosts.length,
+      cards: existingPosts.map((p) => ({
         name: p.cardType.name,
         slug: p.cardType.slug,
         insightSlug: p.slug,
@@ -62,11 +59,22 @@ export async function generateDailyInsights(opts: GenerateOptions = {}): Promise
     };
   }
 
-  if (opts.force) {
-    await prisma.insightPost.deleteMany({ where: { batchDate } });
+  // Past posts are never deleted — indexed URLs must keep working. On force the
+  // existing batch is rewritten in place (same card, same slug); new cards only
+  // ever top the batch up to `count`.
+  const coveredIds = new Set(existingPosts.map((p) => p.cardTypeId));
+  const cards: CardPick[] = opts.force ? existingPosts.map((p) => p.cardType) : [];
+  let cycleNumber = 0;
+  let cycleReset = false;
+
+  const needed = count - existingPosts.length;
+  if (needed > 0) {
+    const picked = await pickDailyCards(needed, coveredIds);
+    cards.push(...picked.cards);
+    cycleNumber = picked.cycleNumber;
+    cycleReset = picked.cycleReset;
   }
 
-  const { cards, cycleNumber, cycleReset } = await pickDailyCards(count);
   const created: GenerateInsightsResult["cards"] = [];
   let skipped = 0;
   const siblingBrands: string[] = [];
@@ -87,6 +95,10 @@ export async function generateDailyInsights(opts: GenerateOptions = {}): Promise
       siblingBrands: [...siblingBrands],
     });
     siblingBrands.push(profile.brand);
+    if (!article) {
+      skipped++;
+      continue;
+    }
 
     if (opts.dryRun) {
       created.push({ name: card.name, slug: card.slug, insightSlug: slug });

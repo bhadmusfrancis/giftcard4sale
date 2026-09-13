@@ -17,6 +17,7 @@ interface InsightResp {
     batchDate: string;
     sourceUrls: string[];
     publishedAt: string;
+    updatedAt?: string;
     cardType?: { id: string; name: string; slug: string; sellSlug: string; imageUrl?: string };
   };
   relatedSameDay: { slug: string; title: string; cardType?: { name: string; sellSlug: string } }[];
@@ -47,6 +48,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       url: `${SITE}/insights/${params.slug}`,
       type: "article",
       publishedTime: data.post.publishedAt,
+      modifiedTime: data.post.updatedAt,
     },
   };
 }
@@ -69,14 +71,29 @@ export default async function InsightArticlePage({ params }: { params: { slug: s
     headline: post.title,
     description: post.metaDesc || post.excerpt,
     datePublished: post.publishedAt,
+    dateModified: post.updatedAt || post.publishedAt,
+    articleSection: card?.name,
     author: { "@type": "Organization", name: "GiftCard4Sale" },
     publisher: { "@type": "Organization", name: "GiftCard4Sale", url: SITE },
     mainEntityOfPage: `${SITE}/insights/${post.slug}`,
   };
 
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Insights", item: `${SITE}/insights` },
+      { "@type": "ListItem", position: 2, name: post.title, item: `${SITE}/insights/${post.slug}` },
+    ],
+  };
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+      />
 
       <nav className="mb-6 text-sm text-slate-500">
         <Link href="/insights" className="hover:text-brand-700">
