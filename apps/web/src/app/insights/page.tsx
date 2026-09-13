@@ -55,7 +55,50 @@ function monthLabel(iso: string): string {
 
 function dayLabel(iso: string): string {
   const d = new Date(iso + "T12:00:00Z");
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Monday-start week key (YYYY-MM-DD of the week's Monday). */
+function weekStartKey(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+function weekLabel(weekStartIso: string): string {
+  const start = new Date(weekStartIso + "T12:00:00Z");
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const fmt = (d: Date, year: boolean) =>
+    d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      ...(year ? { year: "numeric" } : {}),
+      timeZone: "UTC",
+    });
+  return `Week of ${fmt(start, start.getUTCFullYear() !== end.getUTCFullYear())} – ${fmt(end, true)}`;
+}
+
+type InsightListPost = InsightListResp["posts"][number];
+
+function PostRow({ post }: { post: InsightListPost }) {
+  return (
+    <li>
+      <Link
+        href={`/insights/${post.slug}`}
+        className="flex flex-col gap-1 px-4 py-3 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:gap-4"
+      >
+        <span className="w-28 shrink-0 text-sm text-slate-400">{dayLabel(post.batchDate)}</span>
+        <span className="flex-1 font-medium text-slate-900">{post.title}</span>
+        <span className="text-sm text-slate-500">{post.cardType?.name}</span>
+      </Link>
+    </li>
+  );
 }
 
 export default async function InsightsPage() {
@@ -67,15 +110,22 @@ export default async function InsightsPage() {
   const posts = list?.posts ?? [];
   const latestBatch = batches?.batches?.[0]?.batchDate;
   const featured = latestBatch ? posts.filter((p) => p.batchDate === latestBatch) : posts.slice(0, 7);
-  const archive = latestBatch ? posts.filter((p) => p.batchDate !== latestBatch) : posts.slice(7);
 
-  // Archive grouped by month so every past edition stays linked and crawlable.
-  const byMonth = new Map<string, typeof posts>();
+  // Arrange every past edition by recency: this week → month → week → day.
+  const thisWeekKey = weekStartKey(new Date().toISOString().slice(0, 10));
+  const rest = posts.filter((p) => p.batchDate !== latestBatch);
+  const thisWeek = rest.filter((p) => weekStartKey(p.batchDate) === thisWeekKey);
+  const archive = rest.filter((p) => weekStartKey(p.batchDate) !== thisWeekKey);
+
+  const byMonth = new Map<string, Map<string, typeof posts>>();
   for (const p of archive) {
-    const key = monthLabel(p.batchDate);
-    const arr = byMonth.get(key) ?? [];
+    const month = monthLabel(p.batchDate);
+    const week = weekStartKey(p.batchDate);
+    if (!byMonth.has(month)) byMonth.set(month, new Map());
+    const weeks = byMonth.get(month)!;
+    const arr = weeks.get(week) ?? [];
     arr.push(p);
-    byMonth.set(key, arr);
+    weeks.set(week, arr);
   }
 
   const jsonLd = {
@@ -156,31 +206,40 @@ export default async function InsightsPage() {
         </section>
       )}
 
+      {thisWeek.length > 0 && (
+        <section className="mb-12">
+          <h2 className="mb-5 text-xl font-bold text-slate-900">Earlier this week</h2>
+          <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+            {thisWeek.map((post) => (
+              <PostRow key={post.slug} post={post} />
+            ))}
+          </ul>
+        </section>
+      )}
+
       {byMonth.size > 0 && (
         <section>
           <h2 className="mb-6 text-xl font-bold text-slate-900">Archive</h2>
           <div className="space-y-10">
-            {[...byMonth.entries()].map(([month, monthPosts]) => (
+            {[...byMonth.entries()].map(([month, weeks]) => (
               <div key={month}>
                 <h3 className="mb-3 border-b border-slate-200 pb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
                   {month}
                 </h3>
-                <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-                  {monthPosts.map((post) => (
-                    <li key={post.slug}>
-                      <Link
-                        href={`/insights/${post.slug}`}
-                        className="flex flex-col gap-1 px-4 py-3 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:gap-4"
-                      >
-                        <span className="w-16 shrink-0 text-sm text-slate-400">
-                          {dayLabel(post.batchDate)}
-                        </span>
-                        <span className="flex-1 font-medium text-slate-900">{post.title}</span>
-                        <span className="text-sm text-slate-500">{post.cardType?.name}</span>
-                      </Link>
-                    </li>
+                <div className="space-y-6">
+                  {[...weeks.entries()].map(([week, weekPosts]) => (
+                    <div key={week}>
+                      <h4 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        {weekLabel(week)}
+                      </h4>
+                      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+                        {weekPosts.map((post) => (
+                          <PostRow key={post.slug} post={post} />
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             ))}
           </div>
