@@ -7,9 +7,13 @@ import type { SyncedCardRate } from "../rateTypes";
  * SafeTheTrade gift-card rates.
  *
  * The site is a client-rendered SPA, so there is nothing to scrape from its
- * HTML. Its public JSON feed is read instead — no key or account needed. The
- * feed is filtered server-side to gift-card offers that pay crypto, which keeps
- * the download to a few tens of kilobytes per sync.
+ * HTML. Its public JSON feed is read instead — no key or account needed.
+ *
+ * Only `sell` offers are priced. On this book an offer's type is stated from
+ * its owner's side: a `sell` owner sells crypto and is paid in gift cards, so
+ * they are the counterparty that takes a card off our hands and releases
+ * crypto — the trade we actually make. `buy` offers are the mirror image
+ * (card holders shopping for crypto) and are no use as a resale price.
  */
 
 const FETCH_HEADERS = {
@@ -20,16 +24,32 @@ const FETCH_HEADERS = {
 const FETCH_TIMEOUT_MS = 15_000;
 
 /**
- * Plausible share of face value for a gift card, used to reject bait listings.
- * The top of this order book is routinely priced at 98-140% of face, which no
- * real buyer honours. The ceiling brackets the range Sogo actually publishes
- * (roughly 37-78%), so a marketplace quote can never commit us to a payout well
- * above what the card is worth.
+ * Plausible share of face value a trader will release in crypto for a card.
+ * Listings outside this band are bait or typos — nobody honours 98% of face,
+ * and 5% is not a market price. The ceiling brackets the range Sogo actually
+ * publishes (roughly 37-78%), so a marketplace quote can never commit us to a
+ * payout well above what the card is worth.
  */
 const MIN_FACE_FRACTION = 0.15;
 const MAX_FACE_FRACTION = 0.8;
 
+/**
+ * Categories rather than brands ("Any Visa, MasterCard and AmEx", "Gift Cards
+ * (Miscellaneous Retailers)", "Target/GameStop/BestBuy Offline"). They may
+ * price a card already in the catalog, but must never create one.
+ */
+const AGGREGATE_METHOD_NAME = /\b(any|misc|miscellaneous|other|various|virtual)\b|[/(]/i;
+
+/** Cards denominated in our own payout currency are not something we resell. */
+const SKIPPED_CURRENCIES = new Set(["NGN"]);
+
+/** Listings whose brand cannot be identified from the name at all. */
+const IGNORED_METHOD_IDS = new Set(["stream-gift-card-code"]);
+
 interface SttOffer {
+  id?: string;
+  ownerId?: string;
+  ownerUsername?: string;
   active?: boolean;
   deauthorized?: boolean;
   visibility?: string;
@@ -42,20 +62,30 @@ interface SttOffer {
   pricing?: { fiatCurrency?: string; spotRate?: number; pricePerUnit?: number } | null;
 }
 
+interface SttPaymentMethod {
+  id?: string;
+  name?: string;
+}
+
 function num(v: unknown): number {
   const n = typeof v === "string" ? Number(v.replace(/,/g, "")) : Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-/** "walmart-gift-card" -> "Walmart"; keeps the raw id as a slug hint for dedup. */
-function cardNameFromMethodId(methodId: string): string {
-  const cleaned = methodId
-    .replace(/-(e-)?gift-?(card|code)s?$/i, "")
-    .replace(/-cards?$/i, "")
-    .replace(/-/g, " ")
-    .trim();
-  if (!cleaned) return methodId;
-  return cleaned.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+/**
+ * "Walmart E-Gift Code" -> "Walmart". Only the gift-card wording is dropped:
+ * "Roblox Game Card" and "Costco Cash Card" are the brand names themselves.
+ */
+function cardNameFromMethod(methodId: string, apiName?: string): string {
+  const source = (apiName?.trim() || methodId.replace(/-/g, " ")).trim();
+  let name = source;
+  let previous = "";
+  while (name !== previous) {
+    previous = name;
+    name = name.replace(/\s*(e-?)?gift\s*(cards?|codes?|vouchers?)$/i, "").trim();
+  }
+  if (!name) name = source;
+  return apiName?.trim() ? name : name.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
 function median(values: number[]): number {
@@ -89,15 +119,41 @@ async function fetchBtcUsd(): Promise<number> {
 }
 
 /**
+ * Every gift-card brand the marketplace lists, by payment-method id. Brands
+ * without offers are included, so this is only used for display names.
+ */
+async function fetchGiftCardMethodNames(): Promise<Map<string, string>> {
+  try {
+    const methods = await fetchJson<SttPaymentMethod[]>(
+      `${env.safeTheTrade.apiUrl}/payment-methods?category=gift-cards`
+    );
+    if (!Array.isArray(methods)) return new Map();
+    return new Map(
+      methods
+        .filter((m) => m.id && m.name)
+        .map((m) => [String(m.id), String(m.name)] as const)
+    );
+  } catch (err) {
+    console.warn("SafeTheTrade payment methods:", (err as Error).message);
+    return new Map();
+  }
+}
+
+/**
  * Best available gift-card rates, expressed as NGN per unit of card face value.
  *
- * Offers are grouped per card + currency and reduced with a median rather than a
- * maximum: the top of this book is consistently bait priced near face value.
+ * Every brand + currency pair with a live offer is priced, which is what lets
+ * this source cover the brands Sogo does not publish at all. Offers are reduced
+ * with a median rather than a maximum: the top of this book is consistently
+ * bait priced near face value.
  */
 export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<SyncedCardRate[]> {
   if (!(ngnPerUsdt > 0)) return [];
 
-  const offers = await fetchJson<SttOffer[]>(`${env.safeTheTrade.apiUrl}/offers?category=gift-cards&type=buy`);
+  const [offers, methodNames] = await Promise.all([
+    fetchJson<SttOffer[]>(`${env.safeTheTrade.apiUrl}/offers?category=gift-cards`),
+    fetchGiftCardMethodNames(),
+  ]);
   if (!Array.isArray(offers)) throw new Error("SafeTheTrade returned an unexpected offers payload");
 
   const needsBtc = offers.some((o) => /^(BTC|XBT)$/i.test(String(o.currency ?? "")));
@@ -107,10 +163,13 @@ export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<Synced
     usdtPerFiatUnit: number;
     minFiat: number;
     maxFiat: number;
+    owner: string;
   }
   const grouped = new Map<string, { methodId: string; currency: string; samples: Sample[] }>();
+  let anonymousOwner = 0;
 
   for (const offer of offers) {
+    if (offer.type !== "sell") continue;
     if (offer.active === false || offer.deauthorized || offer.visibility !== "public") continue;
 
     const methodId = String(offer.paymentMethodId ?? "").trim();
@@ -118,6 +177,7 @@ export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<Synced
     const pricePerUnit = num(offer.pricing?.pricePerUnit);
     const spotRate = num(offer.pricing?.spotRate);
     if (!methodId || !currency || !(pricePerUnit > 0) || !(spotRate > 0)) continue;
+    if (SKIPPED_CURRENCIES.has(currency) || IGNORED_METHOD_IDS.has(methodId)) continue;
 
     // Share of face value the card seller receives. Currency-independent
     // because both figures are quoted in the card's own fiat currency.
@@ -137,6 +197,12 @@ export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<Synced
       usdtPerFiatUnit,
       minFiat: Math.max(1, Math.round(num(offer.minFiat))),
       maxFiat: Math.max(1, Math.round(num(offer.maxFiat))),
+      // Several listings from one trader are still one opinion, so the owner
+      // is counted, not the listing. An owner the feed does not identify is
+      // treated as distinct — undercounting would hide a single-seller book.
+      owner:
+        String(offer.ownerId ?? offer.ownerUsername ?? offer.id ?? "").trim() ||
+        `anonymous-${++anonymousOwner}`,
     });
     grouped.set(key, entry);
   }
@@ -150,9 +216,10 @@ export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<Synced
     const tier = currencyTierFromCode(currency);
     const minDenom = Math.max(1, Math.min(...samples.map((s) => s.minFiat)) || tier.minDenom || 1);
     const maxDenom = Math.max(minDenom, Math.max(...samples.map((s) => s.maxFiat)) || tier.maxDenom || minDenom);
+    const cardName = cardNameFromMethod(methodId, methodNames.get(methodId));
 
     rows.push({
-      cardName: cardNameFromMethodId(methodId),
+      cardName,
       slugHint: canonicalCardSlug(methodId),
       currency,
       country: tier.country,
@@ -160,6 +227,9 @@ export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<Synced
       maxDenom,
       nairaPerUnit,
       storedQuotes: { NONE: nairaPerUnit, CASH: nairaPerUnit, DEBIT: nairaPerUnit },
+      offerCount: samples.length,
+      ownerCount: new Set(samples.map((s) => s.owner)).size,
+      catalogCandidate: !AGGREGATE_METHOD_NAME.test(cardName),
     });
   }
 

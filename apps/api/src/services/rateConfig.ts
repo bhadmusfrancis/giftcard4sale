@@ -35,6 +35,7 @@ export async function getRateConfig(): Promise<{
   autoSuspendDurationDays: number;
   minWithdrawals: Record<WithdrawalCurrency, number>;
   noonesAutoResellEnabled: boolean;
+  sttMinOfferOwners: number;
 }> {
   let cfg = await prisma.rateConfig.findFirst({ orderBy: { updatedAt: "desc" } });
   if (!cfg) {
@@ -57,6 +58,7 @@ export async function getRateConfig(): Promise<{
         minWithdrawalGhs: DEFAULT_MIN_WITHDRAWAL_GHS,
         minWithdrawalUsdt: DEFAULT_MIN_WITHDRAWAL_USDT,
         noonesAutoResellEnabled: true,
+        sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
       },
     });
   }
@@ -84,6 +86,7 @@ export async function getRateConfig(): Promise<{
       USDT: Number(cfg.minWithdrawalUsdt),
     },
     noonesAutoResellEnabled: cfg.noonesAutoResellEnabled,
+    sttMinOfferOwners: cfg.sttMinOfferOwners,
   };
 }
 

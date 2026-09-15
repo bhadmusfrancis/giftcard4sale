@@ -108,6 +108,7 @@ async function main() {
         ghsReductionPercent: env.reductions.ghsReductionPercent,
         referralPercent: env.referralPercent,
         minCountryOffersForDisplay: 5,
+        sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
       },
     });
     console.log("Created rate config");

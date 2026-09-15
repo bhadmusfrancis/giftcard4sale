@@ -53,6 +53,7 @@ function ConfigSection() {
           minWithdrawalGhs: Number(config.minWithdrawals?.GHS ?? 50),
           minWithdrawalUsdt: Number(config.minWithdrawals?.USDT ?? 5),
           noonesAutoResellEnabled: config.noonesAutoResellEnabled !== false,
+          sttMinOfferOwners: Number(config.sttMinOfferOwners ?? 3),
         },
       });
       if (d.config) setConfig(d.config);
@@ -81,6 +82,11 @@ function ConfigSection() {
           label="Rate refresh interval (hours)"
           value={config.noonesRateRefreshHours ?? 1}
           onChange={(v) => setConfig({ ...config, noonesRateRefreshHours: v })}
+        />
+        <Field
+          label="Min SafeTheTrade sellers per rate"
+          value={config.sttMinOfferOwners ?? 3}
+          onChange={(v) => setConfig({ ...config, sttMinOfferOwners: v })}
         />
         <div className="sm:col-span-3">
           <label className="flex items-start gap-3 text-sm">
@@ -154,7 +160,8 @@ function ConfigSection() {
       </div>
       <p className="mt-2 text-xs text-slate-500">
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
-        Minimum withdrawal amounts apply to user wallet send/withdraw requests.
+        A SafeTheTrade rate is quoted on its own only when at least this many distinct sellers back it. Minimum
+        withdrawal amounts apply to user wallet send/withdraw requests.
       </p>
       <div className="mt-4 space-y-3">
         {saving && !status ? (

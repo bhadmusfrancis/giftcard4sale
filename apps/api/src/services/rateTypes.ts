@@ -11,6 +11,22 @@ export interface SyncedCardRate {
   maxDenom: number;
   nairaPerUnit: number;
   storedQuotes: StoredQuotes;
+  /**
+   * Listings the rate was derived from. Sources that publish one rate per card
+   * leave this undefined; marketplaces set it so thin tiers can be held back.
+   */
+  offerCount?: number;
+  /**
+   * Distinct traders behind `offerCount`. Several listings from one seller are
+   * one opinion, so the publish threshold counts owners, not listings.
+   */
+  ownerCount?: number;
+  /**
+   * Whether the brand is specific enough to add to the catalog. Marketplaces
+   * also list aggregate categories ("Any Visa, MasterCard and AmEx") that must
+   * never become card types.
+   */
+  catalogCandidate?: boolean;
 }
 
 /** Counters reported by a sync run (admin panel, CLI output, progress polling). */

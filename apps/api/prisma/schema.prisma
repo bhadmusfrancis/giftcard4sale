@@ -216,6 +216,7 @@ model RateConfig {
   minWithdrawalGhs          Decimal @default(50) @db.Decimal(20, 2)
   minWithdrawalUsdt         Decimal @default(5) @db.Decimal(20, 6)
   noonesAutoResellEnabled   Boolean @default(true)
+  sttMinOfferOwners         Int      @default(3)
   updatedAt             DateTime @updatedAt
   createdAt             DateTime @default(now())
 }

@@ -154,6 +154,12 @@ export const env = {
      * commit us to paying.
      */
     sttMaxPremiumPercent: num(process.env.STT_MAX_PREMIUM_PERCENT, 20),
+    /**
+     * Distinct sellers a SafeTheTrade tier needs before it is quoted with no
+     * Sogo rate to bound it — the same bar a brand must clear to enter the
+     * catalog. Seeds the admin setting; the dashboard value wins at runtime.
+     */
+    sttMinOfferOwners: num(process.env.STT_MIN_OFFER_OWNERS, 3),
   },
 
   /** Primary gift-card rate source: public JSON feed, no credentials needed. */

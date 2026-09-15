@@ -921,6 +921,7 @@ adminRouter.put(
         minWithdrawalGhs: z.number().positive(),
         minWithdrawalUsdt: z.number().positive(),
         noonesAutoResellEnabled: z.boolean(),
+        sttMinOfferOwners: z.number().int().min(1).max(100),
       }),
       req.body
     );
@@ -941,6 +942,7 @@ adminRouter.put(
         minWithdrawalGhs: new Prisma.Decimal(data.minWithdrawalGhs),
         minWithdrawalUsdt: new Prisma.Decimal(data.minWithdrawalUsdt),
         noonesAutoResellEnabled: data.noonesAutoResellEnabled,
+        sttMinOfferOwners: data.sttMinOfferOwners,
       },
     });
     const config = await getRateConfig();

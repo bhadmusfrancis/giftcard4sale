@@ -34,6 +34,13 @@ const SYNCED_OFFER_COUNT = 999;
  */
 const MAX_PREMIUM_OVER_SOGO = Math.max(0, env.rateSync.sttMaxPremiumPercent) / 100;
 
+/**
+ * Sellers a marketplace tier needs before it is quoted without a Sogo rate to
+ * bound it, and before a brand missing from the catalog is added from it. The
+ * admin-set threshold wins; the env value is only the pre-config fallback.
+ */
+const FALLBACK_MIN_OFFER_OWNERS = Math.max(1, env.rateSync.sttMinOfferOwners);
+
 const NAME_ALIASES: Record<string, string[]> = {
   "apple-itunes": ["itunes", "apple", "apple-us-only", "apple-gift-card-us-only"],
   itunes: ["apple-itunes", "apple", "apple-us-only"],
@@ -47,7 +54,17 @@ const NAME_ALIASES: Record<string, string[]> = {
   playstation: ["playstation-network", "psn"],
   "google-play": ["google"],
   footlocker: ["foot-locker"],
+  "footlocker-sports": ["foot-locker", "footlocker"],
   macys: ["macy-s", "macys"],
+  delta: ["delta-air-lines", "delta-air-line"],
+  "delta-air-lines": ["delta", "delta-air-line"],
+  "nintendo-e-shop": ["nintendo-eshop", "nintendo-eshop-card"],
+  "nintendo-eshop": ["nintendo-e-shop", "nintendo-eshop-card"],
+  curry: ["currys", "currys-pc-world"],
+  currys: ["curry", "currys-pc-world"],
+  "currys-pc-world": ["curry", "currys"],
+  kohls: ["kohls-store"],
+  "kohls-store": ["kohls"],
   vanilla: ["vanilla-visa"],
   visa: ["visa-gift-card"],
   "american-express": ["amex"],
@@ -210,28 +227,34 @@ async function retireWeakerRates(
   });
 }
 
+/** Latest Sogo rate per medium, keyed by `cardTypeId|currency`. */
+type SogoReference = Map<string, Map<CardMedium, number>>;
+
 /**
- * Latest Sogo rate per medium for a card + currency: the resale value that
- * bounds SafeTheTrade from both sides. Retired rows count — Sogo keeps
- * refreshing them even where SafeTheTrade quotes, precisely so this reference
- * stays current.
+ * Sogo's rates for the whole catalog: the resale values that bound SafeTheTrade
+ * from both sides. Retired rows count — Sogo keeps refreshing them even where
+ * SafeTheTrade quotes, precisely so this reference stays current.
+ *
+ * Loaded once per run because SafeTheTrade now prices hundreds of tiers, and a
+ * lookup per tier was the bulk of a sync's database round trips.
  */
-async function sogoReferenceRates(
-  cardTypeId: string,
-  currency: string
-): Promise<Map<CardMedium, number>> {
+async function loadSogoReference(): Promise<SogoReference> {
   const rows = await prisma.rate.findMany({
-    where: { cardTypeId, currency, speed: SOGO_RATE_SPEED },
-    select: { medium: true, nairaPerUnit: true },
+    where: { speed: SOGO_RATE_SPEED },
+    select: { cardTypeId: true, currency: true, medium: true, nairaPerUnit: true },
     orderBy: { updatedAt: "desc" },
   });
 
-  const byMedium = new Map<CardMedium, number>();
+  const reference: SogoReference = new Map();
   for (const row of rows) {
     const value = Number(row.nairaPerUnit);
-    if (value > 0 && !byMedium.has(row.medium)) byMedium.set(row.medium, value);
+    if (!(value > 0)) continue;
+    const key = `${row.cardTypeId}|${row.currency}`;
+    const byMedium = reference.get(key) ?? new Map<CardMedium, number>();
+    if (!byMedium.has(row.medium)) byMedium.set(row.medium, value);
+    reference.set(key, byMedium);
   }
-  return byMedium;
+  return reference;
 }
 
 /** Scale a rate and its receipt variants by the same factor. */
@@ -266,36 +289,63 @@ async function persistCurrencyMeta(
   }
 }
 
+/** Enough independent sellers to trust a marketplace median on its own. */
+function hasEnoughOffers(rate: SyncedCardRate, minOfferOwners: number): boolean {
+  return (rate.ownerCount ?? rate.offerCount ?? Infinity) >= minOfferOwners;
+}
+
+/**
+ * Add a card type for a brand no other source lists.
+ *
+ * Covering brands Sogo never publishes is the point of the marketplace feed,
+ * but such a brand arrives with no resale rate to bound it, so only specific,
+ * well-listed brands qualify.
+ */
+async function createBrandFromMarketplace(rate: SyncedCardRate, minOfferOwners: number) {
+  if (!rate.catalogCandidate || !hasEnoughOffers(rate, minOfferOwners)) return null;
+  return ensureCardType(rate.cardName, rate.slugHint);
+}
+
 /**
  * SafeTheTrade rate for one card + currency.
  *
- * Only touches brands already in the catalog: this order book's long tail is
- * not worth creating card types from, and Sogo defines which brands we list.
+ * Where Sogo publishes the same card, its rate bounds the result on both
+ * sides: above `MAX_PREMIUM_OVER_SOGO` the SafeTheTrade rate is capped, and at
+ * or below Sogo's rate it is dropped entirely, leaving Sogo's row — with its
+ * own denomination tiers and receipt variants — quoting instead of replacing it
+ * with a worse flat rate.
  *
- * Sogo's rate bounds the result on both sides. Above `MAX_PREMIUM_OVER_SOGO`
- * the SafeTheTrade rate is capped; at or below Sogo's rate it is dropped
- * entirely, leaving Sogo's row — with its own denomination tiers and receipt
- * variants — quoting instead of replacing it with a worse flat rate.
+ * Brands and currencies Sogo does not publish have no such reference, so they
+ * are quoted only once enough listings agree on the price.
  */
 async function syncPrimaryRate(
   rate: SyncedCardRate,
+  sogoReference: SogoReference,
   covered: Set<string>,
   touchedCards: Set<string>,
   capped: { count: number },
-  summary: RateSyncSummary
+  summary: RateSyncSummary,
+  minOfferOwners: number
 ): Promise<void> {
-  const dbCard = await findCardByName(rate.cardName, rate.slugHint);
+  const dbCard =
+    (await findCardByName(rate.cardName, rate.slugHint)) ??
+    (await createBrandFromMarketplace(rate, minOfferOwners));
   if (!dbCard) {
     summary.skipped++;
     return;
   }
 
-  const reference = await sogoReferenceRates(dbCard.id, rate.currency);
+  const reference = sogoReference.get(`${dbCard.id}|${rate.currency}`) ?? new Map<CardMedium, number>();
 
   let wrote = false;
   for (const medium of ["PHYSICAL", "ECODE"] as CardMedium[]) {
     const other: CardMedium = medium === "PHYSICAL" ? "ECODE" : "PHYSICAL";
     const sogoRate = reference.get(medium) ?? reference.get(other);
+
+    if (!sogoRate && !hasEnoughOffers(rate, minOfferOwners)) {
+      summary.skipped++;
+      continue;
+    }
 
     if (sogoRate && rate.nairaPerUnit <= sogoRate) {
       summary.skipped++;
@@ -330,9 +380,6 @@ async function syncPrimaryRate(
   await persistCurrencyMeta(dbCard.id, [
     { country: rate.country, currency: rate.currency, minDenom: rate.minDenom, maxDenom: rate.maxDenom },
   ]);
-  const visible = await refreshCardCatalogVisibility(dbCard.id);
-  if (visible) summary.published++;
-  else summary.drafted++;
 }
 
 /**
@@ -396,10 +443,18 @@ async function syncSogoCard(
 
   touchedCards.add(dbCard.id);
   await persistCurrencyMeta(dbCard.id, metaRows);
+}
 
-  const visible = await refreshCardCatalogVisibility(dbCard.id);
-  if (visible) summary.published++;
-  else summary.drafted++;
+/**
+ * Publish or draft each card a run touched, once its rows are all written.
+ * Both sources write several tiers per card, so this cannot run per rate row.
+ */
+async function refreshTouchedCards(touchedCards: Set<string>, summary: RateSyncSummary): Promise<void> {
+  for (const cardTypeId of touchedCards) {
+    const visible = await refreshCardCatalogVisibility(cardTypeId);
+    if (visible) summary.published++;
+    else summary.drafted++;
+  }
 }
 
 export interface CatalogRateSyncOptions {
@@ -421,9 +476,11 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
   if (!options?.cardTypeId) await recordRateSyncAttempt();
 
   let primaryRates: SyncedCardRate[] = [];
+  let minOfferOwners = FALLBACK_MIN_OFFER_OWNERS;
   if (env.safeTheTrade.enabled) {
     try {
       const config = await getRateConfig();
+      minOfferOwners = Math.max(1, config.sttMinOfferOwners);
       primaryRates = await fetchSafeTheTradeRates(config.rates.ngnPerUsdt);
     } catch (err) {
       summary.errors.push(`SafeTheTrade: ${(err as Error).message}`);
@@ -467,6 +524,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
   const covered = new Set<string>();
   const touchedCards = new Set<string>();
   const capped = { count: 0 };
+  const sogoReference = primaryRates.length ? await loadSogoReference() : new Map();
   let processed = 0;
 
   for (const rate of primaryRates) {
@@ -475,7 +533,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
       setRateSyncCurrentCard({ id: canonicalCardSlug(rate.cardName), name: rate.cardName }, processed);
     }
     try {
-      await syncPrimaryRate(rate, covered, touchedCards, capped, summary);
+      await syncPrimaryRate(rate, sogoReference, covered, touchedCards, capped, summary, minOfferOwners);
     } catch (err) {
       summary.errors.push(`${rate.cardName} ${rate.currency}: ${(err as Error).message}`);
     }
@@ -492,6 +550,8 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     }
     if (isRateSyncActive()) mergeRateSyncSummary(summary);
   }
+
+  await refreshTouchedCards(touchedCards, summary);
 
   summary.cardTypes = touchedCards.size;
   if (capped.count) {
