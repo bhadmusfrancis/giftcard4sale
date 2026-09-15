@@ -230,32 +230,18 @@ async function retireWeakerRates(
 /**
  * Retire the SafeTheTrade row for a tier the live book no longer backs, so a
  * rate an earlier, thicker book wrote cannot keep quoting after the offers
- * behind it thinned out or sank to/below Sogo's resale rate.
- *
- * `fallbackToSogo` hands the tier back to Sogo's row — it kept refreshing as a
- * retired reference precisely so it can quote again here. Only the newest row
- * is reactivated: sources label one currency with several country names.
+ * behind it thinned below the seller threshold. A tier absent from the feed
+ * entirely keeps its last known rate.
  */
 async function retireStalePrimaryRate(
   cardTypeId: string,
   currency: string,
-  medium: CardMedium,
-  fallbackToSogo: boolean
+  medium: CardMedium
 ): Promise<boolean> {
   const retired = await prisma.rate.updateMany({
     where: { cardTypeId, currency, medium, speed: STT_RATE_SPEED, active: true },
     data: { active: false },
   });
-  if (fallbackToSogo) {
-    const sogoRow = await prisma.rate.findFirst({
-      where: { cardTypeId, currency, medium, speed: SOGO_RATE_SPEED, active: false },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true },
-    });
-    if (sogoRow) {
-      await prisma.rate.update({ where: { id: sogoRow.id }, data: { active: true } });
-    }
-  }
   return retired.count > 0;
 }
 
@@ -341,14 +327,14 @@ async function createBrandFromMarketplace(rate: SyncedCardRate, minOfferOwners: 
 /**
  * SafeTheTrade rate for one card + currency.
  *
- * Where Sogo publishes the same card, its rate bounds the result on both
- * sides: above `MAX_PREMIUM_OVER_SOGO` the SafeTheTrade rate is capped, and at
- * or below Sogo's rate it is dropped entirely, leaving Sogo's row — with its
- * own denomination tiers and receipt variants — quoting instead of replacing it
- * with a worse flat rate.
+ * SafeTheTrade wins wherever it lists the card: its median quotes even at or
+ * below Sogo's rate. Sogo's rate only bounds the upside — above
+ * `MAX_PREMIUM_OVER_SOGO` the SafeTheTrade rate is capped — and fills the
+ * cards and currencies SafeTheTrade does not price.
  *
- * Brands and currencies Sogo does not publish have no such reference, so they
- * are quoted only once enough listings agree on the price.
+ * Tiers without that Sogo reference are quoted only once enough distinct
+ * sellers agree on the price; a book that thins below the threshold has its
+ * stored row retired rather than left quoting.
  */
 async function syncPrimaryRate(
   rate: SyncedCardRate,
@@ -376,13 +362,7 @@ async function syncPrimaryRate(
     const sogoRate = reference.get(medium) ?? reference.get(other);
 
     if (!sogoRate && !hasEnoughOffers(rate, minOfferOwners)) {
-      retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium, false)) || retired;
-      summary.skipped++;
-      continue;
-    }
-
-    if (sogoRate && rate.nairaPerUnit <= sogoRate) {
-      retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium, true)) || retired;
+      retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium)) || retired;
       summary.skipped++;
       continue;
     }
