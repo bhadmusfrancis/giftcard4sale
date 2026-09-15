@@ -227,6 +227,38 @@ async function retireWeakerRates(
   });
 }
 
+/**
+ * Retire the SafeTheTrade row for a tier the live book no longer backs, so a
+ * rate an earlier, thicker book wrote cannot keep quoting after the offers
+ * behind it thinned out or sank to/below Sogo's resale rate.
+ *
+ * `fallbackToSogo` hands the tier back to Sogo's row — it kept refreshing as a
+ * retired reference precisely so it can quote again here. Only the newest row
+ * is reactivated: sources label one currency with several country names.
+ */
+async function retireStalePrimaryRate(
+  cardTypeId: string,
+  currency: string,
+  medium: CardMedium,
+  fallbackToSogo: boolean
+): Promise<boolean> {
+  const retired = await prisma.rate.updateMany({
+    where: { cardTypeId, currency, medium, speed: STT_RATE_SPEED, active: true },
+    data: { active: false },
+  });
+  if (fallbackToSogo) {
+    const sogoRow = await prisma.rate.findFirst({
+      where: { cardTypeId, currency, medium, speed: SOGO_RATE_SPEED, active: false },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true },
+    });
+    if (sogoRow) {
+      await prisma.rate.update({ where: { id: sogoRow.id }, data: { active: true } });
+    }
+  }
+  return retired.count > 0;
+}
+
 /** Latest Sogo rate per medium, keyed by `cardTypeId|currency`. */
 type SogoReference = Map<string, Map<CardMedium, number>>;
 
@@ -338,16 +370,19 @@ async function syncPrimaryRate(
   const reference = sogoReference.get(`${dbCard.id}|${rate.currency}`) ?? new Map<CardMedium, number>();
 
   let wrote = false;
+  let retired = false;
   for (const medium of ["PHYSICAL", "ECODE"] as CardMedium[]) {
     const other: CardMedium = medium === "PHYSICAL" ? "ECODE" : "PHYSICAL";
     const sogoRate = reference.get(medium) ?? reference.get(other);
 
     if (!sogoRate && !hasEnoughOffers(rate, minOfferOwners)) {
+      retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium, false)) || retired;
       summary.skipped++;
       continue;
     }
 
     if (sogoRate && rate.nairaPerUnit <= sogoRate) {
+      retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium, true)) || retired;
       summary.skipped++;
       continue;
     }
@@ -374,7 +409,10 @@ async function syncPrimaryRate(
     await retireWeakerRates(dbCard.id, rate.currency, medium, STT_RATE_SPEED);
     wrote = true;
   }
-  if (!wrote) return;
+  if (!wrote) {
+    if (retired) touchedCards.add(dbCard.id);
+    return;
+  }
 
   touchedCards.add(dbCard.id);
   await persistCurrencyMeta(dbCard.id, [
