@@ -947,6 +947,13 @@ adminRouter.put(
       }),
       req.body
     );
+
+    // The global auto-resell toggle overrides every per-card setting — a
+    // change cascades to all cards; individual cards are adjusted after.
+    const prevConfig = await getRateConfig();
+    const autoResellOverrideApplied =
+      data.noonesAutoResellEnabled !== prevConfig.noonesAutoResellEnabled;
+
     await prisma.rateConfig.create({
       data: {
         ngnPerUsdt: new Prisma.Decimal(data.ngnPerUsdt),
@@ -967,8 +974,13 @@ adminRouter.put(
         sttMinOfferOwners: data.sttMinOfferOwners,
       },
     });
+    if (autoResellOverrideApplied) {
+      await prisma.cardType.updateMany({
+        data: { noonesAutoResellEnabled: data.noonesAutoResellEnabled },
+      });
+    }
     const config = await getRateConfig();
-    res.json({ config });
+    res.json({ config, autoResellOverrideApplied });
   })
 );
 

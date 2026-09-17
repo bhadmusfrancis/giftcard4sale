@@ -15,7 +15,7 @@ export default function AdminRatesPage() {
       <div className="space-y-8">
         <h2 className="text-2xl font-bold">Rates &amp; cards</h2>
         <RateSyncPanel onSyncFinished={() => setCardsKey((k) => k + 1)} />
-        <ConfigSection />
+        <ConfigSection onAutoResellOverride={() => setCardsKey((k) => k + 1)} />
         <ImportSection />
         <CardsSection key={cardsKey} />
       </div>
@@ -23,7 +23,7 @@ export default function AdminRatesPage() {
   );
 }
 
-function ConfigSection() {
+function ConfigSection({ onAutoResellOverride }: { onAutoResellOverride?: () => void }) {
   const [config, setConfig] = useState<any>(null);
   const { busy: saving, status, run, statusRef } = useAsyncAction();
 
@@ -57,6 +57,7 @@ function ConfigSection() {
         },
       });
       if (d.config) setConfig(d.config);
+      if (d.autoResellOverrideApplied) onAutoResellOverride?.();
       return d;
     }, () => "Config saved successfully.");
   }
@@ -101,8 +102,9 @@ function ConfigSection() {
               <span className="mt-1 block text-slate-500">
                 When enabled, new trades are automatically opened on SafeTheTrade (greeting, receipt upload when
                 required, then card/code delivery only after the partner asks for it). When disabled, trades stay
-                pending for manual admin review; you can still start the resale from a trade detail page. Use the
-                per-card &quot;Auto-trade&quot; checkboxes below to choose which gift cards participate.
+                pending for manual admin review; you can still start the resale from a trade detail page. Changing
+                this toggle resets every card&apos;s &quot;Auto-trade&quot; checkbox to match — adjust individual cards
+                afterwards to choose which gift cards participate.
               </span>
             </span>
           </label>
