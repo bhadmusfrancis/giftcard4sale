@@ -57,7 +57,7 @@ export async function getRateConfig(): Promise<{
         minWithdrawalNgn: DEFAULT_MIN_WITHDRAWAL_NGN,
         minWithdrawalGhs: DEFAULT_MIN_WITHDRAWAL_GHS,
         minWithdrawalUsdt: DEFAULT_MIN_WITHDRAWAL_USDT,
-        noonesAutoResellEnabled: true,
+        noonesAutoResellEnabled: false,
         sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
       },
     });
