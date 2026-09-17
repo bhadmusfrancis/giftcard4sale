@@ -44,6 +44,22 @@ const CURRENCY_TIER_META: Record<
   NOK: { country: "Norway", sampleAmount: 500, minDenom: 100, maxDenom: 10000 },
   SEK: { country: "Sweden", sampleAmount: 500, minDenom: 100, maxDenom: 10000 },
   TRY: { country: "Turkey", sampleAmount: 100, minDenom: 50, maxDenom: 5000 },
+  CZK: { country: "Czechia", sampleAmount: 1000 },
+  HUF: { country: "Hungary", sampleAmount: 10000 },
+  ZAR: { country: "South Africa", sampleAmount: 500 },
+  ILS: { country: "Israel", sampleAmount: 200 },
+  COP: { country: "Colombia", sampleAmount: 100000 },
+  CLP: { country: "Chile", sampleAmount: 20000 },
+  TWD: { country: "Taiwan", sampleAmount: 1000 },
+  KES: { country: "Kenya", sampleAmount: 5000 },
+  QAR: { country: "Qatar", sampleAmount: 200 },
+  EGP: { country: "Egypt", sampleAmount: 1000 },
+  ARS: { country: "Argentina", sampleAmount: 20000 },
+  GHS: { country: "Ghana", sampleAmount: 200 },
+  BDT: { country: "Bangladesh", sampleAmount: 2000 },
+  RON: { country: "Romania", sampleAmount: 200 },
+  VND: { country: "Vietnam", sampleAmount: 500000 },
+  IDR: { country: "Indonesia", sampleAmount: 500000 },
 };
 
 /** Build a sync tier for a fiat currency discovered on NoOnes offers. */
