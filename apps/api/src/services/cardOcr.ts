@@ -49,6 +49,12 @@ export async function ocrGiftCardImage(buffer: Buffer): Promise<OcrResult> {
   });
 }
 
+/** Plain OCR text from a chat screenshot or similar image. */
+export async function ocrImageText(buffer: Buffer): Promise<string> {
+  const result = await ocrGiftCardImage(buffer);
+  return result.ocrText;
+}
+
 function enqueueOcr<T>(fn: () => Promise<T>): Promise<T> {
   const run = workerQueue.then(fn, fn);
   workerQueue = run.then(

@@ -113,6 +113,38 @@ export async function noonesPost<T>(
   return json.data as T;
 }
 
+/** Download a trade-chat image. Returns PNG/JPEG bytes (not JSON). */
+export async function noonesFetchImage(imageHash: string, size: 2 | 3 = 2): Promise<Buffer> {
+  const token = await getAccessToken();
+  const body = new URLSearchParams({ image_hash: imageHash, size: String(size) });
+  const url = `${env.noones.apiBase}/trade-chat/image`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "*/*",
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (!res.ok) {
+    throw new NoOnesApiError(`Image fetch failed (${res.status}): ${buf.toString("utf8").slice(0, 200)}`);
+  }
+  if (buf.length >= 1 && buf[0] === 0x7b) {
+    try {
+      const json = JSON.parse(buf.toString("utf8")) as NoOnesApiResponse<unknown>;
+      if (json.status === "error" || json.error) {
+        throw new NoOnesApiError(json.error?.message || "NoOnes image error", json.error?.code);
+      }
+    } catch (err) {
+      if (err instanceof NoOnesApiError) throw err;
+    }
+    throw new NoOnesApiError(`Unexpected JSON from trade-chat/image: ${buf.toString("utf8").slice(0, 200)}`);
+  }
+  return buf;
+}
+
 /** Multipart upload (trade-chat/image/upload). */
 export async function noonesUpload(
   endpoint: string,
