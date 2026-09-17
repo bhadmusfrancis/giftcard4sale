@@ -97,12 +97,12 @@ function ConfigSection() {
               onChange={(e) => setConfig({ ...config, noonesAutoResellEnabled: e.target.checked })}
             />
             <span>
-              <span className="font-medium text-slate-800">Background auto-resell on NoOnes</span>
+              <span className="font-medium text-slate-800">Background auto-resell on SafeTheTrade</span>
               <span className="mt-1 block text-slate-500">
-                When enabled, new trades are automatically opened on NoOnes (greeting, receipt upload when required,
-                then card/code delivery only after the partner asks for it). When disabled, trades stay pending for
-                manual admin review; you can still start NoOnes from a trade detail page. Use the per-card
-                &quot;Auto-trade&quot; checkboxes below to choose which gift cards participate.
+                When enabled, new trades are automatically opened on SafeTheTrade (greeting, receipt upload when
+                required, then card/code delivery only after the partner asks for it). When disabled, trades stay
+                pending for manual admin review; you can still start the resale from a trade detail page. Use the
+                per-card &quot;Auto-trade&quot; checkboxes below to choose which gift cards participate.
               </span>
             </span>
           </label>
@@ -349,7 +349,7 @@ function CardsSection() {
                 <span className="ml-2 text-sm text-slate-500">{c.rateCount} rates {expanded === c.id ? "▲" : "▼"}</span>
               </button>
               <div className="flex shrink-0 items-center gap-1">
-                <label className="flex items-center gap-1.5 px-2 text-xs text-slate-600" title="Auto-open new trades on NoOnes">
+                <label className="flex items-center gap-1.5 px-2 text-xs text-slate-600" title="Auto-open new trades on SafeTheTrade">
                   <input
                     type="checkbox"
                     checked={c.noonesAutoResellEnabled !== false}

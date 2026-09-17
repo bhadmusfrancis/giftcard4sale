@@ -332,9 +332,10 @@ async function createBrandFromMarketplace(rate: SyncedCardRate, minOfferOwners: 
  * `MAX_PREMIUM_OVER_SOGO` the SafeTheTrade rate is capped — and fills the
  * cards and currencies SafeTheTrade does not price.
  *
- * Tiers without that Sogo reference are quoted only once enough distinct
- * sellers agree on the price; a book that thins below the threshold has its
- * stored row retired rather than left quoting.
+ * A tier is quoted only once enough distinct sellers agree on the price —
+ * with or without a Sogo reference. A book that thins below the threshold
+ * has its stored row retired rather than left quoting; where Sogo lists the
+ * same tier its row becomes the active rate instead.
  */
 async function syncPrimaryRate(
   rate: SyncedCardRate,
@@ -361,7 +362,7 @@ async function syncPrimaryRate(
     const other: CardMedium = medium === "PHYSICAL" ? "ECODE" : "PHYSICAL";
     const sogoRate = reference.get(medium) ?? reference.get(other);
 
-    if (!sogoRate && !hasEnoughOffers(rate, minOfferOwners)) {
+    if (!hasEnoughOffers(rate, minOfferOwners)) {
       retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium)) || retired;
       summary.skipped++;
       continue;

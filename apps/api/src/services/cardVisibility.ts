@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { isCardPublishable } from "./noones/publishPolicy";
 import { noonesLinkedCardWhere } from "./noones/exclusions";
-import { isManualRateSpeed, SYNCED_RATE_SPEEDS } from "./rateSources";
+import { isManualRateSpeed, STT_RATE_SPEED, SYNCED_RATE_SPEEDS } from "./rateSources";
 
 /** Rates imported from pasted rate text (never produced by a sync). */
 export const MANUAL_RATE_WHERE: Prisma.RateWhereInput = {
@@ -31,10 +31,14 @@ export async function cardHasQuotableRates(cardTypeId: string): Promise<boolean>
  * Reinstate the newest retired rate per country+medium when a card has been
  * left with nothing active. A card that once had rates should keep quoting its
  * last known ones rather than vanishing from the catalog.
+ *
+ * SafeTheTrade rows are never restored: the only thing that retires one is the
+ * seller-threshold check, and resurrecting it would undo that retirement. A
+ * card whose only rate was a thin marketplace book goes inactive, as intended.
  */
 export async function restoreLastKnownRates(cardTypeId: string): Promise<number> {
   const retired = await prisma.rate.findMany({
-    where: { cardTypeId, active: false },
+    where: { cardTypeId, active: false, NOT: { speed: STT_RATE_SPEED } },
     select: { id: true, country: true, medium: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });
