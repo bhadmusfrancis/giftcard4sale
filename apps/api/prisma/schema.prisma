@@ -261,6 +261,11 @@ model Trade {
   notes           String?
   rejectionReason String?
 
+  // Probabilistic duplicate-signal flag — set when a submission resembles a
+  // prior trade but lacks definitive proof. Trade stays PENDING for admin review.
+  reviewFlag       String?
+  reviewFlagReason String?
+
   // NoOnes P2P resell (hidden from end users)
   noonesTradeHash     String?  @unique
   noonesOfferHash     String?

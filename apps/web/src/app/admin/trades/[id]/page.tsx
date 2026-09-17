@@ -40,6 +40,13 @@ export default function AdminTradeDetail() {
     }, status ? `Trade updated to ${status}.` : "Final payout saved.");
   }
 
+  async function dismissFlag() {
+    await updateAction.run(async () => {
+      await api(`/admin/trades/${id}`, { method: "PATCH", body: { clearReviewFlag: true } });
+      await load();
+    }, "Review flag dismissed.");
+  }
+
   async function toggleMute() {
     await updateAction.run(async () => {
       await api(`/admin/trades/${id}`, {
@@ -69,6 +76,18 @@ export default function AdminTradeDetail() {
         </div>
       )}
 
+      {trade.reviewFlag && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div>
+            <span className="font-semibold">Flagged for review — possible duplicate.</span>{" "}
+            {trade.reviewFlagReason}
+          </div>
+          <button type="button" onClick={dismissFlag} disabled={updateAction.busy} className="btn-ghost text-xs">
+            Dismiss flag
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(280px,360px)_1fr] lg:items-stretch xl:min-h-[calc(100vh-11rem)]">
         <aside className="space-y-6 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-1">
           <div className="card space-y-2 p-6 text-sm">
@@ -78,6 +97,14 @@ export default function AdminTradeDetail() {
             <Row label="Card" value={`${trade.cardType?.name} · ${trade.country} · ${trade.medium}`} />
             <Row label="Amount" value={`${trade.cardAmount} ${trade.currency}`} />
             <Row label="Quoted payout" value={money(trade.quotedPayout, trade.payoutCurrency)} />
+            <Row
+              label="Rate synced"
+              value={
+                trade.rateSyncedAt
+                  ? `${date(trade.rateSyncedAt)}${trade.rateSource ? ` · ${trade.rateSource}` : ""}${trade.rateActive === false ? " (retired)" : ""}`
+                  : "—"
+              }
+            />
             <Row label="Receipt" value={trade.receiptType} />
             {trade.ecodes && (
               <div>

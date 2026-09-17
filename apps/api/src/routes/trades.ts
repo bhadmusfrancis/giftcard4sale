@@ -157,6 +157,9 @@ tradesRouter.post(
     const rejectionReason = isDuplicate
       ? `${duplicateReason} Your account received a bad score for submitting a previously used card.`
       : undefined;
+    const reviewFlagReason = !isDuplicate && analysis.reviewFlags.length
+      ? primaryDuplicateReason(analysis.reviewFlags)
+      : null;
 
     const cardAnalyzed = analysis.cardFiles.filter((f) => !f.isReceipt);
     const receiptAnalyzed = analysis.cardFiles.filter((f) => f.isReceipt);
@@ -181,6 +184,8 @@ tradesRouter.post(
         ecodes: data.ecodes,
         notes: data.notes,
         status: "PENDING",
+        reviewFlag: reviewFlagReason ? "POSSIBLE_DUPLICATE" : null,
+        reviewFlagReason,
         attachments: {
           create: [
             ...cardAnalyzed.map((af, i) =>
@@ -269,7 +274,18 @@ tradesRouter.post(
       emailDetail: `Trade ID: ${trade.tradeNumber}`,
     }).catch((err) => console.error("[notify] trade admin notify failed:", (err as Error).message));
 
-    const autoResell = await isAutoResellEnabledForCard(rate.cardTypeId);
+    if (reviewFlagReason) {
+      void notifyAdmins({
+        title: "Possible duplicate — manual review needed",
+        body: `${trade.tradeNumber} was flagged (not auto-rejected): ${reviewFlagReason}`,
+        link: `/admin/trades/${trade.id}`,
+        emailDetail: `Trade ID: ${trade.tradeNumber}`,
+      }).catch((err) => console.error("[notify] duplicate flag admin notify failed:", (err as Error).message));
+    }
+
+    // Flagged trades are held for admin review — a genuinely reused card must
+    // not be auto-listed; admins can start the resell manually after reviewing.
+    const autoResell = !reviewFlagReason && (await isAutoResellEnabledForCard(rate.cardTypeId));
 
     void notify({
       userId: req.userId!,
@@ -456,6 +472,8 @@ export function serializeTrade(t: any) {
     ecodes: t.ecodes,
     notes: t.notes,
     rejectionReason: t.rejectionReason,
+    reviewFlag: t.reviewFlag ?? null,
+    reviewFlagReason: t.reviewFlagReason ?? null,
     notificationsMuted: t.notificationsMuted ?? false,
     attachments: t.attachments?.map((a: any) => ({ id: a.id, url: a.url, filename: a.filename })) ?? [],
     createdAt: t.createdAt,

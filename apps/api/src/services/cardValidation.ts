@@ -10,7 +10,11 @@ import {
 } from "./cardFingerprint";
 import { ocrGiftCardImage } from "./cardOcr";
 
-const ACTIVE_TRADE_STATUSES = ["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID"] as const;
+// Trades in these statuses count as "consuming" a card/code for duplicate
+// detection. REJECTED is included on purpose: a rejected card/code must not be
+// resubmitted. CANCELLED is excluded — the seller withdrew that trade before a
+// verdict, so the card was never consumed.
+const DUPLICATE_BLOCKING_STATUSES = ["PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID"] as const;
 const PERCEPTUAL_HASH_MAX_DISTANCE = 5;
 
 export interface AnalyzedCardFile {
@@ -27,8 +31,15 @@ export interface CodeEntry {
   source: "PASTED" | "OCR";
 }
 
+export type DuplicateKind = "CODE" | "IMAGE_EXACT" | "IMAGE_DIMENSIONS" | "IMAGE_PERCEPTUAL";
+
 export interface DuplicateMatch {
-  kind: "CODE" | "IMAGE_EXACT" | "IMAGE_DIMENSIONS" | "IMAGE_PERCEPTUAL";
+  kind: DuplicateKind;
+  // HARD = definitive proof the same card was already submitted (exact code or
+  // byte-identical image) -> safe to auto-reject. SOFT = probabilistic signal
+  // (similar-looking image, coincidental dimensions) -> flag for admin review
+  // only; different cards of the same brand legitimately trip these.
+  severity: "HARD" | "SOFT";
   reason: string;
   priorTradeNumber: string;
   priorTradeId: string;
@@ -37,7 +48,10 @@ export interface DuplicateMatch {
 export interface SubmissionAnalysis {
   cardFiles: AnalyzedCardFile[];
   codes: CodeEntry[];
+  // Definitive duplicates — auto-reject.
   duplicates: DuplicateMatch[];
+  // Probable-but-unproven matches — keep the trade PENDING and flag for review.
+  reviewFlags: DuplicateMatch[];
 }
 
 async function analyzeCardFile(file: Express.Multer.File, isReceipt: boolean): Promise<AnalyzedCardFile> {
@@ -84,7 +98,7 @@ async function findCodeDuplicate(hashes: string[]): Promise<DuplicateMatch | nul
   const hit = await prisma.submittedCardCode.findFirst({
     where: {
       codeHash: { in: hashes },
-      trade: { status: { in: [...ACTIVE_TRADE_STATUSES] } },
+      trade: { status: { in: [...DUPLICATE_BLOCKING_STATUSES] } },
     },
     include: { trade: { select: { id: true, tradeNumber: true } } },
     orderBy: { createdAt: "desc" },
@@ -95,30 +109,38 @@ async function findCodeDuplicate(hashes: string[]): Promise<DuplicateMatch | nul
   const masked = hit.codeLast4 ? `…${hit.codeLast4}` : "a prior code";
   return {
     kind: "CODE",
+    severity: "HARD",
     reason: `Gift card code ${masked} was already submitted in trade ${hit.trade.tradeNumber}. Re-submitting used codes is not allowed.`,
     priorTradeNumber: hit.trade.tradeNumber,
     priorTradeId: hit.trade.id,
   };
 }
 
-async function findImageDuplicate(fingerprints: ImageFingerprint[]): Promise<DuplicateMatch | null> {
+async function findImageMatches(
+  fingerprints: ImageFingerprint[]
+): Promise<{ hard: DuplicateMatch[]; soft: DuplicateMatch[] }> {
+  const hard: DuplicateMatch[] = [];
+  const soft: DuplicateMatch[] = [];
+
   for (const fp of fingerprints) {
     const exact = await prisma.tradeAttachment.findFirst({
       where: {
         contentHash: fp.contentHash,
-        trade: { status: { in: [...ACTIVE_TRADE_STATUSES] } },
+        trade: { status: { in: [...DUPLICATE_BLOCKING_STATUSES] } },
         NOT: { filename: { startsWith: "receipt-" } },
       },
       include: { trade: { select: { id: true, tradeNumber: true } } },
       orderBy: { createdAt: "desc" },
     });
     if (exact) {
-      return {
+      hard.push({
         kind: "IMAGE_EXACT",
+        severity: "HARD",
         reason: `An identical gift card image was already uploaded in trade ${exact.trade.tradeNumber} (exact file match).`,
         priorTradeNumber: exact.trade.tradeNumber,
         priorTradeId: exact.trade.id,
-      };
+      });
+      continue;
     }
 
     if (fp.imageWidth > 0 && fp.imageHeight > 0 && fp.fileSizeBytes > 0) {
@@ -127,19 +149,20 @@ async function findImageDuplicate(fingerprints: ImageFingerprint[]): Promise<Dup
           imageWidth: fp.imageWidth,
           imageHeight: fp.imageHeight,
           fileSizeBytes: fp.fileSizeBytes,
-          trade: { status: { in: [...ACTIVE_TRADE_STATUSES] } },
+          trade: { status: { in: [...DUPLICATE_BLOCKING_STATUSES] } },
           NOT: { filename: { startsWith: "receipt-" } },
         },
         include: { trade: { select: { id: true, tradeNumber: true } } },
         orderBy: { createdAt: "desc" },
       });
       if (dimMatch) {
-        return {
+        soft.push({
           kind: "IMAGE_DIMENSIONS",
+          severity: "SOFT",
           reason: `A gift card image with the same resolution (${fp.imageWidth}×${fp.imageHeight}px) and file size was already submitted in trade ${dimMatch.trade.tradeNumber}.`,
           priorTradeNumber: dimMatch.trade.tradeNumber,
           priorTradeId: dimMatch.trade.id,
-        };
+        });
       }
     }
 
@@ -147,7 +170,7 @@ async function findImageDuplicate(fingerprints: ImageFingerprint[]): Promise<Dup
       const candidates = await prisma.tradeAttachment.findMany({
         where: {
           perceptualHash: { not: null },
-          trade: { status: { in: [...ACTIVE_TRADE_STATUSES] } },
+          trade: { status: { in: [...DUPLICATE_BLOCKING_STATUSES] } },
           NOT: { filename: { startsWith: "receipt-" } },
         },
         select: {
@@ -162,18 +185,20 @@ async function findImageDuplicate(fingerprints: ImageFingerprint[]): Promise<Dup
         if (!c.perceptualHash) continue;
         const dist = hammingDistanceHex(fp.perceptualHash, c.perceptualHash);
         if (dist <= PERCEPTUAL_HASH_MAX_DISTANCE) {
-          return {
+          soft.push({
             kind: "IMAGE_PERCEPTUAL",
+            severity: "SOFT",
             reason: `This gift card photo closely matches an image from trade ${c.trade.tradeNumber} (visual fingerprint match).`,
             priorTradeNumber: c.trade.tradeNumber,
             priorTradeId: c.trade.id,
-          };
+          });
+          break;
         }
       }
     }
   }
 
-  return null;
+  return { hard, soft };
 }
 
 export async function analyzeCardSubmission(input: {
@@ -196,13 +221,16 @@ export async function analyzeCardSubmission(input: {
     .map((f) => f.fingerprint!);
 
   const duplicates: DuplicateMatch[] = [];
+  const reviewFlags: DuplicateMatch[] = [];
+
   const codeDup = await findCodeDuplicate(codes.map((c) => c.hash));
   if (codeDup) duplicates.push(codeDup);
 
-  const imageDup = await findImageDuplicate(fingerprints);
-  if (imageDup) duplicates.push(imageDup);
+  const imageMatches = await findImageMatches(fingerprints);
+  duplicates.push(...imageMatches.hard);
+  reviewFlags.push(...imageMatches.soft);
 
-  return { cardFiles, codes, duplicates };
+  return { cardFiles, codes, duplicates, reviewFlags };
 }
 
 export function attachmentCreateData(af: AnalyzedCardFile, url: string, filename: string) {

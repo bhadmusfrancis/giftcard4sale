@@ -85,8 +85,15 @@ function TradesInner() {
                 <span className="text-xs text-slate-400">{date(t.createdAt)}</span>
               </div>
             </div>
-            <span className={`badge w-fit shrink-0 ${STATUS_COLORS[t.status]}`} title={STATUS_DESCRIPTIONS[t.status]}>
-              {t.status}
+            <span className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
+              <span className={`badge w-fit ${STATUS_COLORS[t.status]}`} title={STATUS_DESCRIPTIONS[t.status]}>
+                {t.status}
+              </span>
+              {t.reviewFlag && (
+                <span className="badge w-fit bg-amber-100 text-amber-800" title={t.reviewFlagReason}>
+                  ⚑ Possible duplicate
+                </span>
+              )}
             </span>
           </Link>
         ))}

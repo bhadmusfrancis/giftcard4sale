@@ -348,10 +348,22 @@ adminRouter.get(
       },
     });
     if (!trade) return res.status(404).json({ error: "Not found" });
+
+    // When the live rate for this card tier was last synced (Rate.updatedAt is
+    // written by every sync refresh).
+    const rate = await prisma.rate.findFirst({
+      where: { cardTypeId: trade.cardTypeId, country: trade.country, medium: trade.medium },
+      orderBy: { updatedAt: "desc" },
+      select: { updatedAt: true, speed: true, active: true },
+    });
+
     res.json({
       trade: {
         ...serializeTrade(trade),
         user: publicUser(trade.user),
+        rateSyncedAt: rate?.updatedAt ?? null,
+        rateSource: rate?.speed ?? null,
+        rateActive: rate?.active ?? null,
         noonesTradeHash: trade.noonesTradeHash,
         noonesOfferHash: trade.noonesOfferHash,
         noonesStatus: trade.noonesStatus,
@@ -374,6 +386,7 @@ adminRouter.patch(
         finalPayout: z.number().optional(),
         rejectionReason: z.string().optional(),
         notificationsMuted: z.boolean().optional(),
+        clearReviewFlag: z.boolean().optional(),
       }),
       req.body
     );
@@ -402,6 +415,15 @@ adminRouter.patch(
       await payTrade(trade.id);
     } else if (Object.keys(patch).length > 0) {
       await prisma.trade.update({ where: { id: trade.id }, data: patch });
+    }
+
+    // An admin acting on a flagged trade counts as reviewing it — clear the
+    // flag on any status change or explicit dismissal.
+    if (trade.reviewFlag && (data.clearReviewFlag || (data.status && data.status !== trade.status))) {
+      await prisma.trade.update({
+        where: { id: trade.id },
+        data: { reviewFlag: null, reviewFlagReason: null },
+      });
     }
 
     if (data.status === "APPROVED" && trade.status !== "APPROVED") {
