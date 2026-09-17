@@ -283,9 +283,10 @@ tradesRouter.post(
       }).catch((err) => console.error("[notify] duplicate flag admin notify failed:", (err as Error).message));
     }
 
-    // Flagged trades are held for admin review — a genuinely reused card must
-    // not be auto-listed; admins can start the resell manually after reviewing.
-    const autoResell = !reviewFlagReason && (await isAutoResellEnabledForCard(rate.cardTypeId));
+    // Auto-resell applies to every card unless its per-card "Auto-trade"
+    // checkbox is off (or the global toggle is off). A duplicate review flag
+    // does not hold the resell — it only flags the trade for admin review.
+    const autoResell = await isAutoResellEnabledForCard(rate.cardTypeId);
 
     void notify({
       userId: req.userId!,
