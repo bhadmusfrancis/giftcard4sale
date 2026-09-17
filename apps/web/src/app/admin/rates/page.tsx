@@ -358,20 +358,19 @@ function CardsSection() {
                   />
                   Auto-trade
                 </label>
-                {c.noonesPaymentMethod ? (
-                  <button
-                    type="button"
-                    disabled={sync.running}
-                    onClick={() => syncCardRates(c.id)}
-                    className="btn-ghost text-xs"
-                  >
-                    {sync.running && sync.scope === "card" && sync.cardTypeId === c.id
-                      ? "Syncing…"
-                      : sync.running && sync.scope === "full"
-                        ? "Sync in progress…"
-                        : "Sync from NoOnes"}
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  disabled={sync.running}
+                  onClick={() => syncCardRates(c.id)}
+                  className="btn-ghost text-xs"
+                  title="Sync this card's live rates from SafeTheTrade, then Sogo"
+                >
+                  {sync.running && sync.scope === "card" && sync.cardTypeId === c.id
+                    ? "Syncing…"
+                    : sync.running && sync.scope === "full"
+                      ? "Sync in progress…"
+                      : "Sync rates"}
+                </button>
                 <button
                   type="button"
                   disabled={sync.running}
