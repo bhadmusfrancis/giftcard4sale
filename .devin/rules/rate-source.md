@@ -44,7 +44,7 @@ Until `SOGO_RATES_API_URL` is set to a working JSON API, Sogo rates come from an
 
 ## Freshness
 
-- `RateSyncState.lastSuccessAt` records the last full sync that wrote rows.
+- `RateSyncState.lastSuccessAt` records the last **clean** full sync — a run with any `summary.errors` does not advance it, so a failing source stops stamping the whole catalog fresh and "Due for refresh" keeps counting. The admin panel reports such a run as "Completed with errors" (phase `partial`), never "Completed".
 - The public "rate may be outdated" notice clears when **either** the card's own rows or the last successful sync is inside the refresh window. A source dropping a card must not leave a warning the site cannot clear by syncing.
 - Single-card syncs never update `lastSuccessAt` — they say nothing about the rest of the catalog.
 

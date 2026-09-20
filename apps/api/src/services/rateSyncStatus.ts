@@ -4,7 +4,7 @@ import { SYNCED_RATE_SPEEDS } from "./rateSources";
 import { getLastRateSyncAt } from "./rateSyncState";
 import { emptyRateSyncSummary, type RateSyncSummary } from "./rateTypes";
 
-export type RateSyncPhase = "idle" | "discovering" | "syncing" | "completed" | "failed";
+export type RateSyncPhase = "idle" | "discovering" | "syncing" | "completed" | "partial" | "failed";
 export type RateSyncScope = "full" | "card";
 export type RateSyncTrigger = "admin" | "cli" | "cron";
 
@@ -172,7 +172,9 @@ export function addRateSyncErrors(errors: string[]): void {
 export function completeRateSyncRun(summary: RateSyncSummary): void {
   if (!active.running) return;
   active.running = false;
-  active.phase = "completed";
+  // "Completed" is reserved for a clean run: a sync that left rows unrefreshed
+  // reports "Completed with errors" instead of claiming a full refresh.
+  active.phase = summary.errors.length ? "partial" : "completed";
   active.finishedAt = new Date().toISOString();
   active.summary = { ...summary, errors: [...summary.errors] };
   active.processedCards = active.totalCards || active.processedCards;

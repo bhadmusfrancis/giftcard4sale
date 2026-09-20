@@ -66,6 +66,8 @@ function phaseLabel(phase: string): string {
       return "Syncing rates";
     case "completed":
       return "Completed";
+    case "partial":
+      return "Completed with errors";
     case "failed":
       return "Failed";
     default:

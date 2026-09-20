@@ -496,13 +496,35 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
 
   let primaryRates: SyncedCardRate[] = [];
   let minOfferOwners = FALLBACK_MIN_OFFER_OWNERS;
-  if (env.safeTheTrade.enabled) {
+  if (!env.safeTheTrade.enabled) {
+    // The primary source being switched off is not a clean sync — the rows it
+    // owns cannot refresh, so the run must report it rather than complete.
+    summary.errors.push("SafeTheTrade rate source is disabled (SAFETHETRADE_ENABLED).");
+  } else {
+    let ngnPerUsdt = 0;
     try {
       const config = await getRateConfig();
       minOfferOwners = Math.max(1, config.sttMinOfferOwners);
-      primaryRates = await fetchSafeTheTradeRates(config.rates.ngnPerUsdt, minOfferOwners);
+      ngnPerUsdt = config.rates.ngnPerUsdt;
+      primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners);
     } catch (err) {
-      summary.errors.push(`SafeTheTrade: ${(err as Error).message}`);
+      const first = (err as Error).message;
+      // One retry — a transient fetch failure should not drop the primary
+      // source for a whole refresh cycle.
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners);
+        if (primaryRates.length) {
+          console.warn(`SafeTheTrade recovered on retry after: ${first}`);
+        } else {
+          summary.errors.push(`SafeTheTrade: ${first} (retry returned no usable rates)`);
+        }
+      } catch (retryErr) {
+        summary.errors.push(`SafeTheTrade: ${first} (retry: ${(retryErr as Error).message})`);
+      }
+    }
+    if (!primaryRates.length && !summary.errors.length) {
+      summary.errors.push("SafeTheTrade returned no usable rates.");
     }
   }
 
@@ -580,15 +602,21 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
   }
   await ensureCardSeoLandingPagesPublished();
 
-  // A full run that wrote rows is what clears the public "rate may be outdated"
-  // notice; single-card syncs say nothing about the rest of the catalog.
-  if (!targetId && summary.created + summary.updated > 0) {
+  // Only a clean full run marks the catalog synced. A run with errors leaves
+  // some rows unrefreshed, so recording success would stamp every card fresh
+  // and hide exactly the staleness the refresh interval is meant to police.
+  if (!targetId && !summary.errors.length && summary.created + summary.updated > 0) {
     const sources = [
       ...(primaryRates.length ? [STT_RATE_SPEED] : []),
       ...(sogoCards.length ? [SOGO_RATE_SPEED] : []),
     ];
     await recordRateSyncSuccess(sources);
   }
+
+  // Push every collected error into the live status — the count alone reaches
+  // the panel via completeRateSyncRun, but the messages do not, and "N
+  // error(s)" with no detail leaves the actual failure invisible.
+  if (isRateSyncActive()) addRateSyncErrors(summary.errors);
 
   return summary;
 }
