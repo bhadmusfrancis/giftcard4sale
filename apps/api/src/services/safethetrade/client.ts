@@ -1,4 +1,5 @@
 import { canonicalCardSlug } from "@gc4s/shared";
+import { ProxyAgent } from "undici";
 import { env } from "../../env";
 import { currencyTierFromCode } from "../noones/rateCatalog";
 import type { SyncedCardRate } from "../rateTypes";
@@ -157,8 +158,24 @@ function coveredDenomRange(samples: DenomSample[], minOwners: number): { min: nu
   return null;
 }
 
+/**
+ * The feed's origin answers HTTP 451 to some hosting IP ranges — Render's
+ * egress among them — while serving 200 elsewhere. `SAFETHETRADE_PROXY_URL`
+ * picks another egress: a `{url}` template is a fetch relay the request is
+ * encoded into; anything else is treated as a CONNECT proxy for the request's
+ * dispatcher.
+ */
+const proxyUrl = env.safeTheTrade.proxyUrl;
+const relayTemplate = proxyUrl.includes("{url}") ? proxyUrl : null;
+const connectDispatcher = proxyUrl && !relayTemplate ? new ProxyAgent(proxyUrl) : undefined;
+
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  const target = relayTemplate ? relayTemplate.replace("{url}", encodeURIComponent(url)) : url;
+  const res = await fetch(target, {
+    headers: FETCH_HEADERS,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    ...(connectDispatcher ? { dispatcher: connectDispatcher } : {}),
+  } as RequestInit & { dispatcher?: ProxyAgent });
   if (!res.ok) throw new Error(`${url} responded ${res.status}`);
   return (await res.json()) as T;
 }

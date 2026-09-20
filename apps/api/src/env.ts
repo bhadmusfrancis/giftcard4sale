@@ -162,10 +162,19 @@ export const env = {
     sttMinOfferOwners: num(process.env.STT_MIN_OFFER_OWNERS, 3),
   },
 
-  /** Primary gift-card rate source: public JSON feed, no credentials needed. */
+  /**
+   * Primary gift-card rate source: public JSON feed, no credentials needed.
+   *
+   * `proxyUrl` routes the feed through another egress when the origin refuses
+   * the host's IP (HTTP 451 from some datacenter ranges). Two forms:
+   *  - CONNECT proxy:  SAFETHETRADE_PROXY_URL=http://user:pass@host:port
+   *  - URL relay:      SAFETHETRADE_PROXY_URL=https://relay.example/fetch?u={url}
+   *    (`{url}` is replaced by the encoded target URL)
+   */
   safeTheTrade: {
     enabled: (process.env.SAFETHETRADE_ENABLED || "true") === "true",
     apiUrl: (process.env.SAFETHETRADE_API_URL || "https://safethetrade.com/api/v1").replace(/\/$/, ""),
+    proxyUrl: process.env.SAFETHETRADE_PROXY_URL || "",
   },
 
   /**
