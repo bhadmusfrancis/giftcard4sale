@@ -94,6 +94,69 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+interface DenomSample {
+  minFiat: number;
+  /** `Infinity` when the offer states no upper bound. */
+  maxFiat: number;
+  owner: string;
+}
+
+/**
+ * The amount band at least `minOwners` distinct sellers will actually take.
+ *
+ * A tier's advertised range cannot come from its most extreme listing: one
+ * trader accepting $2-$5 does not make a $5 card tradable, and one accepting
+ * $1,000 does not make that amount sellable either. The bound is the widest
+ * contiguous band covered by enough independent owners — the same distinct-
+ * seller test the median price has to pass. When the book is too disjoint for
+ * the full threshold, the requirement relaxes until some band exists.
+ */
+function coveredDenomRange(samples: DenomSample[], minOwners: number): { min: number; max: number } | null {
+  const byOwner = new Map<string, { min: number; max: number }[]>();
+  const bounds = new Set<number>();
+  for (const s of samples) {
+    const list = byOwner.get(s.owner) ?? [];
+    list.push({ min: s.minFiat, max: s.maxFiat });
+    byOwner.set(s.owner, list);
+    bounds.add(s.minFiat);
+    if (Number.isFinite(s.maxFiat)) bounds.add(s.maxFiat);
+  }
+  const points = [...bounds].sort((a, b) => a - b);
+  if (!points.length) return null;
+
+  const ownersCovering = (x: number) => {
+    let n = 0;
+    for (const ivs of byOwner.values()) {
+      if (ivs.some((iv) => iv.min <= x && x <= iv.max)) n++;
+    }
+    return n;
+  };
+
+  for (let need = Math.max(1, Math.min(minOwners, byOwner.size)); need >= 1; need--) {
+    let best: { min: number; max: number } | null = null;
+    let cur: { min: number; max: number } | null = null;
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const next = points[i + 1];
+      // Coverage is constant between boundary points, so the midpoint stands
+      // in for the whole open segment.
+      const segCovered = next != null && ownersCovering((p + next) / 2) >= need;
+      if (ownersCovering(p) >= need) {
+        cur = cur ? { min: cur.min, max: p } : { min: p, max: p };
+      }
+      if (segCovered) {
+        cur = cur ? { min: cur.min, max: next } : { min: p, max: next };
+      } else if (cur) {
+        if (!best || cur.max - cur.min > best.max - best.min) best = cur;
+        cur = null;
+      }
+    }
+    if (cur && (!best || cur.max - cur.min > best.max - best.min)) best = cur;
+    if (best) return best;
+  }
+  return null;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`${url} responded ${res.status}`);
@@ -147,7 +210,10 @@ async function fetchGiftCardMethodNames(): Promise<Map<string, string>> {
  * with a median rather than a maximum: the top of this book is consistently
  * bait priced near face value.
  */
-export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<SyncedCardRate[]> {
+export async function fetchSafeTheTradeRates(
+  ngnPerUsdt: number,
+  minOfferOwners: number
+): Promise<SyncedCardRate[]> {
   if (!(ngnPerUsdt > 0)) return [];
 
   const [offers, methodNames] = await Promise.all([
@@ -193,10 +259,13 @@ export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<Synced
 
     const key = `${methodId}|${currency}`;
     const entry = grouped.get(key) ?? { methodId, currency, samples: [] };
+    const maxFiat = num(offer.maxFiat);
     entry.samples.push({
       usdtPerFiatUnit,
       minFiat: Math.max(1, Math.round(num(offer.minFiat))),
-      maxFiat: Math.max(1, Math.round(num(offer.maxFiat))),
+      // An offer that states no upper bound takes any amount above its
+      // minimum — Infinity, not a bogus $1 ceiling.
+      maxFiat: maxFiat > 0 ? Math.max(1, Math.round(maxFiat)) : Infinity,
       // Several listings from one trader are still one opinion, so the owner
       // is counted, not the listing. An owner the feed does not identify is
       // treated as distinct — undercounting would hide a single-seller book.
@@ -214,8 +283,9 @@ export async function fetchSafeTheTradeRates(ngnPerUsdt: number): Promise<Synced
     if (!(nairaPerUnit > 0)) continue;
 
     const tier = currencyTierFromCode(currency);
-    const minDenom = Math.max(1, Math.min(...samples.map((s) => s.minFiat)) || tier.minDenom || 1);
-    const maxDenom = Math.max(minDenom, Math.max(...samples.map((s) => s.maxFiat)) || tier.maxDenom || minDenom);
+    const range = coveredDenomRange(samples, minOfferOwners);
+    const minDenom = Math.max(1, Math.round(range?.min ?? tier.minDenom ?? 1));
+    const maxDenom = Math.max(minDenom, Math.round(range?.max ?? tier.maxDenom ?? minDenom));
     const cardName = cardNameFromMethod(methodId, methodNames.get(methodId));
 
     rows.push({

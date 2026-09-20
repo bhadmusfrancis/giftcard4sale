@@ -500,7 +500,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     try {
       const config = await getRateConfig();
       minOfferOwners = Math.max(1, config.sttMinOfferOwners);
-      primaryRates = await fetchSafeTheTradeRates(config.rates.ngnPerUsdt);
+      primaryRates = await fetchSafeTheTradeRates(config.rates.ngnPerUsdt, minOfferOwners);
     } catch (err) {
       summary.errors.push(`SafeTheTrade: ${(err as Error).message}`);
     }

@@ -23,7 +23,7 @@ async function main() {
   const config = await getRateConfig();
   console.log(`\nNGN per USDT: ${config.rates.ngnPerUsdt}`);
 
-  const stt = await fetchSafeTheTradeRates(config.rates.ngnPerUsdt);
+  const stt = await fetchSafeTheTradeRates(config.rates.ngnPerUsdt, Math.max(1, config.sttMinOfferOwners));
   console.log(`SafeTheTrade rows: ${stt.length}`);
   for (const row of stt) {
     const pct = ((row.nairaPerUnit / config.rates.ngnPerUsdt) * 100).toFixed(1);
