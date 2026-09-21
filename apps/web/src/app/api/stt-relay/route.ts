@@ -5,6 +5,9 @@
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
+// safethetrade.com 451s some egress regions (Render's iad1 edge included) but
+// answers London — pin execution there regardless of where the caller is.
+export const preferredRegion = "lhr1";
 
 const ALLOWED_ORIGIN = /^https:\/\/safethetrade\.com\/api\/v1\//;
 const RELAY_TOKEN = "fa50b1dd53ef29634984c7e9afd8ded47a3de48548d4e021";
