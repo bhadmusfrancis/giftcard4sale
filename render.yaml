@@ -75,6 +75,10 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      # safethetrade.com returns 451 to Render egress IPs; route the feed via
+      # the Vercel edge relay (apps/web/src/app/api/stt-relay/route.ts).
+      - key: SAFETHETRADE_PROXY_URL
+        value: "https://www.giftcard4sale.com/api/stt-relay?token=fa50b1dd53ef29634984c7e9afd8ded47a3de48548d4e021&u={url}"
 
   # Daily gift-card insights (7 articles/day). Runs at 08:00 UTC.
   - type: cron
