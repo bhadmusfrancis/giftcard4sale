@@ -15,7 +15,7 @@ export default function AdminRatesPage() {
       <div className="space-y-8">
         <h2 className="text-2xl font-bold">Rates &amp; cards</h2>
         <RateSyncPanel onSyncFinished={() => setCardsKey((k) => k + 1)} />
-        <ConfigSection onAutoResellOverride={() => setCardsKey((k) => k + 1)} />
+        <ConfigSection onCardsChanged={() => setCardsKey((k) => k + 1)} />
         <ImportSection />
         <CardsSection key={cardsKey} />
       </div>
@@ -23,7 +23,7 @@ export default function AdminRatesPage() {
   );
 }
 
-function ConfigSection({ onAutoResellOverride }: { onAutoResellOverride?: () => void }) {
+function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
   const [config, setConfig] = useState<any>(null);
   const { busy: saving, status, run, statusRef } = useAsyncAction();
 
@@ -57,7 +57,7 @@ function ConfigSection({ onAutoResellOverride }: { onAutoResellOverride?: () => 
         },
       });
       if (d.config) setConfig(d.config);
-      if (d.autoResellOverrideApplied) onAutoResellOverride?.();
+      if (d.autoResellOverrideApplied || d.cardDeductionsReset) onCardsChanged?.();
       return d;
     }, () => "Config saved successfully.");
   }
@@ -163,7 +163,8 @@ function ConfigSection({ onAutoResellOverride }: { onAutoResellOverride?: () => 
       <p className="mt-2 text-xs text-slate-500">
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
         A SafeTheTrade rate is quoted on its own only when at least this many distinct sellers back it. Minimum
-        withdrawal amounts apply to user wallet send/withdraw requests.
+        withdrawal amounts apply to user wallet send/withdraw requests. Changing a deduction % resets every
+        card&apos;s per-card override back to the platform default — adjust individual cards afterwards.
       </p>
       <div className="mt-4 space-y-3">
         {saving && !status ? (

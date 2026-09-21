@@ -968,6 +968,18 @@ adminRouter.put(
     const autoResellOverrideApplied =
       data.noonesAutoResellEnabled !== prevConfig.noonesAutoResellEnabled;
 
+    // A changed global deduction cascades the same way: every card's override
+    // for that payout currency resets to the platform default; individual
+    // cards are adjusted afterwards where needed.
+    const deductionReset: Prisma.CardTypeUpdateManyMutationInput = {};
+    if (data.nairaReductionPercent !== prevConfig.reductions.nairaReductionPercent)
+      deductionReset.nairaReductionPercent = null;
+    if (data.usdtReductionPercent !== prevConfig.reductions.usdtReductionPercent)
+      deductionReset.usdtReductionPercent = null;
+    if (data.ghsReductionPercent !== prevConfig.reductions.ghsReductionPercent)
+      deductionReset.ghsReductionPercent = null;
+    const cardDeductionsReset = Object.keys(deductionReset).length > 0;
+
     await prisma.rateConfig.create({
       data: {
         ngnPerUsdt: new Prisma.Decimal(data.ngnPerUsdt),
@@ -988,13 +1000,15 @@ adminRouter.put(
         sttMinOfferOwners: data.sttMinOfferOwners,
       },
     });
+    const cardCascade: Prisma.CardTypeUpdateManyMutationInput = { ...deductionReset };
     if (autoResellOverrideApplied) {
-      await prisma.cardType.updateMany({
-        data: { noonesAutoResellEnabled: data.noonesAutoResellEnabled },
-      });
+      cardCascade.noonesAutoResellEnabled = data.noonesAutoResellEnabled;
+    }
+    if (Object.keys(cardCascade).length > 0) {
+      await prisma.cardType.updateMany({ data: cardCascade });
     }
     const config = await getRateConfig();
-    res.json({ config, autoResellOverrideApplied });
+    res.json({ config, autoResellOverrideApplied, cardDeductionsReset });
   })
 );
 
