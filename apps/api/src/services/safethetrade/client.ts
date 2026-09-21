@@ -176,7 +176,12 @@ async function fetchJson<T>(url: string): Promise<T> {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     ...(connectDispatcher ? { dispatcher: connectDispatcher } : {}),
   } as RequestInit & { dispatcher?: ProxyAgent });
-  if (!res.ok) throw new Error(`${url} responded ${res.status}`);
+  if (!res.ok) {
+    // Say when the refusal came through the relay, otherwise a proxied 451
+    // reads identically to a direct one and the failure can't be diagnosed.
+    const via = relayTemplate || connectDispatcher ? " (via proxy)" : "";
+    throw new Error(`${url} responded ${res.status}${via}`);
+  }
   return (await res.json()) as T;
 }
 
