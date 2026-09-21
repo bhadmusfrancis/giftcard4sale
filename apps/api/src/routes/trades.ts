@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
+import { calculateRateQuote, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
@@ -144,7 +144,7 @@ tradesRouter.post(
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: rate.medium,
       rates: config.rates,
-      reductions: config.reductions,
+      reductions: reductionsForCard(rate.cardType, config.reductions),
     });
 
     const analysis = await analyzeCardSubmission({

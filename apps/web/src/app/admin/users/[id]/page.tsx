@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { calculateRateQuote } from "@gc4s/shared";
+import { calculateRateQuote, reductionsForCard } from "@gc4s/shared";
 import { api } from "@/lib/api";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
@@ -104,6 +104,7 @@ export default function AdminUserDetailPage() {
   const payoutPreview = useMemo(() => {
     const naira = Number(tradeForm.nairaPerUnit);
     if (!platformConfig || !naira || !tradeForm.cardAmount) return null;
+    const card = cards.find((c) => c.id === tradeForm.cardTypeId);
     try {
       return calculateRateQuote({
         nairaPerUnit: naira,
@@ -111,12 +112,12 @@ export default function AdminUserDetailPage() {
         payoutCurrency: tradeForm.payoutCurrency,
         medium: tradeForm.medium,
         rates: platformConfig.rates,
-        reductions: platformConfig.reductions,
+        reductions: reductionsForCard(card, platformConfig.reductions),
       });
     } catch {
       return null;
     }
-  }, [platformConfig, tradeForm.nairaPerUnit, tradeForm.cardAmount, tradeForm.payoutCurrency, tradeForm.medium]);
+  }, [platformConfig, cards, tradeForm.cardTypeId, tradeForm.nairaPerUnit, tradeForm.cardAmount, tradeForm.payoutCurrency, tradeForm.medium]);
 
   async function moderate(action: string, extra: Record<string, unknown> = {}) {
     setMsg(null);

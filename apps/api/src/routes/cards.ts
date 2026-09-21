@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateRateQuote, fixDuplicateSellSlug, PayoutCurrency, ReceiptType } from "@gc4s/shared";
+import { calculateRateQuote, fixDuplicateSellSlug, PayoutCurrency, ReceiptType, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { catalogCardWhere } from "../services/cardVisibility";
@@ -168,7 +168,7 @@ cardsRouter.post(
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: rate.medium,
       rates: config.rates,
-      reductions: config.reductions,
+      reductions: reductionsForCard(rate.cardType, config.reductions),
     });
 
     res.json({

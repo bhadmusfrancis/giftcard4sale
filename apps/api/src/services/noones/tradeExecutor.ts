@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { Prisma } from "@prisma/client";
+import { CardReductionOverrides, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../../prisma";
 import { env } from "../../env";
 import { UPLOAD_DIR } from "../../lib/upload";
@@ -101,14 +102,19 @@ function buildGreetingMessage(trade: {
 }
 
 /** Gross up the user-facing effective rate to raw NoOnes marketplace level (re-add deduction). */
-async function grossUpNairaPerUnit(effectiveRate: number, payoutCurrency: string): Promise<number> {
+async function grossUpNairaPerUnit(
+  effectiveRate: number,
+  payoutCurrency: string,
+  card?: CardReductionOverrides | null
+): Promise<number> {
   const config = await getRateConfig();
+  const reductions = reductionsForCard(card, config.reductions);
   const reduction =
     payoutCurrency === "NGN"
-      ? config.reductions.nairaReductionPercent
+      ? reductions.nairaReductionPercent
       : payoutCurrency === "USDT"
-        ? config.reductions.usdtReductionPercent
-        : config.reductions.ghsReductionPercent;
+        ? reductions.usdtReductionPercent
+        : reductions.ghsReductionPercent;
   return effectiveRate / (1 - reduction / 100);
 }
 
@@ -248,7 +254,11 @@ export async function executeNoOnesResell(
   const cardAmount = Number(trade.cardAmount);
 
   try {
-    const minNairaPerUnit = await grossUpNairaPerUnit(Number(trade.effectiveRate), trade.payoutCurrency);
+    const minNairaPerUnit = await grossUpNairaPerUnit(
+      Number(trade.effectiveRate),
+      trade.payoutCurrency,
+      trade.cardType
+    );
 
     const market = await resolveOfferForCard({
       cardSlug: trade.cardType.slug,

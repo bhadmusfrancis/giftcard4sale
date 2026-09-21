@@ -383,7 +383,7 @@ function CardsSection() {
                 </button>
               </div>
             </div>
-            {expanded === c.id && <RateEditor cardId={c.id} onChange={load} />}
+            {expanded === c.id && <RateEditor card={c} onChange={load} />}
           </div>
         ))}
       </div>
@@ -391,8 +391,9 @@ function CardsSection() {
   );
 }
 
-function RateEditor({ cardId, onChange }: { cardId: string; onChange: () => void }) {
+function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
   const [rates, setRates] = useState<any[]>([]);
+  const cardId = card.id;
 
   async function load() {
     const d = await api(`/admin/cards/${cardId}/rates`);
@@ -416,8 +417,44 @@ function RateEditor({ cardId, onChange }: { cardId: string; onChange: () => void
     onChange();
   }
 
+  async function saveDeduction(field: string, raw: string) {
+    const trimmed = raw.trim();
+    const value = trimmed === "" ? null : Number(trimmed);
+    if (value !== null && (!Number.isInteger(value) || value < 0 || value > 100)) return;
+    if (value === card[field]) return;
+    await api(`/admin/cards/${cardId}`, { method: "PATCH", body: { [field]: value } });
+    onChange();
+  }
+
   return (
     <div className="pb-4">
+      <div className="mb-3 rounded-lg bg-slate-50 p-3">
+        <p className="text-xs font-semibold text-slate-600">
+          Deductions for this card <span className="font-normal text-slate-400">(blank = platform default)</span>
+        </p>
+        <div className="mt-2 flex flex-wrap gap-3">
+          {(
+            [
+              ["nairaReductionPercent", "Naira %"],
+              ["usdtReductionPercent", "USDT %"],
+              ["ghsReductionPercent", "Cedi %"],
+            ] as const
+          ).map(([field, label]) => (
+            <label key={field} className="flex items-center gap-1.5 text-xs text-slate-600">
+              {label}
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className="w-20 rounded border border-slate-300 px-2 py-1"
+                defaultValue={card[field] ?? ""}
+                placeholder="Default"
+                onBlur={(e) => saveDeduction(field, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+      </div>
       <table className="w-full text-xs">
         <thead className="text-left text-slate-500">
           <tr><th className="p-1">Country</th><th className="p-1">Cur</th><th className="p-1">Denom</th><th className="p-1">Medium</th><th className="p-1">₦/unit</th><th></th></tr>

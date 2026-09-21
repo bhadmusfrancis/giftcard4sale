@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, PayoutCurrency } from "@gc4s/shared";
+import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
@@ -533,6 +533,14 @@ adminRouter.post(
     }
 
     const config = await getRateConfig();
+    const cardReductions = await prisma.cardType.findUnique({
+      where: { id: cardTypeId },
+      select: {
+        nairaReductionPercent: true,
+        usdtReductionPercent: true,
+        ghsReductionPercent: true,
+      },
+    });
     const receiptType = receiptTypeForQuote({
       receiptType: data.receiptType,
       preferNoReceipt: data.receiptType === "NONE",
@@ -569,7 +577,7 @@ adminRouter.post(
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: medium as "PHYSICAL" | "ECODE",
       rates: config.rates,
-      reductions: config.reductions,
+      reductions: reductionsForCard(cardReductions, config.reductions),
     });
 
     const quotedPayout = data.quotedPayout ?? data.finalPayout ?? quote.payoutAmount;
@@ -776,6 +784,9 @@ adminRouter.get(
         rateCount: c._count.rates,
         noonesPaymentMethod: c.noonesPaymentMethod,
         noonesAutoResellEnabled: c.noonesAutoResellEnabled,
+        nairaReductionPercent: c.nairaReductionPercent,
+        usdtReductionPercent: c.usdtReductionPercent,
+        ghsReductionPercent: c.ghsReductionPercent,
       })),
     });
   })
@@ -807,6 +818,9 @@ adminRouter.patch(
         imageUrl: z.string().optional(),
         active: z.boolean().optional(),
         noonesAutoResellEnabled: z.boolean().optional(),
+        nairaReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+        usdtReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+        ghsReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
       }),
       req.body
     );

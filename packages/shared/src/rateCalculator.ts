@@ -1,8 +1,28 @@
-import { RateQuote, RateQuoteInput } from "./types";
+import { RateQuote, RateQuoteInput, RateReductions } from "./types";
 
 function round(n: number, dp = 2): number {
   const f = Math.pow(10, dp);
   return Math.round((n + Number.EPSILON) * f) / f;
+}
+
+/** Per-card deduction overrides; a null/undefined field falls back to the platform default. */
+export interface CardReductionOverrides {
+  nairaReductionPercent?: number | null;
+  usdtReductionPercent?: number | null;
+  ghsReductionPercent?: number | null;
+}
+
+/** Effective deductions for a card: its own overrides where set, else the platform defaults. */
+export function reductionsForCard(
+  card: CardReductionOverrides | null | undefined,
+  base: RateReductions
+): RateReductions {
+  if (!card) return base;
+  return {
+    nairaReductionPercent: card.nairaReductionPercent ?? base.nairaReductionPercent,
+    usdtReductionPercent: card.usdtReductionPercent ?? base.usdtReductionPercent,
+    ghsReductionPercent: card.ghsReductionPercent ?? base.ghsReductionPercent,
+  };
 }
 
 /**

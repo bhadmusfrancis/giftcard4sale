@@ -152,6 +152,10 @@ model CardType {
   noonesSyncedAt DateTime?
   // When true (and global auto-resell is on), new trades for this card are auto-opened on NoOnes.
   noonesAutoResellEnabled Boolean @default(true)
+  // Per-card deduction overrides; null = platform default from RateConfig.
+  nairaReductionPercent Int?
+  usdtReductionPercent  Int?
+  ghsReductionPercent   Int?
   rates       Rate[]
   currencyMeta CardCurrencyMeta[]
   trades      Trade[]
