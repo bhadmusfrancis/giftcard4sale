@@ -282,6 +282,16 @@ export default function WalletPage() {
                 <div className="text-slate-500">
                   {withdrawalDestination(w)} · {date(w.createdAt)}
                 </div>
+                {w.paymentEvidenceUrl && (
+                  <a
+                    href={w.paymentEvidenceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    View payment evidence
+                  </a>
+                )}
               </div>
               <span className={`badge ${STATUS_COLORS[w.status]}`}>{w.status}</span>
             </div>

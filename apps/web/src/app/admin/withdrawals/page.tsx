@@ -41,6 +41,26 @@ function WithdrawalsInner() {
     load();
   }
 
+  async function uploadEvidence(id: string, file: File) {
+    try {
+      const form = new FormData();
+      form.append("evidence", file);
+      await api(`/admin/withdrawals/${id}/evidence`, { method: "POST", body: form, isForm: true });
+    } catch (err) {
+      alert((err as Error).message);
+    }
+    load();
+  }
+
+  async function removeEvidence(id: string) {
+    try {
+      await api(`/admin/withdrawals/${id}/evidence`, { method: "DELETE" });
+    } catch (err) {
+      alert((err as Error).message);
+    }
+    load();
+  }
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <h2 className="text-xl font-bold sm:text-2xl">Withdrawals</h2>
@@ -71,6 +91,38 @@ function WithdrawalsInner() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`badge ${STATUS_COLORS[w.status]}`}>{w.status}</span>
+              {w.paymentEvidenceUrl && (
+                <a
+                  href={w.paymentEvidenceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  View evidence
+                </a>
+              )}
+              <label className="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                {w.paymentEvidenceUrl ? "Replace" : "Upload evidence"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadEvidence(w.id, file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {w.paymentEvidenceUrl && (
+                <button
+                  type="button"
+                  onClick={() => removeEvidence(w.id)}
+                  className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-red-600"
+                >
+                  Remove
+                </button>
+              )}
               {["PENDING", "PROCESSING"].includes(w.status) && (
                 <>
                   <button

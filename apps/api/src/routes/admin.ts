@@ -5,6 +5,7 @@ import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calc
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
+import { chatUpload, fileUrl } from "../lib/upload";
 import { applyWalletChange } from "../services/wallet";
 import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
@@ -654,6 +655,9 @@ adminRouter.get(
         bankAccount: w.bankAccount,
         momoAccount: w.momoAccount,
         adminNote: w.adminNote,
+        paymentEvidenceUrl: w.paymentEvidenceUrl,
+        paymentEvidenceFilename: w.paymentEvidenceFilename,
+        paymentEvidenceMimeType: w.paymentEvidenceMimeType,
         createdAt: w.createdAt,
         user: { id: w.user.id, displayName: w.user.displayName, email: w.user.email },
       })),
@@ -739,6 +743,54 @@ adminRouter.patch(
 
     const updated = await prisma.withdrawal.findUnique({ where: { id: withdrawal.id } });
     res.json({ withdrawal: { id: updated!.id, status: updated!.status } });
+  })
+);
+
+// Attach or replace proof-of-payment (image or PDF receipt) on a withdrawal.
+adminRouter.post(
+  "/withdrawals/:id/evidence",
+  chatUpload.single("evidence"),
+  asyncHandler(async (req, res) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "An image or PDF file is required" });
+
+    const withdrawal = await prisma.withdrawal.findUnique({ where: { id: req.params.id } });
+    if (!withdrawal) return res.status(404).json({ error: "Not found" });
+
+    const updated = await prisma.withdrawal.update({
+      where: { id: withdrawal.id },
+      data: {
+        paymentEvidenceUrl: fileUrl(file),
+        paymentEvidenceFilename: file.originalname,
+        paymentEvidenceMimeType: file.mimetype,
+      },
+    });
+    res.json({
+      withdrawal: {
+        id: updated.id,
+        paymentEvidenceUrl: updated.paymentEvidenceUrl,
+        paymentEvidenceFilename: updated.paymentEvidenceFilename,
+        paymentEvidenceMimeType: updated.paymentEvidenceMimeType,
+      },
+    });
+  })
+);
+
+adminRouter.delete(
+  "/withdrawals/:id/evidence",
+  asyncHandler(async (req, res) => {
+    const withdrawal = await prisma.withdrawal.findUnique({ where: { id: req.params.id } });
+    if (!withdrawal) return res.status(404).json({ error: "Not found" });
+
+    await prisma.withdrawal.update({
+      where: { id: withdrawal.id },
+      data: {
+        paymentEvidenceUrl: null,
+        paymentEvidenceFilename: null,
+        paymentEvidenceMimeType: null,
+      },
+    });
+    res.json({ ok: true });
   })
 );
 

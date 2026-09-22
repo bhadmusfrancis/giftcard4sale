@@ -130,6 +130,9 @@ withdrawalsRouter.get(
           ? { network: w.momoAccount.network, phoneNumber: w.momoAccount.phoneNumber, accountName: w.momoAccount.accountName }
           : null,
         adminNote: w.adminNote,
+        paymentEvidenceUrl: w.paymentEvidenceUrl,
+        paymentEvidenceFilename: w.paymentEvidenceFilename,
+        paymentEvidenceMimeType: w.paymentEvidenceMimeType,
         createdAt: w.createdAt,
       })),
     });

@@ -399,6 +399,11 @@ model Withdrawal {
   adminNote      String?
   transaction    WalletTransaction?
 
+  // Optional proof-of-payment uploaded by an admin (receipt screenshot/PDF).
+  paymentEvidenceUrl      String?
+  paymentEvidenceFilename String?
+  paymentEvidenceMimeType String?
+
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
