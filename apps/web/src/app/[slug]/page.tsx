@@ -95,6 +95,7 @@ export default async function SlugPage({ params }: { params: { slug: string } })
   if (!landing && !card && !knownCard) notFound();
 
   const brand = card?.card ?? knownCard;
+  const isCvs = brand?.name?.toLowerCase().includes("cvs") ?? false;
   const cardName = brand?.name || landing?.page.cardType?.name || "Gift Card";
   const title = landing?.page.title || `Sell ${cardName} Gift Card`;
   const bodyHtml = landing?.page.bodyHtml;
@@ -159,6 +160,27 @@ export default async function SlugPage({ params }: { params: { slug: string } })
           )}
         </div>
       </header>
+
+      {isCvs && (
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">
+            Cards with numbers starting with these digits are not acceptable (third-party cards — we can't use them):
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {[
+              "61019031",
+              "61019043",
+              "61019030",
+              "61019044",
+              "61019042",
+              "61019016",
+              "61019011",
+            ].map((prefix) => (
+              <li key={prefix}>{prefix}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-6">
         <GiftCardSearch cards={catalogCards} currentSellSlug={brand?.sellSlug ?? fixedSlug} />
