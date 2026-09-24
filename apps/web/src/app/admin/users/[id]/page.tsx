@@ -39,6 +39,7 @@ export default function AdminUserDetailPage() {
     effectiveRate: "",
     quotedPayout: "",
     ecodes: "",
+    cardPins: "",
     notes: "",
     markPaid: false,
     startNoOnes: false,
@@ -186,6 +187,7 @@ export default function AdminUserDetailPage() {
         markPaid: tradeForm.markPaid,
         startNoOnes: tradeForm.startNoOnes,
         ecodes: tradeForm.ecodes || undefined,
+        cardPins: tradeForm.cardPins || undefined,
         notes: tradeForm.notes || undefined,
       };
 
@@ -440,6 +442,7 @@ export default function AdminUserDetailPage() {
             <option value="DEBIT">Debit receipt</option>
           </select>
           <textarea className="input min-h-[60px]" placeholder="E-codes (optional)" value={tradeForm.ecodes} onChange={(e) => setTradeForm({ ...tradeForm, ecodes: e.target.value })} />
+          <textarea className="input min-h-[60px]" placeholder="Card PINs (optional)" value={tradeForm.cardPins} onChange={(e) => setTradeForm({ ...tradeForm, cardPins: e.target.value })} />
           <input className="input" placeholder="Admin note" value={tradeForm.notes} onChange={(e) => setTradeForm({ ...tradeForm, notes: e.target.value })} />
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={tradeForm.startNoOnes} onChange={(e) => setTradeForm({ ...tradeForm, startNoOnes: e.target.checked })} />

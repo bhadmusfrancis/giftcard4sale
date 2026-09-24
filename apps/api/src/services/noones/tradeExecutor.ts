@@ -200,10 +200,13 @@ async function deliverCardToPartner(tradeId: string, tradeHash: string): Promise
   });
   if (!trade || !trade.noonesAwaitingSend || trade.status === "CANCELLED") return;
 
-  if (trade.ecodes?.trim()) {
+  const cardParts: string[] = [];
+  if (trade.ecodes?.trim()) cardParts.push(trade.ecodes.trim());
+  if (trade.cardPins?.trim()) cardParts.push(`PINs: ${trade.cardPins.trim()}`);
+  if (cardParts.length) {
     await noonesPost("trade-chat/post", {
       trade_hash: tradeHash,
-      message: trade.ecodes.trim(),
+      message: cardParts.join("\n\n"),
     });
   }
 

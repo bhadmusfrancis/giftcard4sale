@@ -8,7 +8,7 @@ import { buildRateFreshnessMeta, getRateConfig } from "../services/rateConfig";
 import { getLastRateSyncAt } from "../services/rateSyncState";
 import { parseStoredQuotes, receiptPolicyFromStored } from "../services/noones";
 import { listCardCurrencyMetaForDisplay } from "../services/noones/currencyMeta";
-import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
+import { paymentMethodRequiresPin, resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { resolveCardRegionLock, tierMatchesRegionLock } from "../services/noones/regionLock";
 import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 
@@ -171,6 +171,8 @@ cardsRouter.post(
       reductions: reductionsForCard(rate.cardType, config.reductions),
     });
 
+    const requiresPin = paymentMethodRequiresPin(paymentMethod);
+
     res.json({
       quote,
       rate: {
@@ -180,6 +182,7 @@ cardsRouter.post(
         cardName: rate.cardType.name,
         updatedAt: rate.updatedAt,
         speed: rate.speed,
+        requiresPin,
       },
       receiptPolicy,
       quoteSource: "stored",

@@ -112,6 +112,12 @@ export default function AdminTradeDetail() {
                 <pre className="whitespace-pre-wrap rounded bg-slate-50 p-3">{trade.ecodes}</pre>
               </div>
             )}
+            {trade.pins && (
+              <div>
+                <div className="label">PINs</div>
+                <pre className="whitespace-pre-wrap rounded bg-slate-50 p-3">{trade.pins}</pre>
+              </div>
+            )}
             {trade.attachments?.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
                 {trade.attachments.map((a: any) => (

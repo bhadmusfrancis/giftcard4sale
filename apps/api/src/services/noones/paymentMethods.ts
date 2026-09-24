@@ -81,3 +81,39 @@ export function resolvePaymentMethodSlug(
   const guess = `${normalized.replace(/[^a-z0-9-]/g, "")}-gift-card`;
   return guess.length > 5 ? guess : null;
 }
+
+/** Payment methods whose products are single codes or vouchers with no separate PIN. */
+const NO_PIN_PAYMENT_METHODS = new Set([
+  "itunes-gift-card",
+  "google-play-gift-card",
+  "steam-wallet-gift-card",
+  "xbox-gift-card",
+  "playstation-network-gift-card",
+  "amazon-gift-card",
+  "ebay-gift-card",
+  "netflix-gift-card",
+  "spotify-gift-card",
+  "razer-gold-gift-card",
+  "roblox-gift-card",
+  "doordash-gift-card",
+  "chime-gift-card",
+  "eneba-gift-card",
+  "paysafecard",
+  "crypto-voucher",
+]);
+
+/** Whether a payment method represents cards that use both a code and a PIN. */
+export function paymentMethodRequiresPin(paymentMethod: string | null | undefined): boolean {
+  if (!paymentMethod) return false;
+  const pm = paymentMethod.toLowerCase();
+  if (NO_PIN_PAYMENT_METHODS.has(pm)) return false;
+  if (/itunes|google-play|steam|xbox|playstation|psn|netflix|spotify|razer|roblox|eneba|paysafe|flexepin|neosurf|cashlib|transcash|crypto|moneypak|pcs|bitrefill|mobile|boost|t-mobile|bitjem|upi|cashtocode/i.test(pm)) {
+    return false;
+  }
+  return /-gift-card$|prepaid|vanilla|mastercard|visa|amex|american-express/i.test(pm) || pm === "dollar-general";
+}
+
+/** Convenience helper that resolves the payment method before checking PIN requirement. */
+export function cardRequiresPin(cardSlug: string, cardName: string, override?: string | null): boolean {
+  return paymentMethodRequiresPin(resolvePaymentMethodSlug(cardSlug, cardName, override));
+}

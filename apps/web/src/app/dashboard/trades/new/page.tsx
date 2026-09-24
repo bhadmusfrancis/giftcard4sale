@@ -35,6 +35,7 @@ function NewTradeInner() {
   const [quoteReady, setQuoteReady] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [ecodes, setEcodes] = useState("");
+  const [pins, setPins] = useState("");
   const [cardDenominations, setCardDenominations] = useState("");
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
@@ -113,6 +114,10 @@ function NewTradeInner() {
       setError("Please paste your e-code(s).");
       return;
     }
+    if (rateInfo?.requiresPin && !pins.trim()) {
+      setError("Please enter the card PIN(s).");
+      return;
+    }
     if (medium === "PHYSICAL" && !cardDenominations.trim()) {
       setError("Please enter card denominations (e.g. 200x1, 50x4).");
       return;
@@ -132,6 +137,7 @@ function NewTradeInner() {
       if (otherCountryName.trim()) fd.append("otherCountryName", otherCountryName.trim());
       if (cardDenominations.trim()) fd.append("cardDenominations", cardDenominations.trim());
       if (ecodes) fd.append("ecodes", ecodes);
+      if (pins) fd.append("pins", pins);
       if (notes) fd.append("notes", notes);
       if (files) Array.from(files).forEach((f) => fd.append("images", f));
       if (receiptFiles) Array.from(receiptFiles).forEach((f) => fd.append("receiptImages", f));
@@ -255,6 +261,21 @@ function NewTradeInner() {
             />
           </div>
         )}
+
+        {rateInfo?.requiresPin ? (
+          <div>
+            <label className="label">Card PIN(s)</label>
+            <textarea
+              className="input min-h-[120px]"
+              placeholder="Paste the card PIN(s) here, one per line, matching the card order above"
+              value={pins}
+              onChange={(e) => setPins(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Cards of this type require the PIN along with the code. Enter one PIN per card.
+            </p>
+          </div>
+        ) : null}
 
         <div>
           <label className="label">

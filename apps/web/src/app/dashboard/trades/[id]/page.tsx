@@ -104,6 +104,13 @@ export default function TradeDetailPage() {
             </div>
           )}
 
+          {trade.pins && (
+            <div>
+              <div className="label">PINs</div>
+              <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">{trade.pins}</pre>
+            </div>
+          )}
+
           {trade.attachments?.length > 0 && (
             <div>
               <div className="label">Attachments</div>

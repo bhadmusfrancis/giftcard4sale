@@ -262,6 +262,7 @@ model Trade {
 
   status          TradeStatus    @default(PENDING)
   ecodes          String? // pasted codes (for ECODE trades)
+  cardPins        String? // card PINs for products that require code + PIN
   notes           String?
   rejectionReason String?
 

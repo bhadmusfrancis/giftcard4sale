@@ -502,6 +502,7 @@ adminRouter.post(
           status: z.enum(["PENDING", "PROCESSING"]).default("PENDING"),
           notes: z.string().optional(),
           ecodes: z.string().optional(),
+          cardPins: z.string().optional(),
           cardDenominations: z.string().optional(),
           otherCountryName: z.string().optional(),
         })
@@ -603,6 +604,7 @@ adminRouter.post(
         quotedPayout: new Prisma.Decimal(quotedPayout),
         finalPayout: data.finalPayout != null ? new Prisma.Decimal(data.finalPayout) : null,
         ecodes: data.ecodes,
+        cardPins: data.cardPins?.trim() || null,
         notes: data.notes ? `[Admin] ${data.notes}` : "[Admin] Trade opened on behalf of user",
         status: data.markPaid ? "APPROVED" : data.status,
       },

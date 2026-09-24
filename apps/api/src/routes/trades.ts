@@ -9,7 +9,7 @@ import { getRateConfig } from "../services/rateConfig";
 import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
 import { executeNoOnesResell, isAutoResellEnabledForCard, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
-import { resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
+import { paymentMethodRequiresPin, resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 import { generateTradeNumber } from "../services/tradeNumber";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
@@ -39,6 +39,7 @@ const createSchema = z.object({
   medium: z.enum(["PHYSICAL", "ECODE"]),
   receiptType: z.enum(["NONE", "CASH", "DEBIT"]).default("NONE"),
   ecodes: z.string().optional(),
+  pins: z.string().optional(),
   notes: z.string().max(2000).optional(),
   cardDenominations: z.string().min(1).max(200).optional(),
   otherCountryName: z.string().min(2).max(100).optional(),
@@ -137,6 +138,10 @@ tradesRouter.post(
       return res.status(400).json({ error: "Please enter card denominations (e.g. 200x1, 50x4)" });
     }
 
+    if (paymentMethodRequiresPin(paymentMethod) && !data.pins?.trim()) {
+      return res.status(400).json({ error: "Please enter the card PIN(s)" });
+    }
+
     const config = await getRateConfig();
     const quote = calculateRateQuote({
       nairaPerUnit,
@@ -182,6 +187,7 @@ tradesRouter.post(
         effectiveRate: quote.effectiveNairaPerUnit,
         quotedPayout: quote.payoutAmount,
         ecodes: data.ecodes,
+        cardPins: data.pins?.trim() || null,
         notes: data.notes,
         status: "PENDING",
         reviewFlag: reviewFlagReason ? "POSSIBLE_DUPLICATE" : null,
@@ -471,6 +477,7 @@ export function serializeTrade(t: any) {
       false
     ).ok,
     ecodes: t.ecodes,
+    pins: t.cardPins,
     notes: t.notes,
     rejectionReason: t.rejectionReason,
     reviewFlag: t.reviewFlag ?? null,
