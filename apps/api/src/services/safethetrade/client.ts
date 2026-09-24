@@ -47,6 +47,18 @@ const SKIPPED_CURRENCIES = new Set(["NGN"]);
 /** Listings whose brand cannot be identified from the name at all. */
 const IGNORED_METHOD_IDS = new Set(["stream-gift-card-code"]);
 
+/** SafeTheTrade payment-method ids that refer to the same brand.
+ *  Key = alias id seen in the feed, value = canonical id used for grouping. */
+const METHOD_ID_ALIASES: Record<string, string> = {
+  "cvs-pharmacy": "cvs",
+  "cvs-pharmacy-gift-card": "cvs",
+};
+
+/** Preferred display name for a canonical STT method id. */
+const BRAND_NAME_OVERRIDES: Record<string, string> = {
+  cvs: "CVS",
+};
+
 interface SttOffer {
   id?: string;
   ownerId?: string;
@@ -87,6 +99,11 @@ function cardNameFromMethod(methodId: string, apiName?: string): string {
   }
   if (!name) name = source;
   return apiName?.trim() ? name : name.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+function canonicalMethodId(methodId: string): string {
+  const normalized = methodId.replace(/-gift-card$/i, "");
+  return METHOD_ID_ALIASES[normalized] ?? normalized;
 }
 
 function median(values: number[]): number {
@@ -253,7 +270,10 @@ export async function fetchSafeTheTradeRates(
     maxFiat: number;
     owner: string;
   }
-  const grouped = new Map<string, { methodId: string; currency: string; samples: Sample[] }>();
+  const grouped = new Map<
+    string,
+    { canonicalMethodId: string; currency: string; samples: Sample[]; catalogCandidate: boolean }
+  >();
   let anonymousOwner = 0;
 
   for (const offer of offers) {
@@ -279,8 +299,16 @@ export async function fetchSafeTheTradeRates(
     else if ((crypto === "BTC" || crypto === "XBT") && btcUsd > 0) usdtPerFiatUnit = cryptoPerFiatUnit * btcUsd;
     if (!(usdtPerFiatUnit > 0)) continue;
 
-    const key = `${methodId}|${currency}`;
-    const entry = grouped.get(key) ?? { methodId, currency, samples: [] };
+    const canonical = canonicalMethodId(methodId);
+    const key = `${canonical}|${currency}`;
+    const entry = grouped.get(key) ?? { canonicalMethodId: canonical, currency, samples: [], catalogCandidate: true };
+
+    // If any of the aliases is an aggregate category, mark the whole group as not a catalog candidate.
+    const aliasCardName = cardNameFromMethod(methodId, methodNames.get(methodId));
+    if (AGGREGATE_METHOD_NAME.test(aliasCardName)) {
+      entry.catalogCandidate = false;
+    }
+
     const maxFiat = num(offer.maxFiat);
     entry.samples.push({
       usdtPerFiatUnit,
@@ -299,7 +327,7 @@ export async function fetchSafeTheTradeRates(
   }
 
   const rows: SyncedCardRate[] = [];
-  for (const { methodId, currency, samples } of grouped.values()) {
+  for (const { canonicalMethodId, currency, samples, catalogCandidate } of grouped.values()) {
     const usdtPerFiatUnit = median(samples.map((s) => s.usdtPerFiatUnit));
     const nairaPerUnit = usdtPerFiatUnit * ngnPerUsdt;
     if (!(nairaPerUnit > 0)) continue;
@@ -308,11 +336,16 @@ export async function fetchSafeTheTradeRates(
     const range = coveredDenomRange(samples, minOfferOwners);
     const minDenom = Math.max(1, Math.round(range?.min ?? tier.minDenom ?? 1));
     const maxDenom = Math.max(minDenom, Math.round(range?.max ?? tier.maxDenom ?? minDenom));
-    const cardName = cardNameFromMethod(methodId, methodNames.get(methodId));
+
+    const canonicalApiName = methodNames.get(canonicalMethodId);
+    const cardName =
+      BRAND_NAME_OVERRIDES[canonicalMethodId] ??
+      (canonicalApiName ? cardNameFromMethod(canonicalMethodId, canonicalApiName) : undefined) ??
+      cardNameFromMethod(canonicalMethodId, canonicalMethodId);
 
     rows.push({
       cardName,
-      slugHint: canonicalCardSlug(methodId),
+      slugHint: canonicalCardSlug(cardName),
       currency,
       country: tier.country,
       minDenom,
@@ -321,7 +354,7 @@ export async function fetchSafeTheTradeRates(
       storedQuotes: { NONE: nairaPerUnit, CASH: nairaPerUnit, DEBIT: nairaPerUnit },
       offerCount: samples.length,
       ownerCount: new Set(samples.map((s) => s.owner)).size,
-      catalogCandidate: !AGGREGATE_METHOD_NAME.test(cardName),
+      catalogCandidate,
     });
   }
 
