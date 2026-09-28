@@ -9,7 +9,7 @@ import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money } from "@/lib/format";
 import { newMetaEventId, trackMeta } from "@/lib/metaPixel";
 import { trackGoogleAdsLead } from "@/lib/googleAds";
-import { ReceiptType } from "@gc4s/shared";
+import { ReceiptType, isEuroAppleRate } from "@gc4s/shared";
 import { IndicativeRateCaveat, isLegacyPartnerRate } from "@/components/RateRefreshStatus";
 
 const RECEIPT_LABELS: Record<ReceiptType, string> = {
@@ -28,7 +28,7 @@ function NewTradeInner() {
   const payout = (params.get("payout") || "NGN") as "USDT" | "NGN" | "GHS";
   const medium = (params.get("medium") || "PHYSICAL") as "PHYSICAL" | "ECODE";
   const receiptType = (params.get("receiptType") || "NONE") as ReceiptType;
-  const otherCountryName = params.get("otherCountryName") || "";
+  const initialCountryName = params.get("otherCountryName") || "";
 
   const [quote, setQuote] = useState<any>(null);
   const [rateInfo, setRateInfo] = useState<any>(null);
@@ -37,6 +37,7 @@ function NewTradeInner() {
   const [ecodes, setEcodes] = useState("");
   const [pins, setPins] = useState("");
   const [cardDenominations, setCardDenominations] = useState("");
+  const [cardCountry, setCardCountry] = useState(initialCountryName);
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
   const [receiptFiles, setReceiptFiles] = useState<FileList | null>(null);
@@ -45,6 +46,11 @@ function NewTradeInner() {
   const { busy, status, run, statusRef } = useAsyncAction();
 
   const needsReceiptUpload = receiptType !== "NONE";
+  const needsCardCountry = Boolean(
+    rateInfo &&
+      (rateInfo.country === "Other" ||
+        isEuroAppleRate({ name: rateInfo.cardName }, rateInfo.currency, rateInfo.country))
+  );
 
   useEffect(() => {
     if (!rateId || !amount) {
@@ -106,7 +112,7 @@ function NewTradeInner() {
       setError("You indicated a purchase receipt is available — please upload receipt photo(s).");
       return;
     }
-    if (rateInfo?.country === "Other" && !otherCountryName.trim()) {
+    if (needsCardCountry && !cardCountry.trim()) {
       setError("Please specify your card country.");
       return;
     }
@@ -134,7 +140,7 @@ function NewTradeInner() {
       fd.append("payoutCurrency", payout);
       fd.append("medium", medium);
       fd.append("receiptType", receiptType);
-      if (otherCountryName.trim()) fd.append("otherCountryName", otherCountryName.trim());
+      if (cardCountry.trim()) fd.append("otherCountryName", cardCountry.trim());
       if (cardDenominations.trim()) fd.append("cardDenominations", cardDenominations.trim());
       if (ecodes) fd.append("ecodes", ecodes);
       if (pins) fd.append("pins", pins);
@@ -202,9 +208,7 @@ function NewTradeInner() {
               <div className="text-lg font-semibold text-slate-900">{rateInfo.cardName}</div>
             ) : null}
             <div className="text-sm text-slate-500">
-              {rateInfo?.country === "Other" && otherCountryName
-                ? otherCountryName
-                : rateInfo?.country}{" "}
+              {needsCardCountry && cardCountry.trim() ? cardCountry.trim() : rateInfo?.country}{" "}
               · {medium === "ECODE" ? "E-code" : "Physical"} · {amount} {rateInfo?.currency}
             </div>
             {receiptType !== "NONE" ? (
@@ -214,6 +218,12 @@ function NewTradeInner() {
             <div className="text-2xl font-bold">
               {quoteLoading || !quoteReady ? "Calculating…" : quote ? money(quote.payoutAmount, payout) : "—"}
             </div>
+            {quote?.extraReductionPercent ? (
+              <div className="mt-2 max-w-md text-xs text-amber-700">
+                {quote.extraReductionPercent}% reduction applied — {amount} {rateInfo?.currency} is not a
+                multiple of 5 or 50.
+              </div>
+            ) : null}
             {isLegacyPartnerRate(rateInfo?.speed) ? (
               <IndicativeRateCaveat className="mt-2 max-w-md text-xs text-amber-700" />
             ) : null}
@@ -223,6 +233,24 @@ function NewTradeInner() {
       </div>
 
       <form onSubmit={submit} noValidate className="card space-y-5 p-6">
+        {needsCardCountry ? (
+          <div>
+            <label className="label">Card country</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g. Germany, France, Spain"
+              value={cardCountry}
+              onChange={(e) => setCardCountry(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              {rateInfo?.country === "Euro" || rateInfo?.currency === "EUR"
+                ? "Euro Apple/iTunes cards are locked to the issuing country — enter the country printed on your card."
+                : "Enter the country that issued your gift card."}
+            </p>
+          </div>
+        ) : null}
+
         {medium === "ECODE" ? (
           <div>
             <label className="label">E-code(s)</label>

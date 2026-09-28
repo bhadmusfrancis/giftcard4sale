@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, findBoundedRateForAmount, buildCountryOptions, formatDenomRanges, defaultAmountForTiers, collectDenomRangesFromRateRows } from "@gc4s/shared";
+import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, findBoundedRateForAmount, buildCountryOptions, formatDenomRanges, defaultAmountForTiers, collectDenomRangesFromRateRows, isAppleItunesCard, euroDenominationIsOdd } from "@gc4s/shared";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
@@ -27,6 +27,7 @@ interface Config {
   rates: { ngnPerUsdt: number; ngnPerGhs: number };
   reductions: { nairaReductionPercent: number; usdtReductionPercent: number; ghsReductionPercent: number };
   noonesRateRefreshHours?: number;
+  euroAppleOddDenomReductionPercent?: number;
 }
 
 interface CurrencyMetaRow {
@@ -150,7 +151,15 @@ export function RateCalculator({
   const showReceiptPrompt = askReceipt && !amountOutOfRange;
 
   const isOtherCountry = country === "Other";
-  const otherCountryIncomplete = isOtherCountry && !otherCountryName.trim();
+  // Euro Apple/iTunes cards are issued per EU country — the seller must say which.
+  const isEuroApple =
+    isAppleItunesCard({ slug: cardSellSlug, name: cardName }) &&
+    (country === "Euro" || selectedCurrency === "EUR");
+  const needsCardCountry = isOtherCountry || isEuroApple;
+  const cardCountryIncomplete = needsCardCountry && !otherCountryName.trim();
+  const euroOddDenomReductionPercent = config.euroAppleOddDenomReductionPercent ?? 15;
+  const euroOddDenomApplies =
+    isEuroApple && Number.isFinite(amount) && amount > 0 && euroDenominationIsOdd(amount);
 
   const quote = quoteReady ? liveQuote : null;
 
@@ -220,7 +229,7 @@ export function RateCalculator({
       !receiptBlocked &&
       !receiptIncomplete &&
       !policyLoading &&
-      !otherCountryIncomplete
+      !cardCountryIncomplete
   );
 
   function proceed() {
@@ -232,7 +241,7 @@ export function RateCalculator({
       medium,
       receiptType,
     });
-    if (isOtherCountry && otherCountryName.trim()) {
+    if (needsCardCountry && otherCountryName.trim()) {
       params.set("otherCountryName", otherCountryName.trim());
     }
     trackMeta("InitiateCheckout", {
@@ -260,18 +269,22 @@ export function RateCalculator({
         <div>
           <label className="label">Card country</label>
           <CountryPicker options={countryOptions} value={country} onChange={setCountry} />
-          {isOtherCountry ? (
+          {needsCardCountry ? (
             <div className="mt-3">
-              <label className="label">Your card country</label>
+              <label className="label">
+                {isEuroApple && !isOtherCountry ? "Which country issued the card?" : "Your card country"}
+              </label>
               <input
                 type="text"
                 className="input"
-                placeholder="e.g. Austria, France, Japan"
+                placeholder={isEuroApple && !isOtherCountry ? "e.g. Germany, France, Spain" : "e.g. Austria, France, Japan"}
                 value={otherCountryName}
                 onChange={(e) => setOtherCountryName(e.target.value)}
               />
               <p className="mt-1 text-xs text-amber-700">
-                Other-country cards may pay a different rate depending on the specific country. The amount shown is an estimate.
+                {isEuroApple && !isOtherCountry
+                  ? "Euro Apple/iTunes cards are locked to the country that issued them — enter it here (e.g. a German iTunes card is \"Germany\")."
+                  : "Other-country cards may pay a different rate depending on the specific country. The amount shown is an estimate."}
               </p>
             </div>
           ) : null}
@@ -328,6 +341,12 @@ export function RateCalculator({
           {amountOutOfRange ? (
             <p className="mt-1 text-sm text-red-600">
               Enter an amount within the offer range{advertisedRanges ? ` (${advertisedRanges})` : ""}.
+            </p>
+          ) : null}
+          {isEuroApple ? (
+            <p className="mt-1 text-xs text-amber-700">
+              Euro Apple/iTunes amounts that are not a multiple of 5 or 50 pay{" "}
+              {euroOddDenomReductionPercent}% less.
             </p>
           ) : null}
         </div>
@@ -419,6 +438,12 @@ export function RateCalculator({
             {isOtherCountry ? (
               <div className="mt-2 text-xs text-amber-300">
                 Estimate only — payout may change based on your card&apos;s country.
+              </div>
+            ) : null}
+            {euroOddDenomApplies && quote.extraReductionPercent ? (
+              <div className="mt-2 text-xs text-amber-300">
+                {quote.extraReductionPercent}% odd-denomination reduction applied — {amount} {matched?.currency ?? "EUR"} is
+                not a multiple of 5 or 50.
               </div>
             ) : null}
             {indicativeRate ? (

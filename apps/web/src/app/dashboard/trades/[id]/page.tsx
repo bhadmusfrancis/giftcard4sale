@@ -70,7 +70,7 @@ export default function TradeDetailPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card space-y-3 p-6">
           <Row label="Trade ID" value={trade.tradeNumber} />
-          <Row label="Card" value={`${trade.cardType?.name} · ${trade.country} · ${trade.medium}`} />
+          <Row label="Card" value={`${trade.cardType?.name} · ${trade.otherCountryName ? `${trade.otherCountryName} (${trade.country})` : trade.country} · ${trade.medium}`} />
           <Row label="Amount" value={`${trade.cardAmount} ${trade.currency}`} />
           <Row label="Payout" value={money(trade.finalPayout ?? trade.quotedPayout, trade.payoutCurrency)} />
           <Row label="Receipt" value={trade.receiptType} />

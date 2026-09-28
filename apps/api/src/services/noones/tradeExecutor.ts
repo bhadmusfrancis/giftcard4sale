@@ -76,7 +76,10 @@ function receiptAttachmentUrls(attachments: { url: string; filename: string | nu
 }
 
 function displayCountry(trade: { country: string; otherCountryName?: string | null }): string {
-  if (trade.country === "Other" && trade.otherCountryName?.trim()) {
+  if (
+    (trade.country === "Other" || trade.country === "Euro") &&
+    trade.otherCountryName?.trim()
+  ) {
     return trade.otherCountryName.trim();
   }
   return trade.country;

@@ -90,6 +90,8 @@ export const env = {
       process.env.GHS_REDUCTION_PERCENT ?? process.env.FX_REDUCTION_PERCENT,
       30
     ),
+    /** Seeds the admin setting; the dashboard value wins at runtime. */
+    euroAppleOddDenomReductionPercent: num(process.env.EURO_APPLE_ODD_DENOM_REDUCTION_PERCENT, 15),
   },
 
   referralPercent: num(process.env.REFERRAL_PERCENT, 1),

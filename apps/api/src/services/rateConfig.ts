@@ -36,6 +36,7 @@ export async function getRateConfig(): Promise<{
   minWithdrawals: Record<WithdrawalCurrency, number>;
   noonesAutoResellEnabled: boolean;
   sttMinOfferOwners: number;
+  euroAppleOddDenomReductionPercent: number;
 }> {
   let cfg = await prisma.rateConfig.findFirst({ orderBy: { updatedAt: "desc" } });
   if (!cfg) {
@@ -59,6 +60,7 @@ export async function getRateConfig(): Promise<{
         minWithdrawalUsdt: DEFAULT_MIN_WITHDRAWAL_USDT,
         noonesAutoResellEnabled: false,
         sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
+        euroAppleOddDenomReductionPercent: env.reductions.euroAppleOddDenomReductionPercent,
       },
     });
   }
@@ -87,6 +89,7 @@ export async function getRateConfig(): Promise<{
     },
     noonesAutoResellEnabled: cfg.noonesAutoResellEnabled,
     sttMinOfferOwners: cfg.sttMinOfferOwners,
+    euroAppleOddDenomReductionPercent: cfg.euroAppleOddDenomReductionPercent,
   };
 }
 

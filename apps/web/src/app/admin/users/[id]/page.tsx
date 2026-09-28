@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { calculateRateQuote, reductionsForCard } from "@gc4s/shared";
+import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, reductionsForCard } from "@gc4s/shared";
 import { api } from "@/lib/api";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
-import { money, date } from "@/lib/format";
+import { money, date, STATUS_COLORS, STATUS_DESCRIPTIONS } from "@/lib/format";
 
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -114,6 +114,11 @@ export default function AdminUserDetailPage() {
         medium: tradeForm.medium,
         rates: platformConfig.rates,
         reductions: reductionsForCard(card, platformConfig.reductions),
+        extraReductionPercent:
+          isEuroAppleRate(card, tradeForm.currency, tradeForm.country) &&
+          euroDenominationIsOdd(tradeForm.cardAmount)
+            ? platformConfig.euroAppleOddDenomReductionPercent ?? 15
+            : 0,
       });
     } catch {
       return null;
@@ -456,6 +461,45 @@ export default function AdminUserDetailPage() {
             {tradeAction.busy ? "Creating…" : "Create trade"}
           </button>
         </form>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h3 className="font-bold">Trades</h3>
+          <span className="text-sm text-slate-500">
+            {data.trades?.length ?? 0} total
+            {stats.activeTrades > 0 ? ` · ${stats.activeTrades} active` : ""}
+          </span>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {(data.trades ?? []).map((t: any) => (
+            <Link
+              key={t.id}
+              href={`/admin/trades/${t.id}`}
+              className="flex flex-col gap-2 px-6 py-3 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="font-semibold">
+                  {t.cardType?.name} ·{" "}
+                  {t.otherCountryName ? `${t.otherCountryName} (${t.country})` : t.country} · {t.medium}
+                </div>
+                <div className="mt-1 text-sm text-slate-500">
+                  <span className="font-mono text-xs sm:text-sm">{t.tradeNumber}</span>
+                  <span className="mx-1.5">·</span>
+                  {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)}
+                  <span className="mx-1.5 text-slate-300">·</span>
+                  <span className="text-xs text-slate-400">{date(t.createdAt)}</span>
+                </div>
+              </div>
+              <span className={`badge w-fit shrink-0 ${STATUS_COLORS[t.status]}`} title={STATUS_DESCRIPTIONS[t.status]}>
+                {t.status}
+              </span>
+            </Link>
+          ))}
+          {(data.trades ?? []).length === 0 && (
+            <p className="px-6 py-4 text-sm text-slate-400">No trades yet.</p>
+          )}
+        </div>
       </div>
 
       <div className="card p-6">

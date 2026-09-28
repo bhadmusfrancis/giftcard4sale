@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateRateQuote, fixDuplicateSellSlug, PayoutCurrency, ReceiptType, reductionsForCard } from "@gc4s/shared";
+import { calculateRateQuote, euroDenominationIsOdd, fixDuplicateSellSlug, isEuroAppleRate, PayoutCurrency, ReceiptType, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { catalogCardWhere } from "../services/cardVisibility";
@@ -162,6 +162,12 @@ cardsRouter.post(
     );
     const receiptPolicy = receiptPolicyFromStored({ paymentMethod, storedQuotes, medium: rate.medium });
 
+    const extraReductionPercent =
+      isEuroAppleRate(rate.cardType, rate.currency, rate.country) &&
+      euroDenominationIsOdd(data.cardAmount)
+        ? config.euroAppleOddDenomReductionPercent
+        : 0;
+
     const quote = calculateRateQuote({
       nairaPerUnit,
       cardAmount: data.cardAmount,
@@ -169,6 +175,7 @@ cardsRouter.post(
       medium: rate.medium,
       rates: config.rates,
       reductions: reductionsForCard(rate.cardType, config.reductions),
+      extraReductionPercent,
     });
 
     const requiresPin = paymentMethodRequiresPin(paymentMethod);

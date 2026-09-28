@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
+import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
@@ -172,6 +172,12 @@ adminRouter.get(
   asyncHandler(async (req, res) => {
     const summary = await getUserModerationSummary(req.params.id);
     const tradeLimit = await getUserTradeLimit(req.params.id);
+    const trades = await prisma.trade.findMany({
+      where: { userId: req.params.id },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: { cardType: true, attachments: true },
+    });
     res.json({
       user: adminUserListItem(summary.user, {
         activeTrades: summary.activeTrades,
@@ -194,6 +200,7 @@ adminRouter.get(
         createdAt: e.createdAt,
         admin: e.admin ? { id: e.admin.id, email: e.admin.email, displayName: e.admin.displayName } : null,
       })),
+      trades: trades.map((t) => serializeTrade(t)),
     });
   })
 );
@@ -538,6 +545,8 @@ adminRouter.post(
     const cardReductions = await prisma.cardType.findUnique({
       where: { id: cardTypeId },
       select: {
+        slug: true,
+        name: true,
         nairaReductionPercent: true,
         usdtReductionPercent: true,
         ghsReductionPercent: true,
@@ -580,6 +589,10 @@ adminRouter.post(
       medium: medium as "PHYSICAL" | "ECODE",
       rates: config.rates,
       reductions: reductionsForCard(cardReductions, config.reductions),
+      extraReductionPercent:
+        isEuroAppleRate(cardReductions, currency, country) && euroDenominationIsOdd(data.cardAmount)
+          ? config.euroAppleOddDenomReductionPercent
+          : 0,
     });
 
     const quotedPayout = data.quotedPayout ?? data.finalPayout ?? quote.payoutAmount;
@@ -1012,6 +1025,7 @@ adminRouter.put(
         minWithdrawalUsdt: z.number().positive(),
         noonesAutoResellEnabled: z.boolean(),
         sttMinOfferOwners: z.number().int().min(1).max(100),
+        euroAppleOddDenomReductionPercent: z.number().int().min(0).max(100),
       }),
       req.body
     );
@@ -1052,6 +1066,7 @@ adminRouter.put(
         minWithdrawalUsdt: new Prisma.Decimal(data.minWithdrawalUsdt),
         noonesAutoResellEnabled: data.noonesAutoResellEnabled,
         sttMinOfferOwners: data.sttMinOfferOwners,
+        euroAppleOddDenomReductionPercent: data.euroAppleOddDenomReductionPercent,
       },
     });
     const cardCascade: Prisma.CardTypeUpdateManyMutationInput = { ...deductionReset };

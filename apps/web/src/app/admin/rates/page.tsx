@@ -54,6 +54,7 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           minWithdrawalUsdt: Number(config.minWithdrawals?.USDT ?? 5),
           noonesAutoResellEnabled: config.noonesAutoResellEnabled !== false,
           sttMinOfferOwners: Number(config.sttMinOfferOwners ?? 3),
+          euroAppleOddDenomReductionPercent: Number(config.euroAppleOddDenomReductionPercent ?? 15),
         },
       });
       if (d.config) setConfig(d.config);
@@ -88,6 +89,11 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           label="Min SafeTheTrade sellers per rate"
           value={config.sttMinOfferOwners ?? 3}
           onChange={(v) => setConfig({ ...config, sttMinOfferOwners: v })}
+        />
+        <Field
+          label="Euro Apple odd-denomination deduction %"
+          value={config.euroAppleOddDenomReductionPercent ?? 15}
+          onChange={(v) => setConfig({ ...config, euroAppleOddDenomReductionPercent: v })}
         />
         <div className="sm:col-span-3">
           <label className="flex items-start gap-3 text-sm">
@@ -163,8 +169,10 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
       <p className="mt-2 text-xs text-slate-500">
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
         A SafeTheTrade rate is quoted on its own only when at least this many distinct sellers back it. Minimum
-        withdrawal amounts apply to user wallet send/withdraw requests. Changing a deduction % resets every
-        card&apos;s per-card override back to the platform default — adjust individual cards afterwards.
+        withdrawal amounts apply to user wallet send/withdraw requests. The odd-denomination deduction applies on
+        top of the payout deduction when a Euro Apple/iTunes amount is not a multiple of 5 or 50. Changing a
+        deduction % resets every card&apos;s per-card override back to the platform default — adjust individual
+        cards afterwards.
       </p>
       <div className="mt-4 space-y-3">
         {saving && !status ? (

@@ -357,6 +357,8 @@ export interface RateQuoteInput {
   medium: CardMedium;
   rates: ExchangeRates;
   reductions: RateReductions;
+  /** Extra multiplicative reduction applied after the payout-currency deduction. */
+  extraReductionPercent?: number;
 }
 
 export interface RateQuote {
@@ -365,4 +367,6 @@ export interface RateQuote {
   grossNaira: number; // cardAmount * nairaPerUnit (before reduction)
   payoutAmount: number; // final amount paid in payoutCurrency
   reductionPercent: number;
+  /** Extra reduction applied on top of reductionPercent (0 when none applied). */
+  extraReductionPercent: number;
 }

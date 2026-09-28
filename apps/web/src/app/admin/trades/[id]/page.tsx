@@ -94,7 +94,7 @@ export default function AdminTradeDetail() {
             <Row label="Trade ID" value={trade.tradeNumber} />
             <Row label="Seller" value={`${trade.user?.displayName || ""} (${trade.user?.email})`} />
             <Row label="Seller scores" value={`+${trade.user?.goodScore} good / ${trade.user?.badScore} bad`} />
-            <Row label="Card" value={`${trade.cardType?.name} · ${trade.country} · ${trade.medium}`} />
+            <Row label="Card" value={`${trade.cardType?.name} · ${trade.otherCountryName ? `${trade.otherCountryName} (${trade.country})` : trade.country} · ${trade.medium}`} />
             <Row label="Amount" value={`${trade.cardAmount} ${trade.currency}`} />
             <Row label="Quoted payout" value={money(trade.quotedPayout, trade.payoutCurrency)} />
             <Row

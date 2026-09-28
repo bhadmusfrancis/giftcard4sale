@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateRateQuote, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
+import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, needsCardCountryInput, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
@@ -130,7 +130,10 @@ tradesRouter.post(
       return res.status(400).json({ error: "Please upload a photo of your purchase receipt" });
     }
 
-    if (rate.country === "Other" && !data.otherCountryName?.trim()) {
+    if (
+      needsCardCountryInput(rate.country, { card: rate.cardType, currency: rate.currency }) &&
+      !data.otherCountryName?.trim()
+    ) {
       return res.status(400).json({ error: "Please specify your card country" });
     }
 
@@ -143,6 +146,11 @@ tradesRouter.post(
     }
 
     const config = await getRateConfig();
+    const extraReductionPercent =
+      isEuroAppleRate(rate.cardType, rate.currency, rate.country) &&
+      euroDenominationIsOdd(data.cardAmount)
+        ? config.euroAppleOddDenomReductionPercent
+        : 0;
     const quote = calculateRateQuote({
       nairaPerUnit,
       cardAmount: data.cardAmount,
@@ -150,6 +158,7 @@ tradesRouter.post(
       medium: rate.medium,
       rates: config.rates,
       reductions: reductionsForCard(rate.cardType, config.reductions),
+      extraReductionPercent,
     });
 
     const analysis = await analyzeCardSubmission({
