@@ -220,8 +220,7 @@ function NewTradeInner() {
             </div>
             {quote?.extraReductionPercent ? (
               <div className="mt-2 max-w-md text-xs text-amber-700">
-                {quote.extraReductionPercent}% reduction applied — {amount} {rateInfo?.currency} is not a
-                multiple of 5 or 50.
+                A lower rate applies — {amount} {rateInfo?.currency} is not a multiple of 5 or 50.
               </div>
             ) : null}
             {isLegacyPartnerRate(rateInfo?.speed) ? (

@@ -27,7 +27,6 @@ interface Config {
   rates: { ngnPerUsdt: number; ngnPerGhs: number };
   reductions: { nairaReductionPercent: number; usdtReductionPercent: number; ghsReductionPercent: number };
   noonesRateRefreshHours?: number;
-  euroAppleOddDenomReductionPercent?: number;
 }
 
 interface CurrencyMetaRow {
@@ -157,7 +156,6 @@ export function RateCalculator({
     (country === "Euro" || selectedCurrency === "EUR");
   const needsCardCountry = isOtherCountry || isEuroApple;
   const cardCountryIncomplete = needsCardCountry && !otherCountryName.trim();
-  const euroOddDenomReductionPercent = config.euroAppleOddDenomReductionPercent ?? 15;
   const euroOddDenomApplies =
     isEuroApple && Number.isFinite(amount) && amount > 0 && euroDenominationIsOdd(amount);
 
@@ -345,8 +343,7 @@ export function RateCalculator({
           ) : null}
           {isEuroApple ? (
             <p className="mt-1 text-xs text-amber-700">
-              Euro Apple/iTunes amounts that are not a multiple of 5 or 50 pay{" "}
-              {euroOddDenomReductionPercent}% less.
+              Euro Apple/iTunes cards in amounts that are not a multiple of 5 or 50 pay a lower rate.
             </p>
           ) : null}
         </div>
@@ -442,8 +439,7 @@ export function RateCalculator({
             ) : null}
             {euroOddDenomApplies && quote.extraReductionPercent ? (
               <div className="mt-2 text-xs text-amber-300">
-                {quote.extraReductionPercent}% odd-denomination reduction applied — {amount} {matched?.currency ?? "EUR"} is
-                not a multiple of 5 or 50.
+                A lower rate applies — {amount} {matched?.currency ?? "EUR"} is not a multiple of 5 or 50.
               </div>
             ) : null}
             {indicativeRate ? (
