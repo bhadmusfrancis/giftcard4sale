@@ -1,4 +1,7 @@
 // Web push service worker for GiftCard4Sale
+// A fetch handler is required for PWA installability (beforeinstallprompt).
+self.addEventListener("fetch", () => {});
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {

@@ -33,6 +33,36 @@ function splitArticleHtml(bodyHtml: string): { leadHtml: string; restHtml: strin
   };
 }
 
+interface FaqItem {
+  q: string;
+  a: string;
+}
+
+function buildCardFaqs(cardName: string): FaqItem[] {
+  return [
+    {
+      q: `How much is a ${cardName} gift card worth today?`,
+      a: `The live rate calculator on this page shows the current ${cardName} payout. Rates update throughout the day — pick your card's country and enter the amount to see the exact figure before you trade.`,
+    },
+    {
+      q: `How do I sell my ${cardName} gift card?`,
+      a: "Create a free account, start a trade from this page, then upload a photo of the card or paste the e-code. We verify the balance and credit your wallet once approved.",
+    },
+    {
+      q: "How fast do I get paid?",
+      a: "Your GiftCard4Sale wallet is credited as soon as the trade is approved — usually within minutes of verification. Withdraw anytime in USDT, Naira or Cedis.",
+    },
+    {
+      q: `Can I sell a physical ${cardName} card or only e-codes?`,
+      a: "Both are accepted. Physical cards just need clear photos of the front and back; e-codes can be pasted directly into the trade form.",
+    },
+    {
+      q: "Is it safe to sell gift cards online?",
+      a: "Yes — trades run inside your own GiftCard4Sale account and we never ask for issuer passwords or bank logins. Only submit valid cards you legally own.",
+    },
+  ];
+}
+
 const articleProse =
   "prose prose-slate max-w-none " +
   "[&_h2]:mt-10 [&_h2]:border-b [&_h2]:border-slate-200 [&_h2]:pb-2 [&_h2]:text-xl [&_h2]:font-bold " +
@@ -74,12 +104,13 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
   const name = card?.card.name || knownCard?.name;
   if (name) {
-    const desc = `Sell your ${name} gift card for USDT, Naira or Cedi at great rates.`;
+    const title = `Sell ${name} Gift Card for Naira, Cedi or USDT`;
+    const desc = `Sell your ${name} gift card instantly on GiftCard4Sale. See today's live rate, calculate your payout and get paid in Naira, Cedis or USDT.`;
     return {
-      title: `Sell ${name} Gift Card`,
+      title,
       description: desc,
       alternates: { canonical },
-      openGraph: { title: `Sell ${name} Gift Card`, description: desc },
+      openGraph: { title, description: desc },
     };
   }
   return { title: "Not found" };
@@ -101,6 +132,8 @@ export default async function SlugPage({ params }: { params: { slug: string } })
   const bodyHtml = landing?.page.bodyHtml;
   const { leadHtml, restHtml } = bodyHtml ? splitArticleHtml(bodyHtml) : { leadHtml: "", restHtml: "" };
 
+  const faqs = buildCardFaqs(cardName);
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Service",
@@ -112,6 +145,16 @@ export default async function SlugPage({ params }: { params: { slug: string } })
       landing?.page.metaDesc ||
       `Sell your ${cardName} gift card for USDT, Naira or Cedi at great rates on GiftCard4Sale.`,
     url: `${SITE}/${fixedSlug}`,
+  };
+
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
   };
 
   const ratePanel = card ? (
@@ -142,6 +185,7 @@ export default async function SlugPage({ params }: { params: { slug: string } })
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:py-12">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       {card ? (
         <MetaViewContent
           contentName={card.card.name}
@@ -194,15 +238,42 @@ export default async function SlugPage({ params }: { params: { slug: string } })
           {leadHtml ? (
             <article className={articleProse} dangerouslySetInnerHTML={{ __html: leadHtml }} />
           ) : (
-            <p className="text-slate-600 leading-relaxed">
-              Sell your {cardName} gift card for USDT, Naira or Cedi. Calculate your exact payout, then open a trade.
-              Only valid, unused cards are accepted.
-            </p>
+            <article className={articleProse}>
+              <p>
+                Sell your {cardName} gift card for USDT, Naira or Cedi. Calculate your exact payout with the live rate
+                calculator, then open a trade. Only valid, unused cards are accepted.
+              </p>
+              <h2>How to sell your {cardName} gift card</h2>
+              <ol>
+                <li>Create a free GiftCard4Sale account — it takes under a minute.</li>
+                <li>Open a trade for {cardName}, choose your card&apos;s country, and enter the amount.</li>
+                <li>Upload a clear photo of the card or paste the e-code, then submit.</li>
+                <li>Once verified, your wallet is credited. Withdraw in USDT, Naira or Cedis.</li>
+              </ol>
+              <h2>{cardName} gift card rate today</h2>
+              <p>
+                {cardName} rates move with market demand and are refreshed throughout the day. The calculator on this
+                page always shows the current payout for your card&apos;s country and denomination — what you see is what
+                you get, with no hidden fees.
+              </p>
+            </article>
           )}
 
           {restHtml && (
             <article className={`${articleProse} mt-2`} dangerouslySetInnerHTML={{ __html: restHtml }} />
           )}
+
+          <section className="mt-10">
+            <h2 className="text-xl font-bold">Frequently asked questions</h2>
+            <div className="faq-list mt-4 space-y-3">
+              {faqs.map((f) => (
+                <details key={f.q} className="faq-item rounded-lg border border-slate-200 bg-slate-50/80 px-4 py-3">
+                  <summary className="cursor-pointer font-medium text-slate-800">{f.q}</summary>
+                  <p className="mt-2 text-sm text-slate-600">{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </section>
         </div>
 
         {/* Desktop: sticky rate panel stays visible while reading */}

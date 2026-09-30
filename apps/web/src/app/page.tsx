@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { loadCatalogCards } from "@/lib/catalog";
+import { SITE_URL } from "@/lib/seo/site";
 import { PopularCards } from "@/components/PopularCards";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
+import { AppDownloadButtons } from "@/components/AppDownloadButtons";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
@@ -14,8 +16,35 @@ export const revalidate = 300;
 export default async function HomePage() {
   const { cards } = await loadCatalogCards({ revalidate: 300, timeoutMs: 5000 });
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": `${SITE_URL}/#organization`,
+        name: "GiftCard4Sale",
+        url: SITE_URL,
+        logo: `${SITE_URL}/icon.svg`,
+        description: "Independent gift card exchange — sell gift cards for USDT, Naira or Cedi.",
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        url: SITE_URL,
+        name: "GiftCard4Sale",
+        publisher: { "@id": `${SITE_URL}/#organization` },
+        potentialAction: {
+          "@type": "SearchAction",
+          target: { "@type": "EntryPoint", urlTemplate: `${SITE_URL}/cards?q={search_term_string}` },
+          "query-input": "required name=search_term_string",
+        },
+      },
+    ],
+  };
+
   return (
     <div>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       {/* Hero */}
       <section className="bg-gradient-to-b from-brand-700 to-brand-900 text-white">
         <div className="mx-auto max-w-6xl px-4 py-20 text-center">
@@ -90,6 +119,20 @@ export default async function HomePage() {
               Contact support
             </Link>
           </p>
+        </div>
+      </section>
+
+      {/* App download */}
+      <section className="bg-brand-700 text-white">
+        <div className="mx-auto max-w-6xl px-4 py-14 text-center">
+          <h2 className="text-2xl font-bold">Get the GiftCard4Sale app</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-brand-50/90">
+            Install GiftCard4Sale on your phone — check live rates, trade and withdraw from your home screen. No app
+            store needed.
+          </p>
+          <div className="mt-8">
+            <AppDownloadButtons />
+          </div>
         </div>
       </section>
 
