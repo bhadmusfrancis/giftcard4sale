@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { PasswordInput } from "@/components/PasswordInput";
 
 function LoginInner() {
   const { login } = useAuth();
@@ -42,7 +43,7 @@ function LoginInner() {
           </div>
           <div>
             <label className="label">Password</label>
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput value={password} onChange={setPassword} required autoComplete="current-password" />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button type="submit" className="btn-primary w-full" disabled={busy}>{busy ? "Logging in…" : "Log in"}</button>

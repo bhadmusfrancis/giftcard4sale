@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { PasswordInput } from "@/components/PasswordInput";
 
 function RegisterInner() {
   const { register } = useAuth();
@@ -69,7 +70,7 @@ function RegisterInner() {
           </div>
           <div>
             <label className="label">Password</label>
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+            <PasswordInput value={password} onChange={setPassword} required minLength={8} autoComplete="new-password" />
           </div>
           <div>
             <label className="label">Referral code (optional)</label>

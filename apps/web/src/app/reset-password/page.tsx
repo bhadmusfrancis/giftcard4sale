@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { PasswordInput } from "@/components/PasswordInput";
 
 function ResetInner() {
   const params = useSearchParams();
@@ -34,7 +35,7 @@ function ResetInner() {
         <form onSubmit={submit} className="mt-6 space-y-4">
           <div>
             <label className="label">New password</label>
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+            <PasswordInput value={password} onChange={setPassword} required minLength={8} autoComplete="new-password" />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button type="submit" className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Reset password"}</button>
