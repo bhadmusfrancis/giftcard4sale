@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
 import { applyWalletChange, InsufficientFundsError } from "../services/wallet";
+import { mediaUrl } from "../lib/upload";
 import { notify, notifyAdmins } from "../services/notify";
 import { getRateConfig, minWithdrawalForCurrency } from "../services/rateConfig";
 
@@ -130,7 +131,7 @@ withdrawalsRouter.get(
           ? { network: w.momoAccount.network, phoneNumber: w.momoAccount.phoneNumber, accountName: w.momoAccount.accountName }
           : null,
         adminNote: w.adminNote,
-        paymentEvidenceUrl: w.paymentEvidenceUrl,
+        paymentEvidenceUrl: mediaUrl(w.paymentEvidenceUrl),
         paymentEvidenceFilename: w.paymentEvidenceFilename,
         paymentEvidenceMimeType: w.paymentEvidenceMimeType,
         createdAt: w.createdAt,

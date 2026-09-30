@@ -4,7 +4,7 @@ import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, needsCardCo
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
-import { upload, chatUpload, fileUrl } from "../lib/upload";
+import { upload, chatUpload, fileRef, mediaUrl } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
@@ -204,12 +204,12 @@ tradesRouter.post(
         attachments: {
           create: [
             ...cardAnalyzed.map((af, i) =>
-              attachmentCreateData(af, fileUrl(cardFiles[i]), cardFiles[i].originalname)
+              attachmentCreateData(af, fileRef(cardFiles[i]), cardFiles[i].originalname)
             ),
             ...receiptAnalyzed.map((af, i) =>
               attachmentCreateData(
                 af,
-                fileUrl(receiptFiles[i]),
+                fileRef(receiptFiles[i]),
                 `receipt-${receiptFiles[i].originalname}`
               )
             ),
@@ -385,7 +385,7 @@ tradesRouter.post(
         body: text,
         ...(file
           ? {
-              attachmentUrl: fileUrl(file),
+              attachmentUrl: fileRef(file),
               attachmentFilename: file.originalname,
               attachmentMimeType: file.mimetype,
             }
@@ -492,7 +492,7 @@ export function serializeTrade(t: any) {
     reviewFlag: t.reviewFlag ?? null,
     reviewFlagReason: t.reviewFlagReason ?? null,
     notificationsMuted: t.notificationsMuted ?? false,
-    attachments: t.attachments?.map((a: any) => ({ id: a.id, url: a.url, filename: a.filename })) ?? [],
+    attachments: t.attachments?.map((a: any) => ({ id: a.id, url: mediaUrl(a.url), filename: a.filename })) ?? [],
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   };
@@ -502,7 +502,7 @@ export function serializeMessage(m: any) {
   return {
     id: m.id,
     body: m.body,
-    attachmentUrl: m.attachmentUrl ?? null,
+    attachmentUrl: mediaUrl(m.attachmentUrl),
     attachmentFilename: m.attachmentFilename ?? null,
     attachmentMimeType: m.attachmentMimeType ?? null,
     createdAt: m.createdAt,

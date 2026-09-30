@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, AuthedRequest } from "../lib/auth";
-import { upload, fileUrl } from "../lib/upload";
+import { upload, fileRef } from "../lib/upload";
 import { publicUser } from "./auth";
 import {
   parseNotificationPreferences,
@@ -91,7 +91,7 @@ meRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const file = req.file as Express.Multer.File | undefined;
     if (!file) return res.status(400).json({ error: "No image uploaded" });
-    const url = fileUrl(file);
+    const url = fileRef(file);
     const user = await prisma.user.update({ where: { id: req.userId }, data: { avatarUrl: url } });
     res.json({ user: publicUser(user) });
   })

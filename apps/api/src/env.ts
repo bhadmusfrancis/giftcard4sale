@@ -44,8 +44,18 @@ export const env = {
     endpoint: process.env.S3_ENDPOINT || "", // set for R2/Supabase/MinIO
     accessKeyId: process.env.S3_ACCESS_KEY_ID || "",
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "",
-    publicUrl: process.env.S3_PUBLIC_URL || "", // CDN/base URL to read objects
+    publicUrl: process.env.S3_PUBLIC_URL || "", // legacy/CDN base; keep bucket private
     forcePathStyle: (process.env.S3_FORCE_PATH_STYLE || "false") === "true",
+  },
+
+  /**
+   * Signed media URLs. Bucket stays private; the API mints short-lived
+   * /api/media/<key>?e&s links inside authorized responses. Signing secret
+   * defaults to JWT_SECRET; set MEDIA_SIGNING_SECRET to rotate independently.
+   */
+  media: {
+    urlTtlSeconds: num(process.env.MEDIA_URL_TTL_SECONDS, 6 * 60 * 60),
+    signingSecret: process.env.MEDIA_SIGNING_SECRET || process.env.JWT_SECRET || "dev-insecure-secret",
   },
 
   // Payout provider for withdrawals: manual | paystack | flutterwave

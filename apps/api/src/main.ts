@@ -2,7 +2,6 @@ import express, { NextFunction, Request, Response, type Express } from "express"
 import cors from "cors";
 import helmet from "helmet";
 import { env } from "./env";
-import { UPLOAD_DIR, useS3 } from "./lib/upload";
 import { apiLimiter, writeLimiter } from "./lib/rateLimit";
 import { setHealthDetails } from "./health";
 
@@ -18,6 +17,7 @@ import { insightsRouter } from "./routes/insights";
 import { seoRouter } from "./routes/seo";
 import { adminRouter } from "./routes/admin";
 import { analyticsRouter } from "./routes/analytics";
+import { mediaRouter } from "./routes/media";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
 import { startInsightsScheduler } from "./services/insights/scheduler";
@@ -58,7 +58,9 @@ export function mountApi(app: Express): void {
   );
   app.use(express.json({ limit: "2mb" }));
 
-  if (!useS3) app.use("/uploads", express.static(UPLOAD_DIR));
+  // Signed media URLs (private objects) — mounted before the API limiter so
+  // image-heavy pages aren't throttled.
+  app.use("/api/media", mediaRouter);
 
   app.use("/api", apiLimiter);
   app.use("/api/auth", authRouter);

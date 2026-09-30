@@ -12,6 +12,7 @@ import {
   requireAuth,
   AuthedRequest,
 } from "../lib/auth";
+import { mediaUrl } from "../lib/upload";
 import { sendTransactionalEmail } from "../services/email";
 import { notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
@@ -316,7 +317,7 @@ export function publicUser(u: any) {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
-    avatarUrl: u.avatarUrl,
+    avatarUrl: mediaUrl(u.avatarUrl),
     role: u.role,
     emailVerified: u.emailVerified,
     goodScore: u.goodScore,

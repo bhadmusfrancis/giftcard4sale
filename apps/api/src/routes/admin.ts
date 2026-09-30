@@ -5,7 +5,7 @@ import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calc
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
-import { chatUpload, fileUrl } from "../lib/upload";
+import { chatUpload, fileRef, mediaUrl } from "../lib/upload";
 import { applyWalletChange } from "../services/wallet";
 import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
@@ -751,7 +751,7 @@ adminRouter.get(
         bankAccount: w.bankAccount,
         momoAccount: w.momoAccount,
         adminNote: w.adminNote,
-        paymentEvidenceUrl: w.paymentEvidenceUrl,
+        paymentEvidenceUrl: mediaUrl(w.paymentEvidenceUrl),
         paymentEvidenceFilename: w.paymentEvidenceFilename,
         paymentEvidenceMimeType: w.paymentEvidenceMimeType,
         createdAt: w.createdAt,
@@ -856,7 +856,7 @@ adminRouter.post(
     const updated = await prisma.withdrawal.update({
       where: { id: withdrawal.id },
       data: {
-        paymentEvidenceUrl: fileUrl(file),
+        paymentEvidenceUrl: fileRef(file),
         paymentEvidenceFilename: file.originalname,
         paymentEvidenceMimeType: file.mimetype,
       },
@@ -864,7 +864,7 @@ adminRouter.post(
     res.json({
       withdrawal: {
         id: updated.id,
-        paymentEvidenceUrl: updated.paymentEvidenceUrl,
+        paymentEvidenceUrl: mediaUrl(updated.paymentEvidenceUrl),
         paymentEvidenceFilename: updated.paymentEvidenceFilename,
         paymentEvidenceMimeType: updated.paymentEvidenceMimeType,
       },

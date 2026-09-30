@@ -1,10 +1,9 @@
-import fs from "fs";
 import path from "path";
 import { Prisma } from "@prisma/client";
 import { CardReductionOverrides, reductionsForCard } from "@gc4s/shared";
 import { prisma } from "../../prisma";
 import { env } from "../../env";
-import { UPLOAD_DIR } from "../../lib/upload";
+import { getMediaObject, keyFromRef } from "../../lib/upload";
 import { notify, notifyAdmins } from "../notify";
 import { payTrade } from "../payout";
 import { trackTradePurchaseConversion } from "../tradeConversions";
@@ -29,24 +28,30 @@ interface NoOnesChatData {
   messages?: NoOnesChatMessage[];
 }
 
-async function readAttachmentBuffer(url: string): Promise<{ buffer: Buffer; filename: string; mimeType: string } | null> {
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    const res = await fetch(url);
+async function readAttachmentBuffer(ref: string): Promise<{ buffer: Buffer; filename: string; mimeType: string } | null> {
+  const key = keyFromRef(ref);
+  if (key) {
+    const obj = await getMediaObject(key);
+    if (!obj) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of obj.body) chunks.push(Buffer.from(chunk as Buffer));
+    return {
+      buffer: Buffer.concat(chunks),
+      filename: path.basename(key) || "card.jpg",
+      mimeType: obj.contentType || "image/jpeg",
+    };
+  }
+
+  if (ref.startsWith("http://") || ref.startsWith("https://")) {
+    const res = await fetch(ref);
     if (!res.ok) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
-    const filename = path.basename(new URL(url).pathname) || "card.jpg";
+    const filename = path.basename(new URL(ref).pathname) || "card.jpg";
     const mimeType = res.headers.get("content-type") || "image/jpeg";
     return { buffer, filename, mimeType };
   }
 
-  const localName = url.replace(/^.*\/uploads\//, "");
-  const filePath = path.join(UPLOAD_DIR, localName);
-  if (!fs.existsSync(filePath)) return null;
-  const buffer = fs.readFileSync(filePath);
-  const ext = path.extname(filePath).toLowerCase();
-  const mimeType =
-    ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".gif" ? "image/gif" : "image/jpeg";
-  return { buffer, filename: localName, mimeType };
+  return null;
 }
 
 async function uploadTradeAttachments(tradeHash: string, attachmentUrls: string[]): Promise<void> {
