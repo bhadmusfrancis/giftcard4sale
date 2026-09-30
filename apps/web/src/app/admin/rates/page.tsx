@@ -55,6 +55,8 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           noonesAutoResellEnabled: config.noonesAutoResellEnabled !== false,
           sttMinOfferOwners: Number(config.sttMinOfferOwners ?? 3),
           euroAppleOddDenomReductionPercent: Number(config.euroAppleOddDenomReductionPercent ?? 15),
+          maxBankAccounts: Number(config.maxBankAccounts ?? 5),
+          maxMomoAccounts: Number(config.maxMomoAccounts ?? 5),
         },
       });
       if (d.config) setConfig(d.config);
@@ -119,6 +121,16 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           label="Default max active trades"
           value={config.defaultMaxConcurrentTrades ?? 5}
           onChange={(v) => setConfig({ ...config, defaultMaxConcurrentTrades: v })}
+        />
+        <Field
+          label="Max bank accounts per user"
+          value={config.maxBankAccounts ?? 5}
+          onChange={(v) => setConfig({ ...config, maxBankAccounts: v })}
+        />
+        <Field
+          label="Max MoMo accounts per user"
+          value={config.maxMomoAccounts ?? 5}
+          onChange={(v) => setConfig({ ...config, maxMomoAccounts: v })}
         />
         <Field
           label="Auto-suspend after rejections"

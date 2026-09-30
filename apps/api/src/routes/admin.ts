@@ -172,13 +172,19 @@ adminRouter.get(
   asyncHandler(async (req, res) => {
     const summary = await getUserModerationSummary(req.params.id);
     const tradeLimit = await getUserTradeLimit(req.params.id);
-    const trades = await prisma.trade.findMany({
-      where: { userId: req.params.id },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      include: { cardType: true, attachments: true },
-    });
+    const [trades, bankAccounts, momoAccounts] = await Promise.all([
+      prisma.trade.findMany({
+        where: { userId: req.params.id },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+        include: { cardType: true, attachments: true },
+      }),
+      prisma.bankAccount.findMany({ where: { userId: req.params.id }, orderBy: { createdAt: "desc" } }),
+      prisma.momoAccount.findMany({ where: { userId: req.params.id }, orderBy: { createdAt: "desc" } }),
+    ]);
     res.json({
+      bankAccounts,
+      momoAccounts,
       user: adminUserListItem(summary.user, {
         activeTrades: summary.activeTrades,
         recentRejections: summary.recentRejections,
@@ -319,6 +325,81 @@ adminRouter.delete(
     if (user.role === "ADMIN") return res.status(403).json({ error: "Cannot delete admin users" });
 
     await prisma.user.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  })
+);
+
+// ------------------------------------------------------ Payout accounts
+// Users can't remove saved payout accounts; admins manage them here.
+
+const ADMIN_MOMO_NETWORKS = ["MTN", "Vodafone", "AirtelTigo"] as const;
+
+adminRouter.post(
+  "/users/:id/bank-accounts",
+  asyncHandler(async (req, res) => {
+    const data = validate(
+      z.object({
+        bankName: z.string().min(2),
+        accountNumber: z.string().min(6).max(20),
+        accountName: z.string().min(2),
+      }),
+      req.body
+    );
+    const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const [count, config] = await Promise.all([
+      prisma.bankAccount.count({ where: { userId: user.id } }),
+      getRateConfig(),
+    ]);
+    if (count >= config.maxBankAccounts) {
+      return res.status(400).json({ error: `User already has ${config.maxBankAccounts} bank accounts (the configured max).` });
+    }
+    const account = await prisma.bankAccount.create({ data: { ...data, userId: user.id } });
+    res.status(201).json({ account });
+  })
+);
+
+adminRouter.delete(
+  "/users/:id/bank-accounts/:accountId",
+  asyncHandler(async (req, res) => {
+    const account = await prisma.bankAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account || account.userId !== req.params.id) return res.status(404).json({ error: "Not found" });
+    await prisma.bankAccount.delete({ where: { id: account.id } });
+    res.json({ ok: true });
+  })
+);
+
+adminRouter.post(
+  "/users/:id/momo-accounts",
+  asyncHandler(async (req, res) => {
+    const data = validate(
+      z.object({
+        network: z.enum(ADMIN_MOMO_NETWORKS),
+        phoneNumber: z.string().min(9).max(15),
+        accountName: z.string().min(2),
+      }),
+      req.body
+    );
+    const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const [count, config] = await Promise.all([
+      prisma.momoAccount.count({ where: { userId: user.id } }),
+      getRateConfig(),
+    ]);
+    if (count >= config.maxMomoAccounts) {
+      return res.status(400).json({ error: `User already has ${config.maxMomoAccounts} MoMo accounts (the configured max).` });
+    }
+    const account = await prisma.momoAccount.create({ data: { ...data, userId: user.id } });
+    res.status(201).json({ account });
+  })
+);
+
+adminRouter.delete(
+  "/users/:id/momo-accounts/:accountId",
+  asyncHandler(async (req, res) => {
+    const account = await prisma.momoAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account || account.userId !== req.params.id) return res.status(404).json({ error: "Not found" });
+    await prisma.momoAccount.delete({ where: { id: account.id } });
     res.json({ ok: true });
   })
 );
@@ -1026,6 +1107,8 @@ adminRouter.put(
         noonesAutoResellEnabled: z.boolean(),
         sttMinOfferOwners: z.number().int().min(1).max(100),
         euroAppleOddDenomReductionPercent: z.number().int().min(0).max(100),
+        maxBankAccounts: z.number().int().min(1).max(50),
+        maxMomoAccounts: z.number().int().min(1).max(50),
       }),
       req.body
     );
@@ -1067,6 +1150,8 @@ adminRouter.put(
         noonesAutoResellEnabled: data.noonesAutoResellEnabled,
         sttMinOfferOwners: data.sttMinOfferOwners,
         euroAppleOddDenomReductionPercent: data.euroAppleOddDenomReductionPercent,
+        maxBankAccounts: data.maxBankAccounts,
+        maxMomoAccounts: data.maxMomoAccounts,
       },
     });
     const cardCascade: Prisma.CardTypeUpdateManyMutationInput = { ...deductionReset };

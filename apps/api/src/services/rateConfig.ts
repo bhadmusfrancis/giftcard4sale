@@ -10,6 +10,7 @@ const DEFAULT_MIN_COUNTRY_OFFERS_FOR_DISPLAY = 5;
 const DEFAULT_MIN_WITHDRAWAL_NGN = 5000;
 const DEFAULT_MIN_WITHDRAWAL_GHS = 50;
 const DEFAULT_MIN_WITHDRAWAL_USDT = 5;
+const DEFAULT_MAX_PAYOUT_ACCOUNTS = 5;
 
 export type WithdrawalCurrency = "USDT" | "NGN" | "GHS";
 
@@ -37,6 +38,8 @@ export async function getRateConfig(): Promise<{
   noonesAutoResellEnabled: boolean;
   sttMinOfferOwners: number;
   euroAppleOddDenomReductionPercent: number;
+  maxBankAccounts: number;
+  maxMomoAccounts: number;
 }> {
   let cfg = await prisma.rateConfig.findFirst({ orderBy: { updatedAt: "desc" } });
   if (!cfg) {
@@ -61,6 +64,8 @@ export async function getRateConfig(): Promise<{
         noonesAutoResellEnabled: false,
         sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
         euroAppleOddDenomReductionPercent: env.reductions.euroAppleOddDenomReductionPercent,
+        maxBankAccounts: DEFAULT_MAX_PAYOUT_ACCOUNTS,
+        maxMomoAccounts: DEFAULT_MAX_PAYOUT_ACCOUNTS,
       },
     });
   }
@@ -90,6 +95,8 @@ export async function getRateConfig(): Promise<{
     noonesAutoResellEnabled: cfg.noonesAutoResellEnabled,
     sttMinOfferOwners: cfg.sttMinOfferOwners,
     euroAppleOddDenomReductionPercent: cfg.euroAppleOddDenomReductionPercent,
+    maxBankAccounts: cfg.maxBankAccounts,
+    maxMomoAccounts: cfg.maxMomoAccounts,
   };
 }
 

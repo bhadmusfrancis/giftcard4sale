@@ -223,6 +223,9 @@ model RateConfig {
   sttMinOfferOwners         Int      @default(3)
   // Extra % off the payout for Euro Apple/iTunes amounts not divisible by 5 or 50.
   euroAppleOddDenomReductionPercent Int @default(15)
+  // Saved payout-account caps per user (accounts can't be removed once added).
+  maxBankAccounts         Int      @default(5)
+  maxMomoAccounts         Int      @default(5)
   updatedAt             DateTime @updatedAt
   createdAt             DateTime @default(now())
 }

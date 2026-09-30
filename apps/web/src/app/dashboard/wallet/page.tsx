@@ -32,6 +32,8 @@ export default function WalletPage() {
   const { user, refresh } = useAuth();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [momoAccounts, setMomoAccounts] = useState<any[]>([]);
+  const [bankLimit, setBankLimit] = useState(5);
+  const [momoLimit, setMomoLimit] = useState(5);
   const [txns, setTxns] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [minWithdrawals, setMinWithdrawals] = useState<Record<string, number>>({
@@ -69,6 +71,8 @@ export default function WalletPage() {
     ]);
     setAccounts(a.accounts);
     setMomoAccounts(m.accounts);
+    if (a.limit) setBankLimit(a.limit);
+    if (m.limit) setMomoLimit(m.limit);
     setTxns(t.transactions);
     setWithdrawals(w.withdrawals);
     if (w.minWithdrawals) setMinWithdrawals(w.minWithdrawals);
@@ -211,62 +215,72 @@ export default function WalletPage() {
         <div className="space-y-6">
           <div className="card space-y-4 p-6">
             <h2 className="text-lg font-bold">Naira bank accounts</h2>
+            <p className="text-xs text-slate-500">
+              {accounts.length} of {bankLimit} saved
+            </p>
             <div className="space-y-2">
               {accounts.map((a) => (
                 <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <span>{a.bankName} — {a.accountNumber} ({a.accountName})</span>
-                  <button
-                    type="button"
-                    className="text-red-600"
-                    onClick={async () => { await api(`/me/bank-accounts/${a.id}`, { method: "DELETE" }); loadAll(); }}
-                  >
-                    Remove
-                  </button>
                 </div>
               ))}
               {accounts.length === 0 && <p className="text-sm text-slate-400">No saved accounts.</p>}
             </div>
-            <form onSubmit={addBank} className="space-y-2 border-t border-slate-100 pt-3">
-              <input className="input" placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
-              <input className="input" placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
-              <input className="input" placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
-              <button type="submit" className="btn-ghost w-full" disabled={bankAction.busy}>
-                {bankAction.busy ? "Adding…" : "Add account"}
-              </button>
-              <FormFeedback status={bankAction.status} anchorRef={bankAction.statusRef} />
-            </form>
+            {accounts.length < bankLimit ? (
+              <form onSubmit={addBank} className="space-y-2 border-t border-slate-100 pt-3">
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Saved bank accounts can&apos;t be removed once added — double-check the details before saving.
+                </p>
+                <input className="input" placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
+                <input className="input" placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
+                <input className="input" placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
+                <button type="submit" className="btn-ghost w-full" disabled={bankAction.busy}>
+                  {bankAction.busy ? "Adding…" : "Add account"}
+                </button>
+                <FormFeedback status={bankAction.status} anchorRef={bankAction.statusRef} />
+              </form>
+            ) : (
+              <p className="border-t border-slate-100 pt-3 text-sm text-slate-500">
+                You&apos;ve reached the maximum of {bankLimit} bank accounts. Contact support if you need changes.
+              </p>
+            )}
           </div>
 
           <div className="card space-y-4 p-6">
             <h2 className="text-lg font-bold">Cedi MoMo accounts</h2>
+            <p className="text-xs text-slate-500">
+              {momoAccounts.length} of {momoLimit} saved
+            </p>
             <div className="space-y-2">
               {momoAccounts.map((a) => (
                 <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                   <span>{a.network} — {a.phoneNumber} ({a.accountName})</span>
-                  <button
-                    type="button"
-                    className="text-red-600"
-                    onClick={async () => { await api(`/me/momo-accounts/${a.id}`, { method: "DELETE" }); loadAll(); }}
-                  >
-                    Remove
-                  </button>
                 </div>
               ))}
               {momoAccounts.length === 0 && <p className="text-sm text-slate-400">No saved MoMo details.</p>}
             </div>
-            <form onSubmit={addMomo} className="space-y-2 border-t border-slate-100 pt-3">
-              <select className="input" value={momoNetwork} onChange={(e) => setMomoNetwork(e.target.value as typeof momoNetwork)} required>
-                {MOMO_NETWORKS.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-              <input className="input" placeholder="MoMo phone number" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} required />
-              <input className="input" placeholder="Registered name" value={momoName} onChange={(e) => setMomoName(e.target.value)} required />
-              <button type="submit" className="btn-ghost w-full" disabled={momoAction.busy}>
-                {momoAction.busy ? "Adding…" : "Add MoMo account"}
-              </button>
-              <FormFeedback status={momoAction.status} anchorRef={momoAction.statusRef} />
-            </form>
+            {momoAccounts.length < momoLimit ? (
+              <form onSubmit={addMomo} className="space-y-2 border-t border-slate-100 pt-3">
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Saved MoMo accounts can&apos;t be removed once added — double-check the details before saving.
+                </p>
+                <select className="input" value={momoNetwork} onChange={(e) => setMomoNetwork(e.target.value as typeof momoNetwork)} required>
+                  {MOMO_NETWORKS.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <input className="input" placeholder="MoMo phone number" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} required />
+                <input className="input" placeholder="Registered name" value={momoName} onChange={(e) => setMomoName(e.target.value)} required />
+                <button type="submit" className="btn-ghost w-full" disabled={momoAction.busy}>
+                  {momoAction.busy ? "Adding…" : "Add MoMo account"}
+                </button>
+                <FormFeedback status={momoAction.status} anchorRef={momoAction.statusRef} />
+              </form>
+            ) : (
+              <p className="border-t border-slate-100 pt-3 text-sm text-slate-500">
+                You&apos;ve reached the maximum of {momoLimit} MoMo accounts. Contact support if you need changes.
+              </p>
+            )}
           </div>
         </div>
       </div>

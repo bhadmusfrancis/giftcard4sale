@@ -10,6 +10,7 @@ import {
   parseNotificationPreferences,
   NOTIFICATION_CATEGORIES,
 } from "../services/notificationPreferences";
+import { getRateConfig } from "../services/rateConfig";
 
 export const meRouter = Router();
 
@@ -124,11 +125,14 @@ meRouter.get(
   "/bank-accounts",
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const accounts = await prisma.bankAccount.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json({ accounts });
+    const [accounts, config] = await Promise.all([
+      prisma.bankAccount.findMany({
+        where: { userId: req.userId },
+        orderBy: { createdAt: "desc" },
+      }),
+      getRateConfig(),
+    ]);
+    res.json({ accounts, limit: config.maxBankAccounts });
   })
 );
 
@@ -144,19 +148,24 @@ meRouter.post(
       }),
       req.body
     );
+    const [count, config] = await Promise.all([
+      prisma.bankAccount.count({ where: { userId: req.userId } }),
+      getRateConfig(),
+    ]);
+    if (count >= config.maxBankAccounts) {
+      return res.status(400).json({ error: `You can save up to ${config.maxBankAccounts} bank accounts.` });
+    }
     const account = await prisma.bankAccount.create({ data: { ...data, userId: req.userId! } });
     res.status(201).json({ account });
   })
 );
 
+// Saved payout accounts are permanent for users — only admins can remove them.
 meRouter.delete(
   "/bank-accounts/:id",
   requireAuth,
-  asyncHandler(async (req: AuthedRequest, res) => {
-    const account = await prisma.bankAccount.findUnique({ where: { id: req.params.id } });
-    if (!account || account.userId !== req.userId) return res.status(404).json({ error: "Not found" });
-    await prisma.bankAccount.delete({ where: { id: account.id } });
-    res.json({ ok: true });
+  asyncHandler(async (_req: AuthedRequest, res) => {
+    res.status(403).json({ error: "Saved bank accounts can't be removed. Contact support if you need help." });
   })
 );
 
@@ -167,11 +176,14 @@ meRouter.get(
   "/momo-accounts",
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const accounts = await prisma.momoAccount.findMany({
-      where: { userId: req.userId },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json({ accounts });
+    const [accounts, config] = await Promise.all([
+      prisma.momoAccount.findMany({
+        where: { userId: req.userId },
+        orderBy: { createdAt: "desc" },
+      }),
+      getRateConfig(),
+    ]);
+    res.json({ accounts, limit: config.maxMomoAccounts });
   })
 );
 
@@ -187,6 +199,13 @@ meRouter.post(
       }),
       req.body
     );
+    const [count, config] = await Promise.all([
+      prisma.momoAccount.count({ where: { userId: req.userId } }),
+      getRateConfig(),
+    ]);
+    if (count >= config.maxMomoAccounts) {
+      return res.status(400).json({ error: `You can save up to ${config.maxMomoAccounts} MoMo accounts.` });
+    }
     const account = await prisma.momoAccount.create({ data: { ...data, userId: req.userId! } });
     res.status(201).json({ account });
   })
@@ -195,10 +214,7 @@ meRouter.post(
 meRouter.delete(
   "/momo-accounts/:id",
   requireAuth,
-  asyncHandler(async (req: AuthedRequest, res) => {
-    const account = await prisma.momoAccount.findUnique({ where: { id: req.params.id } });
-    if (!account || account.userId !== req.userId) return res.status(404).json({ error: "Not found" });
-    await prisma.momoAccount.delete({ where: { id: account.id } });
-    res.json({ ok: true });
+  asyncHandler(async (_req: AuthedRequest, res) => {
+    res.status(403).json({ error: "Saved MoMo accounts can't be removed. Contact support if you need help." });
   })
 );

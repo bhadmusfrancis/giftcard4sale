@@ -25,6 +25,12 @@ export default function AdminUserDetailPage() {
   const [tradeLimit, setTradeLimit] = useState<string>("");
   const [adminNotes, setAdminNotes] = useState("");
 
+  // payout account management (admins can add/remove; users cannot remove)
+  const [bankForm, setBankForm] = useState({ bankName: "", accountNumber: "", accountName: "" });
+  const [momoForm, setMomoForm] = useState({ network: "MTN", phoneNumber: "", accountName: "" });
+  const bankAction = useAsyncAction();
+  const momoAction = useAsyncAction();
+
   const [rateMode, setRateMode] = useState<"manual" | "catalog">("manual");
   const [tradeForm, setTradeForm] = useState({
     cardTypeId: "",
@@ -213,6 +219,34 @@ export default function AdminUserDetailPage() {
 
     if (result?.trade?.id) {
       router.push(`/admin/trades/${result.trade.id}`);
+    }
+  }
+
+  async function addBankAccount(e: React.FormEvent) {
+    e.preventDefault();
+    await bankAction.run(async () => {
+      await api(`/admin/users/${id}/bank-accounts`, { body: bankForm });
+      setBankForm({ bankName: "", accountNumber: "", accountName: "" });
+      await load();
+    }, "Bank account added.");
+  }
+
+  async function addMomoAccount(e: React.FormEvent) {
+    e.preventDefault();
+    await momoAction.run(async () => {
+      await api(`/admin/users/${id}/momo-accounts`, { body: momoForm });
+      setMomoForm({ network: "MTN", phoneNumber: "", accountName: "" });
+      await load();
+    }, "MoMo account added.");
+  }
+
+  async function removeAccount(kind: "bank-accounts" | "momo-accounts", accountId: string) {
+    if (!confirm("Remove this payout account?")) return;
+    try {
+      await api(`/admin/users/${id}/${kind}/${accountId}`, { method: "DELETE" });
+      await load();
+    } catch (e: any) {
+      setErr(e.message);
     }
   }
 
@@ -499,6 +533,68 @@ export default function AdminUserDetailPage() {
           {(data.trades ?? []).length === 0 && (
             <p className="px-6 py-4 text-sm text-slate-400">No trades yet.</p>
           )}
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="card space-y-4 p-6">
+          <h3 className="font-bold">Bank accounts (Naira)</h3>
+          <p className="text-xs text-slate-500">
+            {data.bankAccounts?.length ?? 0} of {platformConfig?.maxBankAccounts ?? 5} saved — users can&apos;t remove
+            accounts themselves.
+          </p>
+          <div className="space-y-2">
+            {(data.bankAccounts ?? []).map((a: any) => (
+              <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <span>{a.bankName} — {a.accountNumber} ({a.accountName})</span>
+                <button type="button" className="text-red-600" onClick={() => removeAccount("bank-accounts", a.id)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            {(data.bankAccounts ?? []).length === 0 && <p className="text-sm text-slate-400">No saved accounts.</p>}
+          </div>
+          <form onSubmit={addBankAccount} className="space-y-2 border-t border-slate-100 pt-3">
+            <input className="input" placeholder="Bank name" value={bankForm.bankName} onChange={(e) => setBankForm({ ...bankForm, bankName: e.target.value })} required />
+            <input className="input" placeholder="Account number" value={bankForm.accountNumber} onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value })} required />
+            <input className="input" placeholder="Account name" value={bankForm.accountName} onChange={(e) => setBankForm({ ...bankForm, accountName: e.target.value })} required />
+            <button type="submit" className="btn-ghost w-full" disabled={bankAction.busy}>
+              {bankAction.busy ? "Adding…" : "Add bank account"}
+            </button>
+            <FormFeedback status={bankAction.status} anchorRef={bankAction.statusRef} />
+          </form>
+        </div>
+
+        <div className="card space-y-4 p-6">
+          <h3 className="font-bold">MoMo accounts (Cedi)</h3>
+          <p className="text-xs text-slate-500">
+            {data.momoAccounts?.length ?? 0} of {platformConfig?.maxMomoAccounts ?? 5} saved — users can&apos;t remove
+            accounts themselves.
+          </p>
+          <div className="space-y-2">
+            {(data.momoAccounts ?? []).map((a: any) => (
+              <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <span>{a.network} — {a.phoneNumber} ({a.accountName})</span>
+                <button type="button" className="text-red-600" onClick={() => removeAccount("momo-accounts", a.id)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+            {(data.momoAccounts ?? []).length === 0 && <p className="text-sm text-slate-400">No saved MoMo details.</p>}
+          </div>
+          <form onSubmit={addMomoAccount} className="space-y-2 border-t border-slate-100 pt-3">
+            <select className="input" value={momoForm.network} onChange={(e) => setMomoForm({ ...momoForm, network: e.target.value })} required>
+              {["MTN", "Vodafone", "AirtelTigo"].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <input className="input" placeholder="MoMo phone number" value={momoForm.phoneNumber} onChange={(e) => setMomoForm({ ...momoForm, phoneNumber: e.target.value })} required />
+            <input className="input" placeholder="Registered name" value={momoForm.accountName} onChange={(e) => setMomoForm({ ...momoForm, accountName: e.target.value })} required />
+            <button type="submit" className="btn-ghost w-full" disabled={momoAction.busy}>
+              {momoAction.busy ? "Adding…" : "Add MoMo account"}
+            </button>
+            <FormFeedback status={momoAction.status} anchorRef={momoAction.statusRef} />
+          </form>
         </div>
       </div>
 
