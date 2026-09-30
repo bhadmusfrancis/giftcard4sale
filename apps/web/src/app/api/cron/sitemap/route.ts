@@ -5,7 +5,7 @@
 
 import { fetchSitemapFeed } from "@/lib/seo/sitemap-data";
 import { SITE_URL, absoluteUrl } from "@/lib/seo/site";
-import { indexNowKey } from "@/app/api/indexnow-key/route";
+import { indexNowKey } from "@/lib/seo/indexnow";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
