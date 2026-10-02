@@ -296,6 +296,9 @@ export default function WalletPage() {
                 <div className="text-slate-500">
                   {withdrawalDestination(w)} · {date(w.createdAt)}
                 </div>
+                {w.adminNote && (
+                  <div className="mt-0.5 text-xs text-amber-700">Note: {w.adminNote}</div>
+                )}
                 {w.paymentEvidenceUrl && (
                   <a
                     href={w.paymentEvidenceUrl}

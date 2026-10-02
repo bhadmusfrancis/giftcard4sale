@@ -314,7 +314,8 @@ export type WithdrawalStatus =
   | "PROCESSING"
   | "APPROVED"
   | "REJECTED"
-  | "PAID";
+  | "PAID"
+  | "CANCELLED";
 
 export type TxnType =
   | "TRADE_CREDIT"

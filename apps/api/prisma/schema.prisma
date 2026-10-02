@@ -52,6 +52,7 @@ enum WithdrawalStatus {
   APPROVED
   REJECTED
   PAID
+  CANCELLED
 }
 
 enum TxnType {
@@ -403,7 +404,7 @@ model Withdrawal {
 
   status         WithdrawalStatus @default(PENDING)
   adminNote      String?
-  transaction    WalletTransaction?
+  transactions   WalletTransaction[]
 
   // Optional proof-of-payment uploaded by an admin (receipt screenshot/PDF).
   paymentEvidenceUrl      String?
@@ -443,7 +444,7 @@ model WalletTransaction {
 
   tradeId      String?        @unique
   trade        Trade?         @relation(fields: [tradeId], references: [id])
-  withdrawalId String?        @unique
+  withdrawalId String?
   withdrawal   Withdrawal?    @relation(fields: [withdrawalId], references: [id])
 
   createdAt    DateTime       @default(now())

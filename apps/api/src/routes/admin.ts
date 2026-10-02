@@ -6,7 +6,7 @@ import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
 import { chatUpload, fileRef, mediaUrl } from "../lib/upload";
-import { applyWalletChange } from "../services/wallet";
+import { applyWalletChange, InsufficientFundsError } from "../services/wallet";
 import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
 import { trackTradePurchaseConversion } from "../services/tradeConversions";
@@ -761,39 +761,128 @@ adminRouter.get(
   })
 );
 
+// Create a withdrawal on a user's behalf (debits their wallet immediately).
+const adminCreateWithdrawalSchema = z
+  .object({
+    userId: z.string().min(1),
+    currency: z.enum(["USDT", "NGN", "GHS"]),
+    amount: z.coerce.number().positive(),
+    bankAccountId: z.string().optional(),
+    momoAccountId: z.string().optional(),
+    destinationAddress: z.string().optional(),
+    adminNote: z.string().max(2000).optional(),
+  })
+  .refine(
+    (d) => {
+      if (d.currency === "NGN") return !!d.bankAccountId;
+      if (d.currency === "GHS") return !!d.momoAccountId;
+      return !!d.destinationAddress;
+    },
+    { message: "Naira requires a saved bank account; Cedi requires saved MoMo details; USDT requires a wallet address" }
+  );
+
+adminRouter.post(
+  "/withdrawals",
+  asyncHandler(async (req, res) => {
+    const data = validate(adminCreateWithdrawalSchema, req.body);
+
+    const user = await prisma.user.findUnique({ where: { id: data.userId }, select: { id: true } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (data.currency === "NGN" && data.bankAccountId) {
+      const account = await prisma.bankAccount.findUnique({ where: { id: data.bankAccountId } });
+      if (!account || account.userId !== user.id) {
+        return res.status(400).json({ error: "Bank account not found" });
+      }
+    }
+
+    if (data.currency === "GHS" && data.momoAccountId) {
+      const account = await prisma.momoAccount.findUnique({ where: { id: data.momoAccountId } });
+      if (!account || account.userId !== user.id) {
+        return res.status(400).json({ error: "MoMo account not found" });
+      }
+    }
+
+    try {
+      const withdrawal = await prisma.$transaction(async (tx) => {
+        const w = await tx.withdrawal.create({
+          data: {
+            userId: user.id,
+            currency: data.currency,
+            amount: new Prisma.Decimal(data.amount),
+            bankAccountId: data.currency === "NGN" ? data.bankAccountId : null,
+            momoAccountId: data.currency === "GHS" ? data.momoAccountId : null,
+            destinationAddress: data.currency === "USDT" ? data.destinationAddress : null,
+            adminNote: data.adminNote || null,
+            status: "PENDING",
+          },
+        });
+        // Hold funds immediately (debit). Refunded if rejected/cancelled/deleted.
+        await applyWalletChange(tx, user.id, data.currency, new Prisma.Decimal(-data.amount), "WITHDRAWAL_DEBIT", {
+          withdrawalId: w.id,
+          description: `Withdrawal request ${w.id}`,
+        });
+        return w;
+      });
+
+      res.status(201).json({ withdrawal: { id: withdrawal.id, status: withdrawal.status } });
+
+      void notify({
+        userId: user.id,
+        title: "Withdrawal request created",
+        body: `An administrator created a withdrawal of ${data.amount} ${data.currency} on your account. It is pending approval.${
+          data.adminNote ? ` Note: ${data.adminNote}` : ""
+        }`,
+        link: `/dashboard/wallet`,
+        push: true,
+        email: true,
+      }).catch((err) => console.error("[notify] admin withdrawal notify failed:", (err as Error).message));
+    } catch (err) {
+      if (err instanceof InsufficientFundsError) {
+        return res.status(400).json({ error: "Insufficient wallet balance" });
+      }
+      throw err;
+    }
+  })
+);
+
+const WITHDRAWAL_FINAL_STATUSES = ["REJECTED", "PAID", "CANCELLED"];
+
 adminRouter.patch(
   "/withdrawals/:id",
   asyncHandler(async (req, res) => {
     const data = validate(
       z.object({
-        status: z.enum(["PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID"]),
-        adminNote: z.string().optional(),
+        status: z.enum(["PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID", "CANCELLED"]).optional(),
+        adminNote: z.string().max(2000).optional(),
       }),
       req.body
     );
     const withdrawal = await prisma.withdrawal.findUnique({ where: { id: req.params.id } });
     if (!withdrawal) return res.status(404).json({ error: "Not found" });
 
-    if (withdrawal.status === "REJECTED" || withdrawal.status === "PAID") {
+    if (data.status && WITHDRAWAL_FINAL_STATUSES.includes(withdrawal.status)) {
       return res.status(400).json({ error: "Withdrawal already finalized" });
     }
 
-    if (data.status === "REJECTED") {
+    if (data.status === "REJECTED" || data.status === "CANCELLED") {
       // Refund the held funds.
       await prisma.$transaction(async (tx) => {
         await applyWalletChange(tx, withdrawal.userId, withdrawal.currency, withdrawal.amount, "TRANSFER_CREDIT", {
           withdrawalId: withdrawal.id,
-          description: `Refund for rejected withdrawal ${withdrawal.id}`,
+          description: `Refund for ${data.status === "CANCELLED" ? "cancelled" : "rejected"} withdrawal ${withdrawal.id}`,
         });
         await tx.withdrawal.update({
           where: { id: withdrawal.id },
-          data: { status: "REJECTED", adminNote: data.adminNote },
+          data: { status: data.status, adminNote: data.adminNote },
         });
       });
       await notify({
         userId: withdrawal.userId,
-        title: "Withdrawal rejected & refunded",
-        body: `Your withdrawal of ${Number(withdrawal.amount)} ${withdrawal.currency} was rejected and refunded. ${data.adminNote ?? ""}`,
+        title: `Withdrawal ${data.status === "CANCELLED" ? "cancelled" : "rejected"} & refunded`,
+        body: `Your withdrawal of ${Number(withdrawal.amount)} ${withdrawal.currency} was ${
+          data.status === "CANCELLED" ? "cancelled" : "rejected"
+        } and refunded. ${data.adminNote ?? ""}`,
         link: "/dashboard/wallet",
       });
     } else if (data.status === "PAID") {
@@ -839,6 +928,41 @@ adminRouter.patch(
 
     const updated = await prisma.withdrawal.findUnique({ where: { id: withdrawal.id } });
     res.json({ withdrawal: { id: updated!.id, status: updated!.status } });
+  })
+);
+
+// Delete a withdrawal outright. If its funds are still held (not yet paid out
+// or already refunded), the user is refunded first.
+adminRouter.delete(
+  "/withdrawals/:id",
+  asyncHandler(async (req, res) => {
+    const withdrawal = await prisma.withdrawal.findUnique({ where: { id: req.params.id } });
+    if (!withdrawal) return res.status(404).json({ error: "Not found" });
+
+    if (withdrawal.status === "PAID") {
+      return res.status(400).json({ error: "Paid withdrawals can't be deleted" });
+    }
+
+    const fundsHeld = !WITHDRAWAL_FINAL_STATUSES.includes(withdrawal.status);
+    await prisma.$transaction(async (tx) => {
+      if (fundsHeld) {
+        await applyWalletChange(tx, withdrawal.userId, withdrawal.currency, withdrawal.amount, "TRANSFER_CREDIT", {
+          withdrawalId: withdrawal.id,
+          description: `Refund for deleted withdrawal ${withdrawal.id}`,
+        });
+      }
+      await tx.withdrawal.delete({ where: { id: withdrawal.id } });
+    });
+
+    if (fundsHeld) {
+      await notify({
+        userId: withdrawal.userId,
+        title: "Withdrawal cancelled & refunded",
+        body: `Your withdrawal of ${Number(withdrawal.amount)} ${withdrawal.currency} was cancelled and the funds returned to your wallet.`,
+        link: "/dashboard/wallet",
+      });
+    }
+    res.json({ ok: true, refunded: fundsHeld });
   })
 );
 
