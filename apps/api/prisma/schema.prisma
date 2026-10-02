@@ -52,7 +52,6 @@ enum WithdrawalStatus {
   APPROVED
   REJECTED
   PAID
-  CANCELLED
 }
 
 enum TxnType {

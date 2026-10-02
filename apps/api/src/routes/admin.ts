@@ -817,7 +817,7 @@ adminRouter.post(
             status: "PENDING",
           },
         });
-        // Hold funds immediately (debit). Refunded if rejected/cancelled/deleted.
+        // Hold funds immediately (debit). Refunded if rejected or deleted.
         await applyWalletChange(tx, user.id, data.currency, new Prisma.Decimal(-data.amount), "WITHDRAWAL_DEBIT", {
           withdrawalId: w.id,
           description: `Withdrawal request ${w.id}`,
@@ -853,7 +853,7 @@ adminRouter.patch(
   asyncHandler(async (req, res) => {
     const data = validate(
       z.object({
-        status: z.enum(["PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID", "CANCELLED"]).optional(),
+        status: z.enum(["PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID"]).optional(),
         adminNote: z.string().max(2000).optional(),
       }),
       req.body
@@ -865,24 +865,22 @@ adminRouter.patch(
       return res.status(400).json({ error: "Withdrawal already finalized" });
     }
 
-    if (data.status === "REJECTED" || data.status === "CANCELLED") {
+    if (data.status === "REJECTED") {
       // Refund the held funds.
       await prisma.$transaction(async (tx) => {
         await applyWalletChange(tx, withdrawal.userId, withdrawal.currency, withdrawal.amount, "TRANSFER_CREDIT", {
           withdrawalId: withdrawal.id,
-          description: `Refund for ${data.status === "CANCELLED" ? "cancelled" : "rejected"} withdrawal ${withdrawal.id}`,
+          description: `Refund for rejected withdrawal ${withdrawal.id}`,
         });
         await tx.withdrawal.update({
           where: { id: withdrawal.id },
-          data: { status: data.status, adminNote: data.adminNote },
+          data: { status: "REJECTED", adminNote: data.adminNote },
         });
       });
       await notify({
         userId: withdrawal.userId,
-        title: `Withdrawal ${data.status === "CANCELLED" ? "cancelled" : "rejected"} & refunded`,
-        body: `Your withdrawal of ${Number(withdrawal.amount)} ${withdrawal.currency} was ${
-          data.status === "CANCELLED" ? "cancelled" : "rejected"
-        } and refunded. ${data.adminNote ?? ""}`,
+        title: "Withdrawal rejected & refunded",
+        body: `Your withdrawal of ${Number(withdrawal.amount)} ${withdrawal.currency} was rejected and refunded. ${data.adminNote ?? ""}`,
         link: "/dashboard/wallet",
       });
     } else if (data.status === "PAID") {

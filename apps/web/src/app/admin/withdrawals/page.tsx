@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 
-const STATUSES = ["", "PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID", "CANCELLED"];
+const STATUSES = ["", "PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID"];
 const FUNDS_HELD = ["PENDING", "PROCESSING", "APPROVED"];
 
 function withdrawalDestination(w: {
@@ -223,11 +223,8 @@ function WithdrawalsInner() {
   }, [status]);
 
   async function act(id: string, newStatus: string) {
-    const adminNote =
-      newStatus === "REJECTED" || newStatus === "CANCELLED"
-        ? prompt(`Note for the user (${newStatus === "REJECTED" ? "rejection" : "cancellation"} refunds the user)`) ?? undefined
-        : undefined;
-    if ((newStatus === "REJECTED" || newStatus === "CANCELLED") && adminNote === undefined) return;
+    const adminNote = newStatus === "REJECTED" ? prompt("Reason for rejection (refunds the user)") ?? undefined : undefined;
+    if (newStatus === "REJECTED" && adminNote === undefined) return;
     try {
       await api(`/admin/withdrawals/${id}`, { method: "PATCH", body: { status: newStatus, adminNote } });
     } catch (err) {
@@ -379,15 +376,6 @@ function WithdrawalsInner() {
                     Reject
                   </button>
                 </>
-              )}
-              {FUNDS_HELD.includes(w.status) && (
-                <button
-                  type="button"
-                  onClick={() => act(w.id, "CANCELLED")}
-                  className="rounded-lg bg-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700"
-                >
-                  Cancel
-                </button>
               )}
               <button
                 type="button"
