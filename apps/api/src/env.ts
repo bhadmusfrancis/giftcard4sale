@@ -161,12 +161,6 @@ export const env = {
     /** Sync cadence. The admin refresh interval wins; this is the fallback. */
     fallbackMinutes: num(process.env.RATE_SYNC_MINUTES, num(process.env.SOGO_RATE_SYNC_MINUTES, 15)),
     /**
-     * How far above Sogo a SafeTheTrade rate may be quoted. Sogo is the price a
-     * card actually resells at, so this bounds what a thin marketplace book can
-     * commit us to paying.
-     */
-    sttMaxPremiumPercent: num(process.env.STT_MAX_PREMIUM_PERCENT, 20),
-    /**
      * Distinct sellers a SafeTheTrade tier needs before it is quoted with no
      * Sogo rate to bound it — the same bar a brand must clear to enter the
      * catalog. Seeds the admin setting; the dashboard value wins at runtime.

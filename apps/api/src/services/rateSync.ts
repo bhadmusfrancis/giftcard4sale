@@ -26,13 +26,11 @@ import { fetchSogoGiftCardRates, type SogoCardRates } from "./sogo/scraper";
 const SYNCED_OFFER_COUNT = 999;
 
 /**
- * How far a SafeTheTrade rate may sit above Sogo's for the same card.
- *
- * SafeTheTrade outranks Sogo, but Sogo is the price a card actually resells at,
- * and SafeTheTrade's thin order book routinely prices well above it. Without a
- * ceiling we would commit to payouts we cannot recover.
+ * Where Sogo prices the same card, its rate is the ceiling for SafeTheTrade —
+ * the lesser of the two sources always wins. Sogo is the price a card actually
+ * resells at, and SafeTheTrade's thin order book routinely prices well above
+ * it; without the ceiling we would commit to payouts we cannot recover.
  */
-const MAX_PREMIUM_OVER_SOGO = Math.max(0, env.rateSync.sttMaxPremiumPercent) / 100;
 
 /**
  * Sellers a marketplace tier needs before it is quoted without a Sogo rate to
@@ -327,10 +325,9 @@ async function createBrandFromMarketplace(rate: SyncedCardRate, minOfferOwners: 
 /**
  * SafeTheTrade rate for one card + currency.
  *
- * SafeTheTrade wins wherever it lists the card: its median quotes even at or
- * below Sogo's rate. Sogo's rate only bounds the upside — above
- * `MAX_PREMIUM_OVER_SOGO` the SafeTheTrade rate is capped — and fills the
- * cards and currencies SafeTheTrade does not price.
+ * SafeTheTrade wins wherever it lists the card, but never above Sogo's rate
+ * for the same card — the lesser of the two sources is what quotes. Sogo also
+ * fills the cards and currencies SafeTheTrade does not price.
  *
  * A tier is quoted only once enough distinct sellers agree on the price —
  * with or without a Sogo reference. A book that thins below the threshold
@@ -368,7 +365,7 @@ async function syncPrimaryRate(
       continue;
     }
 
-    const ceiling = sogoRate ? sogoRate * (1 + MAX_PREMIUM_OVER_SOGO) : Infinity;
+    const ceiling = sogoRate ?? Infinity;
     const nairaPerUnit = Math.min(rate.nairaPerUnit, ceiling);
     if (nairaPerUnit < rate.nairaPerUnit) capped.count++;
 
@@ -596,9 +593,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
 
   summary.cardTypes = touchedCards.size;
   if (capped.count) {
-    console.log(
-      `Capped ${capped.count} SafeTheTrade rate(s) at Sogo + ${env.rateSync.sttMaxPremiumPercent}%.`
-    );
+    console.log(`Capped ${capped.count} SafeTheTrade rate(s) at the lower Sogo rate.`);
   }
   await ensureCardSeoLandingPagesPublished();
 
