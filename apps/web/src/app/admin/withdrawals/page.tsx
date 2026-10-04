@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { money, date, STATUS_COLORS } from "@/lib/format";
+import { USDT_WITHDRAWAL_NETWORK_FEE } from "@gc4s/shared";
 
 const STATUSES = ["", "PENDING", "PROCESSING", "APPROVED", "REJECTED", "PAID"];
 const FUNDS_HELD = ["PENDING", "PROCESSING", "APPROVED"];
@@ -148,6 +149,11 @@ function NewWithdrawalForm({ onCreated }: { onCreated: () => void }) {
             onChange={(e) => setAmount(Number(e.target.value))}
             required
           />
+          {currency === "USDT" && (
+            <p className="mt-1 text-xs text-slate-500">
+              +{money(USDT_WITHDRAWAL_NETWORK_FEE, "USDT")} network fee will also be debited.
+            </p>
+          )}
         </div>
       </div>
 
@@ -315,6 +321,9 @@ function WithdrawalsInner() {
                 <span className="font-medium text-slate-700">{w.user?.displayName || w.user?.email}</span>
               </div>
               <div className="mt-1 break-all text-sm text-slate-500">{withdrawalDestination(w)}</div>
+              {w.fee > 0 && (
+                <div className="mt-0.5 text-xs text-slate-400">+{money(w.fee, w.currency)} network fee charged</div>
+              )}
               {w.adminNote && <div className="mt-1 break-all text-xs text-amber-700">Note: {w.adminNote}</div>}
               <div className="mt-0.5 text-xs text-slate-400">{date(w.createdAt)}</div>
             </div>

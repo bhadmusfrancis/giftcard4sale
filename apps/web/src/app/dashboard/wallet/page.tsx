@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { USDT_WITHDRAWAL_NETWORK_FEE } from "@gc4s/shared";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money, date, STATUS_COLORS } from "@/lib/format";
@@ -174,6 +175,11 @@ export default function WalletPage() {
             {minAmount > 0 && (
               <p className="mt-1 text-xs text-slate-500">Minimum: {money(minAmount, currency)}</p>
             )}
+            {currency === "USDT" && (
+              <p className="mt-1 text-xs text-slate-500">
+                Network fee: {money(USDT_WITHDRAWAL_NETWORK_FEE, "USDT")} — charged on top of the withdrawal amount.
+              </p>
+            )}
           </div>
 
           {currency === "NGN" ? (
@@ -296,6 +302,9 @@ export default function WalletPage() {
                 <div className="text-slate-500">
                   {withdrawalDestination(w)} · {date(w.createdAt)}
                 </div>
+                {w.fee > 0 && (
+                  <div className="text-xs text-slate-400">+{money(w.fee, w.currency)} network fee</div>
+                )}
                 {w.adminNote && (
                   <div className="mt-0.5 text-xs text-amber-700">Note: {w.adminNote}</div>
                 )}

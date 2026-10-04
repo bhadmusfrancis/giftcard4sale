@@ -32,6 +32,26 @@ import { env } from "../env";
 
 export const tradesRouter = Router();
 
+// ---------------------------------------------------------------- Chat typing state
+// In-memory "who is typing" per trade, keyed by role. Entries expire quickly —
+// clients re-assert while typing and send typing:false on send/blur.
+const typingState = new Map<string, { user?: number; admin?: number }>();
+const TYPING_TTL_MS = 6000;
+
+function partnerIsTyping(tradeId: string, requesterRole: string | undefined): boolean {
+  const entry = typingState.get(tradeId);
+  if (!entry) return false;
+  const partnerAt = requesterRole === "ADMIN" ? entry.user : entry.admin;
+  return !!partnerAt && Date.now() - partnerAt < TYPING_TTL_MS;
+}
+
+async function markMessagesDelivered(tradeId: string, recipientId: string) {
+  await prisma.tradeMessage.updateMany({
+    where: { tradeId, senderId: { not: recipientId }, deliveredAt: null },
+    data: { deliveredAt: new Date() },
+  });
+}
+
 const createSchema = z.object({
   rateId: z.string(),
   cardAmount: z.coerce.number().positive(),
@@ -344,14 +364,89 @@ tradesRouter.get(
       include: {
         cardType: true,
         attachments: true,
-        messages: { orderBy: { createdAt: "asc" }, include: { sender: true } },
       },
     });
     if (!trade) return res.status(404).json({ error: "Trade not found" });
     if (trade.userId !== req.userId && req.userRole !== "ADMIN") {
       return res.status(403).json({ error: "Forbidden" });
     }
-    res.json({ trade: serializeTrade(trade), messages: trade.messages.map(serializeMessage) });
+
+    // Receiving this list counts as delivery to the requester's client.
+    await markMessagesDelivered(trade.id, req.userId!);
+
+    const messages = await prisma.tradeMessage.findMany({
+      where: { tradeId: trade.id },
+      orderBy: { createdAt: "asc" },
+      include: { sender: true },
+    });
+    res.json({
+      trade: serializeTrade(trade),
+      messages: messages.map(serializeMessage),
+      partnerTyping: partnerIsTyping(trade.id, req.userRole),
+    });
+  })
+);
+
+// Typing indicator — lightweight, in-memory only.
+tradesRouter.post(
+  "/:id/typing",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { typing } = validate(z.object({ typing: z.boolean() }), req.body ?? {});
+    const trade = await prisma.trade.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, userId: true },
+    });
+    if (!trade) return res.status(404).json({ error: "Trade not found" });
+    if (trade.userId !== req.userId && req.userRole !== "ADMIN") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const role = req.userRole === "ADMIN" ? "admin" : "user";
+    const entry = typingState.get(trade.id) || {};
+    if (typing) entry[role] = Date.now();
+    else delete entry[role];
+    typingState.set(trade.id, entry);
+    res.json({ ok: true });
+  })
+);
+
+// Mark the partner's messages as read (client calls this while the chat is
+// actually visible). Also returns the partner's read/delivery watermarks on
+// this requester's own messages, for fast receipt updates.
+tradesRouter.post(
+  "/:id/messages/read",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const trade = await prisma.trade.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, userId: true },
+    });
+    if (!trade) return res.status(404).json({ error: "Trade not found" });
+    if (trade.userId !== req.userId && req.userRole !== "ADMIN") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const now = new Date();
+    await prisma.tradeMessage.updateMany({
+      where: { tradeId: trade.id, senderId: { not: req.userId! }, deliveredAt: null },
+      data: { deliveredAt: now },
+    });
+    await prisma.tradeMessage.updateMany({
+      where: { tradeId: trade.id, senderId: { not: req.userId! }, readAt: null },
+      data: { readAt: now },
+    });
+
+    const agg = await prisma.tradeMessage.aggregate({
+      where: { tradeId: trade.id, senderId: req.userId! },
+      _max: { readAt: true, deliveredAt: true },
+    });
+    res.json({
+      ok: true,
+      partnerTyping: partnerIsTyping(trade.id, req.userRole),
+      partnerReadAt: agg._max.readAt,
+      partnerDeliveredAt: agg._max.deliveredAt,
+    });
   })
 );
 
@@ -505,6 +600,8 @@ export function serializeMessage(m: any) {
     attachmentUrl: mediaUrl(m.attachmentUrl),
     attachmentFilename: m.attachmentFilename ?? null,
     attachmentMimeType: m.attachmentMimeType ?? null,
+    deliveredAt: m.deliveredAt ?? null,
+    readAt: m.readAt ?? null,
     createdAt: m.createdAt,
     sender: { id: m.sender.id, displayName: m.sender.displayName, role: m.sender.role },
   };

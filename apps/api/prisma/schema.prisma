@@ -355,6 +355,10 @@ model TradeMessage {
   attachmentUrl      String?
   attachmentFilename String?
   attachmentMimeType String?
+  // Set when the recipient's client first fetches the message, and when they
+  // view the chat with it visible.
+  deliveredAt DateTime?
+  readAt      DateTime?
   createdAt DateTime @default(now())
 
   @@index([tradeId])
@@ -403,6 +407,8 @@ model Withdrawal {
 
   status         WithdrawalStatus @default(PENDING)
   adminNote      String?
+  // Network fee charged on top of amount (currently USDT withdrawals only).
+  fee            Decimal          @default(0) @db.Decimal(20, 6)
   transactions   WalletTransaction[]
 
   // Optional proof-of-payment uploaded by an admin (receipt screenshot/PDF).

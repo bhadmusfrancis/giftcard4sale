@@ -5,6 +5,9 @@ export * from "./tradeCancel";
 
 export const SUPPORTED_PAYOUT_CURRENCIES = ["USDT", "NGN", "GHS"] as const;
 
+// Flat network fee charged on USDT withdrawals (debited on top of the amount).
+export const USDT_WITHDRAWAL_NETWORK_FEE = 4;
+
 export function slugifyCardType(name: string): string {
   return name
     .toLowerCase()

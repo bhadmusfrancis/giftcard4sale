@@ -29,6 +29,7 @@ import {
   tryStartRateSyncRun,
 } from "../services/rateSyncStatus";
 import { publicUser, adminUserListItem } from "./auth";
+import { withdrawalFee } from "./withdrawals";
 import { serializeTrade, serializeMessage } from "./trades";
 import { rejectTradeWithBadScore } from "../services/tradeRejection";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
@@ -746,6 +747,7 @@ adminRouter.get(
         id: w.id,
         currency: w.currency,
         amount: Number(w.amount),
+        fee: Number(w.fee),
         status: w.status,
         destinationAddress: w.destinationAddress,
         bankAccount: w.bankAccount,
@@ -803,6 +805,8 @@ adminRouter.post(
       }
     }
 
+    const fee = withdrawalFee(data.currency);
+
     try {
       const withdrawal = await prisma.$transaction(async (tx) => {
         const w = await tx.withdrawal.create({
@@ -810,6 +814,7 @@ adminRouter.post(
             userId: user.id,
             currency: data.currency,
             amount: new Prisma.Decimal(data.amount),
+            fee,
             bankAccountId: data.currency === "NGN" ? data.bankAccountId : null,
             momoAccountId: data.currency === "GHS" ? data.momoAccountId : null,
             destinationAddress: data.currency === "USDT" ? data.destinationAddress : null,
@@ -817,10 +822,11 @@ adminRouter.post(
             status: "PENDING",
           },
         });
-        // Hold funds immediately (debit). Refunded if rejected or deleted.
-        await applyWalletChange(tx, user.id, data.currency, new Prisma.Decimal(-data.amount), "WITHDRAWAL_DEBIT", {
+        // Hold funds + network fee immediately (debit). Refunded if rejected or deleted.
+        const total = new Prisma.Decimal(data.amount).add(fee);
+        await applyWalletChange(tx, user.id, data.currency, total.neg(), "WITHDRAWAL_DEBIT", {
           withdrawalId: w.id,
-          description: `Withdrawal request ${w.id}`,
+          description: `Withdrawal request ${w.id}${fee.gt(0) ? ` (+${fee} ${data.currency} network fee)` : ""}`,
         });
         return w;
       });
@@ -866,9 +872,10 @@ adminRouter.patch(
     }
 
     if (data.status === "REJECTED") {
-      // Refund the held funds.
+      // Refund the held funds (amount + network fee).
+      const refund = new Prisma.Decimal(withdrawal.amount).add(withdrawal.fee);
       await prisma.$transaction(async (tx) => {
-        await applyWalletChange(tx, withdrawal.userId, withdrawal.currency, withdrawal.amount, "TRANSFER_CREDIT", {
+        await applyWalletChange(tx, withdrawal.userId, withdrawal.currency, refund, "TRANSFER_CREDIT", {
           withdrawalId: withdrawal.id,
           description: `Refund for rejected withdrawal ${withdrawal.id}`,
         });
@@ -942,9 +949,10 @@ adminRouter.delete(
     }
 
     const fundsHeld = !WITHDRAWAL_FINAL_STATUSES.includes(withdrawal.status);
+    const refund = new Prisma.Decimal(withdrawal.amount).add(withdrawal.fee);
     await prisma.$transaction(async (tx) => {
       if (fundsHeld) {
-        await applyWalletChange(tx, withdrawal.userId, withdrawal.currency, withdrawal.amount, "TRANSFER_CREDIT", {
+        await applyWalletChange(tx, withdrawal.userId, withdrawal.currency, refund, "TRANSFER_CREDIT", {
           withdrawalId: withdrawal.id,
           description: `Refund for deleted withdrawal ${withdrawal.id}`,
         });

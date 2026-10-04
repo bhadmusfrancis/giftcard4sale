@@ -8,8 +8,13 @@ import { applyWalletChange, InsufficientFundsError } from "../services/wallet";
 import { mediaUrl } from "../lib/upload";
 import { notify, notifyAdmins } from "../services/notify";
 import { getRateConfig, minWithdrawalForCurrency } from "../services/rateConfig";
+import { USDT_WITHDRAWAL_NETWORK_FEE } from "@gc4s/shared";
 
 export const withdrawalsRouter = Router();
+
+export function withdrawalFee(currency: string): Prisma.Decimal {
+  return new Prisma.Decimal(currency === "USDT" ? USDT_WITHDRAWAL_NETWORK_FEE : 0);
+}
 
 const createSchema = z
   .object({
@@ -58,6 +63,8 @@ withdrawalsRouter.post(
       });
     }
 
+    const fee = withdrawalFee(data.currency);
+
     try {
       const withdrawal = await prisma.$transaction(async (tx) => {
         const w = await tx.withdrawal.create({
@@ -65,16 +72,18 @@ withdrawalsRouter.post(
             userId: req.userId!,
             currency: data.currency,
             amount: new Prisma.Decimal(data.amount),
+            fee,
             bankAccountId: data.currency === "NGN" ? data.bankAccountId : null,
             momoAccountId: data.currency === "GHS" ? data.momoAccountId : null,
             destinationAddress: data.currency === "USDT" ? data.destinationAddress : null,
             status: "PENDING",
           },
         });
-        // Hold funds immediately (debit). Refunded if rejected.
-        await applyWalletChange(tx, req.userId!, data.currency, new Prisma.Decimal(-data.amount), "WITHDRAWAL_DEBIT", {
+        // Hold funds + network fee immediately (debit). Refunded if rejected.
+        const total = new Prisma.Decimal(data.amount).add(fee);
+        await applyWalletChange(tx, req.userId!, data.currency, total.neg(), "WITHDRAWAL_DEBIT", {
           withdrawalId: w.id,
-          description: `Withdrawal request ${w.id}`,
+          description: `Withdrawal request ${w.id}${fee.gt(0) ? ` (+${fee} ${data.currency} network fee)` : ""}`,
         });
         return w;
       });
@@ -122,6 +131,7 @@ withdrawalsRouter.get(
         id: w.id,
         currency: w.currency,
         amount: Number(w.amount),
+        fee: Number(w.fee),
         status: w.status,
         destinationAddress: w.destinationAddress,
         bankAccount: w.bankAccount

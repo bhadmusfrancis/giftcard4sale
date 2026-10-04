@@ -12,9 +12,13 @@ type ChatMessage = {
   attachmentUrl?: string | null;
   attachmentFilename?: string | null;
   attachmentMimeType?: string | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
   createdAt: string;
   sender: { id: string; displayName?: string; role: string };
 };
+
+const NEAR_BOTTOM_PX = 80;
 
 export function TradeChat({
   tradeId,
@@ -31,33 +35,100 @@ export function TradeChat({
   const isPanel = layout === "panel";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tradeStatus, setTradeStatus] = useState<string | null>(null);
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  // Watermarks: how far the partner has delivered/read MY messages.
+  const [receipts, setReceipts] = useState<{ readAt?: string | null; deliveredAt?: string | null }>({});
   const [body, setBody] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const sendAction = useAsyncAction();
   const fileRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const firstLoadRef = useRef(true);
+  const typingSentAtRef = useRef(0);
+  const typingActiveRef = useRef(false);
 
   const chatClosed = !isAdmin && (tradeStatus === "REJECTED" || tradeStatus === "CANCELLED");
+  const partnerLabel = isAdmin ? "Seller" : "Support";
 
   async function load() {
     const d = await api(`/trades/${tradeId}`);
     setMessages(d.messages || []);
     setTradeStatus(d.trade?.status ?? null);
+    if (typeof d.partnerTyping === "boolean") setPartnerTyping(d.partnerTyping);
   }
 
   useEffect(() => {
+    firstLoadRef.current = true;
     load();
     const t = setInterval(load, 8000);
     return () => clearInterval(t);
   }, [tradeId]);
 
+  // While the chat is visible, mark partner messages read and refresh
+  // typing + receipt watermarks. Hidden tabs skip this so "read" is honest.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    async function syncRead() {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const d = await api(`/trades/${tradeId}/messages/read`, { method: "POST" });
+        setPartnerTyping(!!d.partnerTyping);
+        setReceipts({ readAt: d.partnerReadAt ?? null, deliveredAt: d.partnerDeliveredAt ?? null });
+      } catch {
+        // best-effort; next poll retries
+      }
+    }
+    syncRead();
+    const t = setInterval(syncRead, 3000);
+    document.addEventListener("visibilitychange", syncRead);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", syncRead);
+    };
+  }, [tradeId]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  }
+
+  // Only auto-scroll when the user is already near the bottom (or just sent a
+  // message themselves). Scrolling up to read history is no longer hijacked
+  // by the polling refresh.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (firstLoadRef.current) {
+      firstLoadRef.current = false;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    const last = messages[messages.length - 1];
+    if (stickToBottomRef.current || (last && last.sender.id === myUserId)) {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, partnerTyping]);
+
+  function emitTyping() {
+    const now = Date.now();
+    if (now - typingSentAtRef.current < 2000) return;
+    typingSentAtRef.current = now;
+    typingActiveRef.current = true;
+    void api(`/trades/${tradeId}/typing`, { method: "POST", body: { typing: true } }).catch(() => {});
+  }
+
+  function stopTyping() {
+    if (!typingActiveRef.current) return;
+    typingActiveRef.current = false;
+    void api(`/trades/${tradeId}/typing`, { method: "POST", body: { typing: false } }).catch(() => {});
+  }
 
   async function submitMessage() {
     if (chatClosed) return;
     if (!body.trim() && !file) return;
+    stopTyping();
     await sendAction.run(async () => {
       const form = new FormData();
       if (body.trim()) form.append("body", body.trim());
@@ -66,6 +137,7 @@ export function TradeChat({
       setBody("");
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
+      stickToBottomRef.current = true;
       await load();
     }, "Message sent.");
   }
@@ -73,6 +145,14 @@ export function TradeChat({
   async function send(e: React.FormEvent) {
     e.preventDefault();
     await submitMessage();
+  }
+
+  function receiptLabel(m: ChatMessage): { text: string; read: boolean } {
+    const read = !!m.readAt || (!!receipts.readAt && m.createdAt <= receipts.readAt);
+    if (read) return { text: "✓✓ Read", read: true };
+    const delivered = !!m.deliveredAt || (!!receipts.deliveredAt && m.createdAt <= receipts.deliveredAt);
+    if (delivered) return { text: "✓✓ Delivered", read: false };
+    return { text: "✓ Sent", read: false };
   }
 
   return (
@@ -101,6 +181,8 @@ export function TradeChat({
       )}
 
       <div
+        ref={scrollRef}
+        onScroll={onScroll}
         className={`space-y-3 overflow-y-auto ${
           isPanel
             ? "min-h-0 flex-1 px-5 py-4"
@@ -116,6 +198,7 @@ export function TradeChat({
           const mine = m.sender.id === myUserId;
           const isImage = m.attachmentMimeType?.startsWith("image/");
           const isPdf = m.attachmentMimeType === "application/pdf";
+          const receipt = mine ? receiptLabel(m) : null;
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div
@@ -149,10 +232,22 @@ export function TradeChat({
                     📄 {m.attachmentFilename || "PDF attachment"}
                   </a>
                 )}
+                {receipt && (
+                  <div className={`mt-1 text-right text-[10px] ${receipt.read ? "text-sky-200" : "text-white/60"}`}>
+                    {receipt.text}
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
+        {partnerTyping && (
+          <div className="flex justify-start">
+            <div className="rounded-2xl bg-slate-100 px-4 py-2 text-xs italic text-slate-500">
+              {partnerLabel} is typing…
+            </div>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 
@@ -166,9 +261,12 @@ export function TradeChat({
               <textarea
                 className="input min-h-[4.5rem] resize-y"
                 rows={2}
-                placeholder="Type a message to the seller…"
+                placeholder={isAdmin ? "Type a message to the seller…" : "Type a message…"}
                 value={body}
-                onChange={(e) => setBody(e.target.value)}
+                onChange={(e) => {
+                  setBody(e.target.value);
+                  emitTyping();
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -203,7 +301,10 @@ export function TradeChat({
                   className="input"
                   placeholder="Type a message…"
                   value={body}
-                  onChange={(e) => setBody(e.target.value)}
+                  onChange={(e) => {
+                    setBody(e.target.value);
+                    emitTyping();
+                  }}
                 />
                 <button
                   type="submit"
