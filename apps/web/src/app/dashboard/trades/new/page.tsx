@@ -51,6 +51,9 @@ function NewTradeInner() {
       (rateInfo.country === "Other" ||
         isEuroAppleRate({ name: rateInfo.cardName }, rateInfo.currency, rateInfo.country))
   );
+  const isXboxCard = Boolean(
+    rateInfo?.cardName && rateInfo.cardName.toLowerCase().replace(/-/g, "").includes("xbox")
+  );
 
   useEffect(() => {
     if (!rateId || !amount) {
@@ -232,6 +235,16 @@ function NewTradeInner() {
       </div>
 
       <form onSubmit={submit} noValidate className="card space-y-5 p-6">
+        {isXboxCard ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">Only Xbox gift cards are accepted.</p>
+            <p className="mt-1">
+              Xbox/Microsoft PC Game Pass and membership or subscription cards are <strong>not</strong> acceptable —
+              trades submitted with them will be rejected.
+            </p>
+          </div>
+        ) : null}
+
         {needsCardCountry ? (
           <div>
             <label className="label">Card country</label>

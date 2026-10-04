@@ -127,6 +127,10 @@ export default async function SlugPage({ params }: { params: { slug: string } })
 
   const brand = card?.card ?? knownCard;
   const isCvs = brand?.name?.toLowerCase().includes("cvs") ?? false;
+  const isXbox =
+    (brand?.name?.toLowerCase().includes("xbox") ?? false) ||
+    brand?.slug === "xbox" ||
+    brand?.slug === "x-box";
   const cardName = brand?.name || landing?.page.cardType?.name || "Gift Card";
   const title = landing?.page.title || `Sell ${cardName} Gift Card`;
   const bodyHtml = landing?.page.bodyHtml;
@@ -223,6 +227,16 @@ export default async function SlugPage({ params }: { params: { slug: string } })
               <li key={prefix}>{prefix}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {isXbox && (
+        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Only Xbox gift cards are accepted.</p>
+          <p className="mt-1">
+            Xbox/Microsoft PC Game Pass and membership or subscription cards are <strong>not</strong> acceptable —
+            please do not submit them.
+          </p>
         </div>
       )}
 
