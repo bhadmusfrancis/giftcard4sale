@@ -20,6 +20,7 @@ import {
   analyzeCardSubmission,
   attachmentCreateData,
   primaryDuplicateReason,
+  primaryDuplicateTradeId,
   submittedCodeCreateData,
 } from "../services/cardValidation";
 import {
@@ -221,6 +222,7 @@ tradesRouter.post(
         status: "PENDING",
         reviewFlag: reviewFlagReason ? "POSSIBLE_DUPLICATE" : null,
         reviewFlagReason,
+        duplicateOfTradeId: primaryDuplicateTradeId(analysis),
         attachments: {
           create: [
             ...cardAnalyzed.map((af, i) =>
@@ -584,6 +586,7 @@ export function serializeTrade(t: any) {
     pins: t.cardPins,
     notes: t.notes,
     rejectionReason: t.rejectionReason,
+    duplicateOfTradeId: t.duplicateOfTradeId ?? null,
     reviewFlag: t.reviewFlag ?? null,
     reviewFlagReason: t.reviewFlagReason ?? null,
     notificationsMuted: t.notificationsMuted ?? false,

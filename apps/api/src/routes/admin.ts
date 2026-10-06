@@ -486,9 +486,32 @@ adminRouter.get(
       select: { updatedAt: true, speed: true, active: true },
     });
 
+    // Resolve the trade this submission duplicated, so the detail page can
+    // link to it. New trades carry the id; older rows only embedded the trade
+    // number in the reason text, so parse it back out.
+    let duplicateOf: { id: string; tradeNumber: string } | null = null;
+    if (trade.duplicateOfTradeId) {
+      duplicateOf = await prisma.trade.findUnique({
+        where: { id: trade.duplicateOfTradeId },
+        select: { id: true, tradeNumber: true },
+      });
+    }
+    if (!duplicateOf) {
+      const numMatch = (trade.rejectionReason || trade.reviewFlagReason || "").match(
+        /GC4S-\d{8}-[A-Z0-9]+/
+      );
+      if (numMatch) {
+        duplicateOf = await prisma.trade.findUnique({
+          where: { tradeNumber: numMatch[0] },
+          select: { id: true, tradeNumber: true },
+        });
+      }
+    }
+
     res.json({
       trade: {
         ...serializeTrade(trade),
+        duplicateOf,
         user: publicUser(trade.user),
         rateSyncedAt: rate?.updatedAt ?? null,
         rateSource: rate?.speed ?? null,

@@ -50,7 +50,10 @@ export function extractCodesFromOcrText(text: string): string[] {
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
       const norm = normalizeGiftCardCode(match[0]);
-      if (norm.length >= 8 && norm.length <= 40) candidates.add(norm);
+      // Real card codes always contain digits. Pure-letter strings are printed
+      // boilerplate OCR merged together ("THISCARDLIKECASH" from "Treat this
+      // Card like cash") — they are identical on every card of that brand.
+      if (norm.length >= 8 && norm.length <= 40 && /\d/.test(norm)) candidates.add(norm);
     }
   }
 

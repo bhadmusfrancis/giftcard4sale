@@ -223,8 +223,20 @@ export async function analyzeCardSubmission(input: {
   const duplicates: DuplicateMatch[] = [];
   const reviewFlags: DuplicateMatch[] = [];
 
-  const codeDup = await findCodeDuplicate(codes.map((c) => c.hash));
+  // Only a *pasted* code collision is auto-reject proof. OCR-extracted numbers
+  // include non-unique identifiers (barcodes, printed card numbers shared
+  // across a brand) and outright misreads, so those only flag for review.
+  const codeDup = await findCodeDuplicate(codes.filter((c) => c.source === "PASTED").map((c) => c.hash));
   if (codeDup) duplicates.push(codeDup);
+
+  const ocrDup = await findCodeDuplicate(codes.filter((c) => c.source === "OCR").map((c) => c.hash));
+  if (ocrDup && !duplicates.length) {
+    reviewFlags.push({
+      ...ocrDup,
+      severity: "SOFT",
+      reason: `OCR read a card number that also appeared in trade ${ocrDup.priorTradeNumber} — check whether this is the same card or a shared printed number.`,
+    });
+  }
 
   const imageMatches = await findImageMatches(fingerprints);
   duplicates.push(...imageMatches.hard);
@@ -259,4 +271,9 @@ export function submittedCodeCreateData(codes: CodeEntry[]) {
 export function primaryDuplicateReason(duplicates: DuplicateMatch[]): string {
   if (!duplicates.length) return "";
   return duplicates[0].reason;
+}
+
+/** First matched prior trade id, for admin linking (hard matches win). */
+export function primaryDuplicateTradeId(analysis: SubmissionAnalysis): string | null {
+  return analysis.duplicates[0]?.priorTradeId ?? analysis.reviewFlags[0]?.priorTradeId ?? null;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -80,11 +81,30 @@ export default function AdminTradeDetail() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <div>
             <span className="font-semibold">Flagged for review — possible duplicate.</span>{" "}
-            {trade.reviewFlagReason}
+            {trade.reviewFlagReason}{" "}
+            {trade.duplicateOf && (
+              <Link href={`/admin/trades/${trade.duplicateOf.id}`} className="font-semibold underline">
+                View matched trade {trade.duplicateOf.tradeNumber}
+              </Link>
+            )}
           </div>
           <button type="button" onClick={dismissFlag} disabled={updateAction.busy} className="btn-ghost text-xs">
             Dismiss flag
           </button>
+        </div>
+      )}
+
+      {(trade.rejectionReason || (trade.duplicateOf && !trade.reviewFlag)) && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          {trade.rejectionReason && <p>{trade.rejectionReason}</p>}
+          {trade.duplicateOf && !trade.reviewFlag && (
+            <p className="mt-1">
+              Matched earlier trade:{" "}
+              <Link href={`/admin/trades/${trade.duplicateOf.id}`} className="font-semibold underline">
+                {trade.duplicateOf.tradeNumber}
+              </Link>
+            </p>
+          )}
         </div>
       )}
 

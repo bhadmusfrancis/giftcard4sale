@@ -275,6 +275,9 @@ model Trade {
   // prior trade but lacks definitive proof. Trade stays PENDING for admin review.
   reviewFlag       String?
   reviewFlagReason String?
+  // Prior trade this submission matched (hard duplicate or review flag) — the
+  // link the admin detail page shows.
+  duplicateOfTradeId String?
 
   // NoOnes P2P resell (hidden from end users)
   noonesTradeHash     String?  @unique

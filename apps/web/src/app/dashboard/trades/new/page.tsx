@@ -266,17 +266,20 @@ function NewTradeInner() {
           </div>
         ) : null}
 
-        {medium === "ECODE" ? (
-          <div>
-            <label className="label">E-code(s)</label>
-            <textarea
-              className="input min-h-[120px]"
-              placeholder="Paste your gift card code(s) here, one per line"
-              value={ecodes}
-              onChange={(e) => setEcodes(e.target.value)}
-            />
-          </div>
-        ) : null}
+        <div>
+          <label className="label">{medium === "ECODE" ? "E-code(s)" : "Card code(s) (optional)"}</label>
+          <textarea
+            className="input min-h-[120px]"
+            placeholder="Paste your gift card code(s) here, one per line"
+            value={ecodes}
+            onChange={(e) => setEcodes(e.target.value)}
+          />
+          {medium === "PHYSICAL" && (
+            <p className="mt-1 text-xs text-slate-500">
+              If the code is printed on the card, type it here as well — it speeds up verification.
+            </p>
+          )}
+        </div>
 
         {medium === "PHYSICAL" ? (
           <div>
