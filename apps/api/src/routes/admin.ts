@@ -80,11 +80,23 @@ adminRouter.get(
 );
 
 // ---------------------------------------------------------------- Users
+const USER_SORTS: Record<string, (dir: "asc" | "desc") => Prisma.UserOrderByWithRelationInput> = {
+  name: (dir) => ({ displayName: { sort: dir, nulls: "last" } }),
+  email: (dir) => ({ email: dir }),
+  joined: (dir) => ({ createdAt: dir }),
+  lastLogin: (dir) => ({ lastLoginAt: { sort: dir, nulls: "last" } }),
+  balanceUsdt: (dir) => ({ balanceUsdt: dir }),
+  balanceNgn: (dir) => ({ balanceNgn: dir }),
+  balanceGhs: (dir) => ({ balanceGhs: dir }),
+};
+
 adminRouter.get(
   "/users",
   asyncHandler(async (req, res) => {
     const q = ((req.query.q as string) || "").trim();
     const status = req.query.status as string | undefined;
+    const dir = req.query.dir === "asc" ? "asc" : "desc";
+    const orderBy = (USER_SORTS[req.query.sort as string] ?? USER_SORTS.joined)(dir);
     const users = await prisma.user.findMany({
       where: {
         ...(q
@@ -99,7 +111,7 @@ adminRouter.get(
           : {}),
         ...(status && status !== "ALL" ? { accountStatus: status as any } : {}),
       },
-      orderBy: { createdAt: "desc" },
+      orderBy,
       take: 100,
     });
     const config = await getRateConfig();
@@ -406,13 +418,40 @@ adminRouter.delete(
 );
 
 // ---------------------------------------------------------------- Trades
+const TRADE_SORTS: Record<string, (dir: "asc" | "desc") => Prisma.TradeOrderByWithRelationInput[]> = {
+  date: (dir) => [{ createdAt: dir }],
+  card: (dir) => [{ cardType: { name: dir } }, { createdAt: "desc" }],
+  user: (dir) => [
+    { user: { displayName: { sort: dir, nulls: "last" } } },
+    { user: { email: dir } },
+    { createdAt: "desc" },
+  ],
+  amount: (dir) => [{ cardAmount: dir }, { createdAt: "desc" }],
+  payout: (dir) => [{ quotedPayout: dir }, { createdAt: "desc" }],
+};
+
 adminRouter.get(
   "/trades",
   asyncHandler(async (req, res) => {
     const status = req.query.status as string | undefined;
+    const q = ((req.query.q as string) || "").trim();
+    const dir = req.query.dir === "asc" ? "asc" : "desc";
+    const orderBy = (TRADE_SORTS[req.query.sort as string] ?? TRADE_SORTS.date)(dir);
     const trades = await prisma.trade.findMany({
-      where: status ? { status: status as any } : undefined,
-      orderBy: { createdAt: "desc" },
+      where: {
+        ...(status ? { status: status as any } : {}),
+        ...(q
+          ? {
+              OR: [
+                { tradeNumber: { contains: q, mode: "insensitive" } },
+                { cardType: { name: { contains: q, mode: "insensitive" } } },
+                { user: { displayName: { contains: q, mode: "insensitive" } } },
+                { user: { email: { contains: q, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      },
+      orderBy,
       take: 200,
       include: { cardType: true, attachments: true, user: true },
     });

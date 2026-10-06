@@ -7,6 +7,7 @@ import { CardRatePanel } from "@/components/CardRatePanel";
 import { BrandLogo } from "@/components/BrandLogo";
 import { GiftCardSearch } from "@/components/GiftCardSearch";
 import { MetaViewContent } from "@/components/MetaViewContent";
+import { cardWarnings } from "@/lib/cardWarnings";
 
 interface LandingResp {
   page: {
@@ -127,10 +128,7 @@ export default async function SlugPage({ params }: { params: { slug: string } })
 
   const brand = card?.card ?? knownCard;
   const isCvs = brand?.name?.toLowerCase().includes("cvs") ?? false;
-  const isXbox =
-    (brand?.name?.toLowerCase().includes("xbox") ?? false) ||
-    brand?.slug === "xbox" ||
-    brand?.slug === "x-box";
+  const warnings = cardWarnings(brand?.name, brand?.slug);
   const cardName = brand?.name || landing?.page.cardType?.name || "Gift Card";
   const title = landing?.page.title || `Sell ${cardName} Gift Card`;
   const bodyHtml = landing?.page.bodyHtml;
@@ -230,15 +228,19 @@ export default async function SlugPage({ params }: { params: { slug: string } })
         </div>
       )}
 
-      {isXbox && (
-        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">Only Xbox gift cards are accepted.</p>
+      {warnings.map((w) => (
+        <div key={w.title} className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">{w.title}</p>
           <p className="mt-1">
-            Xbox/Microsoft PC Game Pass and membership or subscription cards are <strong>not</strong> acceptable —
-            please do not submit them.
+            {w.body}{" "}
+            {w.link && (
+              <a href={w.link.href} target="_blank" rel="noreferrer" className="font-medium underline">
+                {w.link.label}
+              </a>
+            )}
           </p>
         </div>
-      )}
+      ))}
 
       <div className="mt-6">
         <GiftCardSearch cards={catalogCards} currentSellSlug={brand?.sellSlug ?? fixedSlug} />

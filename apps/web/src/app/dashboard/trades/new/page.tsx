@@ -11,6 +11,7 @@ import { newMetaEventId, trackMeta } from "@/lib/metaPixel";
 import { trackGoogleAdsLead } from "@/lib/googleAds";
 import { ReceiptType, isEuroAppleRate } from "@gc4s/shared";
 import { IndicativeRateCaveat, isLegacyPartnerRate } from "@/components/RateRefreshStatus";
+import { cardWarnings } from "@/lib/cardWarnings";
 
 const RECEIPT_LABELS: Record<ReceiptType, string> = {
   NONE: "No receipt",
@@ -51,9 +52,7 @@ function NewTradeInner() {
       (rateInfo.country === "Other" ||
         isEuroAppleRate({ name: rateInfo.cardName }, rateInfo.currency, rateInfo.country))
   );
-  const isXboxCard = Boolean(
-    rateInfo?.cardName && rateInfo.cardName.toLowerCase().replace(/-/g, "").includes("xbox")
-  );
+  const warnings = cardWarnings(rateInfo?.cardName);
 
   useEffect(() => {
     if (!rateId || !amount) {
@@ -235,15 +234,19 @@ function NewTradeInner() {
       </div>
 
       <form onSubmit={submit} noValidate className="card space-y-5 p-6">
-        {isXboxCard ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-semibold">Only Xbox gift cards are accepted.</p>
+        {warnings.map((w) => (
+          <div key={w.title} className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">{w.title}</p>
             <p className="mt-1">
-              Xbox/Microsoft PC Game Pass and membership or subscription cards are <strong>not</strong> acceptable —
-              trades submitted with them will be rejected.
+              {w.body}{" "}
+              {w.link && (
+                <a href={w.link.href} target="_blank" rel="noreferrer" className="font-medium underline">
+                  {w.link.label}
+                </a>
+              )}
             </p>
           </div>
-        ) : null}
+        ))}
 
         {needsCardCountry ? (
           <div>

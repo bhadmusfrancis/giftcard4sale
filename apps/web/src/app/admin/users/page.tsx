@@ -9,6 +9,20 @@ import { money, date } from "@/lib/format";
 
 const STATUS_FILTERS = ["ALL", "ACTIVE", "SUSPENDED", "BANNED"] as const;
 
+const USER_SORTS = [
+  { value: "joined_desc", label: "Newest first" },
+  { value: "joined_asc", label: "Oldest first" },
+  { value: "name_asc", label: "Name A→Z" },
+  { value: "name_desc", label: "Name Z→A" },
+  { value: "email_asc", label: "Email A→Z" },
+  { value: "email_desc", label: "Email Z→A" },
+  { value: "lastLogin_desc", label: "Last login — recent" },
+  { value: "lastLogin_asc", label: "Last login — oldest" },
+  { value: "balanceUsdt_desc", label: "USDT balance ↓" },
+  { value: "balanceNgn_desc", label: "Naira balance ↓" },
+  { value: "balanceGhs_desc", label: "Cedi balance ↓" },
+] as const;
+
 function statusBadge(status: string) {
   if (status === "BANNED") return "bg-red-100 text-red-800";
   if (status === "SUSPENDED") return "bg-amber-100 text-amber-900";
@@ -19,6 +33,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
+  const [sort, setSort] = useState<(typeof USER_SORTS)[number]["value"]>("joined_desc");
   const [showCreate, setShowCreate] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [form, setForm] = useState({ email: "", password: "", displayName: "", role: "USER" });
@@ -28,7 +43,10 @@ export default function AdminUsersPage() {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (statusFilter !== "ALL") params.set("status", statusFilter);
-    const d = await api(`/admin/users${params.toString() ? `?${params}` : ""}`);
+    const [sortKey, dir] = sort.split("_");
+    params.set("sort", sortKey);
+    params.set("dir", dir);
+    const d = await api(`/admin/users?${params}`);
     setUsers(d.users);
   }
 
@@ -37,7 +55,7 @@ export default function AdminUsersPage() {
       void load();
     }, 300);
     return () => clearTimeout(t);
-  }, [q, statusFilter]);
+  }, [q, statusFilter, sort]);
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -115,12 +133,23 @@ export default function AdminUsersPage() {
         ))}
       </div>
 
-      <input
-        className="input w-full"
-        placeholder="Search by email, name, referral code, or ID"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-      />
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <input
+          className="input w-full"
+          placeholder="Search by email, name, referral code, or ID"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <select
+          className="input shrink-0 sm:w-56"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as typeof sort)}
+        >
+          {USER_SORTS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 md:hidden">

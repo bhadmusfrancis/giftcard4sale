@@ -8,19 +8,43 @@ import { money, date, STATUS_COLORS, STATUS_DESCRIPTIONS, STATUS_FILTER_LABELS }
 
 const STATUSES = ["", "PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID", "CANCELLED"];
 
+const TRADE_SORTS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "card_asc", label: "Card name A→Z" },
+  { value: "card_desc", label: "Card name Z→A" },
+  { value: "user_asc", label: "Seller A→Z" },
+  { value: "user_desc", label: "Seller Z→A" },
+  { value: "amount_desc", label: "Amount ↓" },
+  { value: "amount_asc", label: "Amount ↑" },
+  { value: "payout_desc", label: "Payout ↓" },
+  { value: "payout_asc", label: "Payout ↑" },
+] as const;
+
 function TradesInner() {
   const params = useSearchParams();
   const [status, setStatus] = useState(params.get("status") || "");
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<(typeof TRADE_SORTS)[number]["value"]>("date_desc");
   const [trades, setTrades] = useState<any[]>([]);
 
   async function load() {
-    const d = await api(`/admin/trades${status ? `?status=${status}` : ""}`);
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (q.trim()) params.set("q", q.trim());
+    const [sortKey, dir] = sort.split("_");
+    params.set("sort", sortKey);
+    params.set("dir", dir);
+    const d = await api(`/admin/trades?${params}`);
     setTrades(d.trades);
   }
 
   useEffect(() => {
-    load();
-  }, [status]);
+    const t = setTimeout(() => {
+      void load();
+    }, 300);
+    return () => clearTimeout(t);
+  }, [status, q, sort]);
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -37,6 +61,24 @@ function TradesInner() {
             {s || "ALL"}
           </button>
         ))}
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <input
+          className="input w-full"
+          placeholder="Search by trade ID, card name, or seller…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <select
+          className="input shrink-0 sm:w-52"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as typeof sort)}
+        >
+          {TRADE_SORTS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </div>
 
       <details className="card p-4 text-sm text-slate-600">
@@ -97,7 +139,9 @@ function TradesInner() {
             </span>
           </Link>
         ))}
-        {trades.length === 0 && <p className="p-6 text-sm text-slate-400">No trades.</p>}
+        {trades.length === 0 && (
+          <p className="p-6 text-sm text-slate-400">{q.trim() ? "No trades match your search." : "No trades."}</p>
+        )}
       </div>
     </div>
   );
