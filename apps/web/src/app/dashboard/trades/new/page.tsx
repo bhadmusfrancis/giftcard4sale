@@ -267,7 +267,7 @@ function NewTradeInner() {
         ) : null}
 
         <div>
-          <label className="label">{medium === "ECODE" ? "E-code(s)" : "Card code(s) (optional)"}</label>
+          <label className="label">{medium === "ECODE" ? "E-code(s)" : "Card code(s)"}</label>
           <textarea
             className="input min-h-[120px]"
             placeholder="Paste your gift card code(s) here, one per line"
