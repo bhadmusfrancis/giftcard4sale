@@ -20,6 +20,13 @@ export function cardWarnings(name?: string | null, slug?: string | null): CardWa
     });
   }
 
+  if (n.includes("one4all") || s.includes("one4all")) {
+    warnings.push({
+      title: "Restaurant One4all cards are not acceptable.",
+      body: "Only standard One4all multi-store gift cards are accepted. Restaurant One4all cards or codes are not acceptable — trades submitted with them will be rejected.",
+    });
+  }
+
   if (n.includes("starbucks") || s === "starbucks") {
     warnings.push({
       title: "Check your card balance before submitting.",

@@ -96,7 +96,9 @@ export function TradeChat({
 
   // Only auto-scroll when the user is already near the bottom (or just sent a
   // message themselves). Scrolling up to read history is no longer hijacked
-  // by the polling refresh.
+  // by the polling refresh. We scroll only the chat container itself —
+  // scrollIntoView would also scroll the whole page and yank the user to the
+  // chat input when they're reading the top of the trade page.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -107,7 +109,7 @@ export function TradeChat({
     }
     const last = messages[messages.length - 1];
     if (stickToBottomRef.current || (last && last.sender.id === myUserId)) {
-      endRef.current?.scrollIntoView({ behavior: "smooth" });
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
   }, [messages, partnerTyping]);
 
