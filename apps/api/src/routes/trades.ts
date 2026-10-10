@@ -492,22 +492,24 @@ tradesRouter.post(
     });
 
     const notifyBody = text || (file ? `Sent a file: ${file.originalname}` : "New message");
+    const isAdminSender = req.userRole === "ADMIN";
 
-    const shouldNotify = await shouldSendTradeChatNotification(trade.id, message.id);
-    if (shouldNotify) {
-      const recipientId = req.userRole === "ADMIN" ? trade.userId : null;
-      if (recipientId) {
-        await notify({
-          userId: recipientId,
-          title: "New message on your trade",
-          body: notifyBody,
-          link: `/dashboard/trades/${trade.id}`,
-          emailSubject: "New reply on your trade",
-          emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
-          category: "tradeChat",
-          tradeId: trade.id,
-        });
-      } else {
+    if (isAdminSender) {
+      // Users must be emailed/pushed for every admin reply — not batched.
+      await notify({
+        userId: trade.userId,
+        title: "New message from support",
+        body: notifyBody,
+        link: `/dashboard/trades/${trade.id}`,
+        emailSubject: "New reply from support on your trade",
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+        category: "tradeChat",
+        tradeId: trade.id,
+      });
+    } else {
+      // Batch user-to-admin chat alerts so admins are not flooded.
+      const shouldNotify = await shouldSendTradeChatNotification(trade.id, message.id);
+      if (shouldNotify) {
         await notifyAdmins({
           title: "Trade chat reply",
           body: notifyBody,
