@@ -196,6 +196,8 @@ tradesRouter.post(
       ? primaryDuplicateReason(analysis.reviewFlags)
       : null;
 
+    console.log("[duplicate-detection] isDuplicate:", isDuplicate, "duplicates:", analysis.duplicates.length, "reviewFlags:", analysis.reviewFlags.length);
+
     const cardAnalyzed = analysis.cardFiles.filter((f) => !f.isReceipt);
     const receiptAnalyzed = analysis.cardFiles.filter((f) => f.isReceipt);
 
@@ -245,8 +247,11 @@ tradesRouter.post(
     });
 
     if (isDuplicate && rejectionReason) {
-      await rejectTradeWithBadScore(trade.id, { rejectionReason });
-      const rejected = await prisma.trade.findUnique({
+      const rejected = await rejectTradeWithBadScore(trade.id, { rejectionReason });
+      if (!rejected) {
+        console.error("[duplicate-rejection] Failed to reject trade", trade.id, "- rejection function returned false");
+      }
+      const rejectedTrade = await prisma.trade.findUnique({
         where: { id: trade.id },
         include: { attachments: true, cardType: true },
       });
@@ -267,7 +272,7 @@ tradesRouter.post(
       }).catch((err) => console.error("[notify] duplicate reject admin notify failed:", (err as Error).message));
 
       return res.status(201).json({
-        trade: serializeTrade(rejected),
+        trade: serializeTrade(rejectedTrade),
         autoRejected: true,
         message: rejectionReason,
       });

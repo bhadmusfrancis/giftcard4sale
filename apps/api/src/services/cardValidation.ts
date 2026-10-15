@@ -100,12 +100,16 @@ async function findCodeDuplicate(hashes: string[]): Promise<DuplicateMatch | nul
       codeHash: { in: hashes },
       trade: { status: { in: [...DUPLICATE_BLOCKING_STATUSES] } },
     },
-    include: { trade: { select: { id: true, tradeNumber: true } } },
+    include: { trade: { select: { id: true, tradeNumber: true, status: true } } },
     orderBy: { createdAt: "desc" },
   });
 
-  if (!hit) return null;
+  if (!hit) {
+    console.log("[findCodeDuplicate] No duplicate found for hashes:", hashes.length);
+    return null;
+  }
 
+  console.log("[findCodeDuplicate] Found duplicate code in trade:", hit.trade.tradeNumber, "status:", hit.trade.status);
   const masked = hit.codeLast4 ? `…${hit.codeLast4}` : "a prior code";
   return {
     kind: "CODE",

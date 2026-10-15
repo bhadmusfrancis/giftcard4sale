@@ -7,7 +7,14 @@ export async function rejectTradeWithBadScore(
   data: { rejectionReason?: string; noonesStatus?: string; noonesTradeHash?: string }
 ): Promise<boolean> {
   const trade = await prisma.trade.findUnique({ where: { id: tradeId } });
-  if (!trade || trade.status === "REJECTED" || trade.status === "PAID" || trade.status === "CANCELLED") return false;
+  if (!trade) {
+    console.error("[rejectTradeWithBadScore] Trade not found:", tradeId);
+    return false;
+  }
+  if (trade.status === "REJECTED" || trade.status === "PAID" || trade.status === "CANCELLED") {
+    console.error("[rejectTradeWithBadScore] Trade already in terminal state:", tradeId, "status:", trade.status);
+    return false;
+  }
 
   await prisma.$transaction([
     prisma.trade.update({
