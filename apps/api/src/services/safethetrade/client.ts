@@ -72,7 +72,35 @@ interface SttOffer {
   fiatCurrency?: string;
   minFiat?: number;
   maxFiat?: number;
+  terms?: string | null;
+  tags?: unknown;
   pricing?: { fiatCurrency?: string; spotRate?: number; pricePerUnit?: number } | null;
+}
+
+/** Offer tags a trader sets to say e-codes are taken ("ecode", "e-codes", "egift", "virtual-by-email", …). */
+const ECODE_TAG = /^(e-?codes?|eocde|e-?gifts?|e-?gift-?cards?|e-?cards?|virtual(-by-e-?mail)?|by-e-?mail|be-email|e-?mail)$/i;
+
+/** E-code wording in offer terms. */
+const ECODE_MENTION = /\b(e[\s-]?codes?|e[\s-]?gifts?(\s*cards?)?|e[\s-]?cards?|digital\s+codes?|virtual\s+(cards?|codes?))\b/i;
+
+/**
+ * A sentence that mentions e-codes only to refuse them, defer them ("ask me
+ * first", "let me know in advance") or point elsewhere ("separate offer").
+ */
+const ECODE_REFUSAL =
+  /\b(not|no|don'?t|doesn'?t|cannot|can'?t|won'?t|never|ask|let me know|separate|without)\b|❌|only\s+physical|physical\s+(cards?\s+)?only/i;
+
+/**
+ * Whether an offer page says the trader takes e-codes: an e-code tag, or a
+ * sentence in the terms that names e-codes without refusing them.
+ */
+export function offerAcceptsEcode(offer: Pick<SttOffer, "terms" | "tags">): boolean {
+  if (Array.isArray(offer.tags) && offer.tags.some((t) => ECODE_TAG.test(String(t).trim()))) return true;
+  const terms = String(offer.terms ?? "");
+  if (!terms) return false;
+  return terms
+    .split(/[\n.!?;]+/)
+    .some((sentence) => ECODE_MENTION.test(sentence) && !ECODE_REFUSAL.test(sentence));
 }
 
 interface SttPaymentMethod {
@@ -269,6 +297,7 @@ export async function fetchSafeTheTradeRates(
     minFiat: number;
     maxFiat: number;
     owner: string;
+    acceptsEcode: boolean;
   }
   const grouped = new Map<
     string,
@@ -322,6 +351,7 @@ export async function fetchSafeTheTradeRates(
       owner:
         String(offer.ownerId ?? offer.ownerUsername ?? offer.id ?? "").trim() ||
         `anonymous-${++anonymousOwner}`,
+      acceptsEcode: offerAcceptsEcode(offer),
     });
     grouped.set(key, entry);
   }
@@ -331,6 +361,13 @@ export async function fetchSafeTheTradeRates(
     const usdtPerFiatUnit = median(samples.map((s) => s.usdtPerFiatUnit));
     const nairaPerUnit = usdtPerFiatUnit * ngnPerUsdt;
     if (!(nairaPerUnit > 0)) continue;
+
+    // Only offers whose page says they take e-codes price the e-code tier;
+    // with none, the sync derives it from the physical rate.
+    const ecodeSamples = samples.filter((s) => s.acceptsEcode);
+    const ecodeNairaPerUnit = ecodeSamples.length
+      ? median(ecodeSamples.map((s) => s.usdtPerFiatUnit)) * ngnPerUsdt
+      : undefined;
 
     const tier = currencyTierFromCode(currency);
     const range = coveredDenomRange(samples, minOfferOwners);
@@ -352,6 +389,8 @@ export async function fetchSafeTheTradeRates(
       maxDenom,
       nairaPerUnit,
       storedQuotes: { NONE: nairaPerUnit, CASH: nairaPerUnit, DEBIT: nairaPerUnit },
+      ecodeNairaPerUnit,
+      ecodeOfferCount: ecodeSamples.length,
       offerCount: samples.length,
       ownerCount: new Set(samples.map((s) => s.owner)).size,
       catalogCandidate,

@@ -109,6 +109,7 @@ async function main() {
         referralPercent: env.referralPercent,
         minCountryOffersForDisplay: 5,
         sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
+        sttEcodeReductionPercent: env.rateSync.sttEcodeReductionPercent,
       },
     });
     console.log("Created rate config");

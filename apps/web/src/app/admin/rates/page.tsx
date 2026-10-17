@@ -54,6 +54,7 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           minWithdrawalUsdt: Number(config.minWithdrawals?.USDT ?? 5),
           noonesAutoResellEnabled: config.noonesAutoResellEnabled !== false,
           sttMinOfferOwners: Number(config.sttMinOfferOwners ?? 3),
+          sttEcodeReductionPercent: Number(config.sttEcodeReductionPercent ?? 20),
           euroAppleOddDenomReductionPercent: Number(config.euroAppleOddDenomReductionPercent ?? 15),
           maxBankAccounts: Number(config.maxBankAccounts ?? 5),
           maxMomoAccounts: Number(config.maxMomoAccounts ?? 5),
@@ -91,6 +92,11 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           label="Min SafeTheTrade sellers per rate"
           value={config.sttMinOfferOwners ?? 3}
           onChange={(v) => setConfig({ ...config, sttMinOfferOwners: v })}
+        />
+        <Field
+          label="E-code deduction % (no e-code offers)"
+          value={config.sttEcodeReductionPercent ?? 20}
+          onChange={(v) => setConfig({ ...config, sttEcodeReductionPercent: v })}
         />
         <Field
           label="Euro Apple odd-denomination deduction %"
@@ -180,7 +186,10 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
       </div>
       <p className="mt-2 text-xs text-slate-500">
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
-        A SafeTheTrade rate is quoted on its own only when at least this many distinct sellers back it. Minimum
+        A SafeTheTrade rate is quoted on its own only when at least this many distinct sellers back it. When none of
+        a card&apos;s SafeTheTrade offers say they accept e-codes, its e-code rate is the physical rate less the e-code
+        deduction %. The lowest rate across sources always wins, and an e-code never pays more than the physical
+        card. Minimum
         withdrawal amounts apply to user wallet send/withdraw requests. The odd-denomination deduction applies on
         top of the payout deduction when a Euro Apple/iTunes amount is not a multiple of 5 or 50. Changing a
         deduction % resets every card&apos;s per-card override back to the platform default — adjust individual

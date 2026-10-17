@@ -322,6 +322,37 @@ async function createBrandFromMarketplace(rate: SyncedCardRate, minOfferOwners: 
   return ensureCardType(rate.cardName, rate.slugHint);
 }
 
+/** Admin-set knobs for pricing SafeTheTrade tiers. */
+interface PrimaryRatePolicy {
+  minOfferOwners: number;
+  /** % off the physical rate that gives the e-code rate when no offer accepts e-codes. */
+  ecodeReductionPercent: number;
+}
+
+/**
+ * Physical and e-code rates for one SafeTheTrade tier.
+ *
+ * The e-code rate comes from the offers whose page says they accept e-codes;
+ * with none, it is the physical rate less the admin e-code deduction. The
+ * lowest rate always wins whatever the source — each medium is capped at
+ * Sogo's rate for the same medium — and an e-code never pays more than the
+ * physical card.
+ */
+function primaryTierRates(
+  rate: SyncedCardRate,
+  sogo: Map<CardMedium, number>,
+  policy: PrimaryRatePolicy
+): Record<CardMedium, { source: number; final: number }> {
+  const deduction = Math.min(Math.max(policy.ecodeReductionPercent, 0), 100) / 100;
+  const ecodeSource = rate.ecodeNairaPerUnit ?? rate.nairaPerUnit * (1 - deduction);
+  const physical = Math.min(rate.nairaPerUnit, sogo.get("PHYSICAL") ?? Infinity);
+  const ecode = Math.min(ecodeSource, sogo.get("ECODE") ?? Infinity, physical);
+  return {
+    PHYSICAL: { source: rate.nairaPerUnit, final: physical },
+    ECODE: { source: ecodeSource, final: ecode },
+  };
+}
+
 /**
  * SafeTheTrade rate for one card + currency.
  *
@@ -341,33 +372,30 @@ async function syncPrimaryRate(
   touchedCards: Set<string>,
   capped: { count: number },
   summary: RateSyncSummary,
-  minOfferOwners: number
+  policy: PrimaryRatePolicy
 ): Promise<void> {
   const dbCard =
     (await findCardByName(rate.cardName, rate.slugHint)) ??
-    (await createBrandFromMarketplace(rate, minOfferOwners));
+    (await createBrandFromMarketplace(rate, policy.minOfferOwners));
   if (!dbCard) {
     summary.skipped++;
     return;
   }
 
   const reference = sogoReference.get(`${dbCard.id}|${rate.currency}`) ?? new Map<CardMedium, number>();
+  const tierRates = primaryTierRates(rate, reference, policy);
 
   let wrote = false;
   let retired = false;
   for (const medium of ["PHYSICAL", "ECODE"] as CardMedium[]) {
-    const other: CardMedium = medium === "PHYSICAL" ? "ECODE" : "PHYSICAL";
-    const sogoRate = reference.get(medium) ?? reference.get(other);
-
-    if (!hasEnoughOffers(rate, minOfferOwners)) {
+    if (!hasEnoughOffers(rate, policy.minOfferOwners)) {
       retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium)) || retired;
       summary.skipped++;
       continue;
     }
 
-    const ceiling = sogoRate ?? Infinity;
-    const nairaPerUnit = Math.min(rate.nairaPerUnit, ceiling);
-    if (nairaPerUnit < rate.nairaPerUnit) capped.count++;
+    const { source, final: nairaPerUnit } = tierRates[medium];
+    if (nairaPerUnit < source) capped.count++;
 
     const written = await upsertSyncedRate({
       cardTypeId: dbCard.id,
@@ -433,6 +461,8 @@ async function syncSogoCard(
       });
     }
     if (row.ecode) {
+      // An e-code never pays more than the physical card.
+      const ecodeNaira = Math.min(row.ecode.nairaPerUnit, row.physical?.nairaPerUnit ?? Infinity);
       await upsertSyncedRate({
         cardTypeId: dbCard.id,
         country: row.country,
@@ -440,8 +470,8 @@ async function syncSogoCard(
         medium: "ECODE",
         minDenom: row.minDenom,
         maxDenom: row.maxDenom,
-        nairaPerUnit: row.ecode.nairaPerUnit,
-        storedQuotes: row.ecode.storedQuotes,
+        nairaPerUnit: ecodeNaira,
+        storedQuotes: scaleQuotes(row.ecode.storedQuotes, ecodeNaira / row.ecode.nairaPerUnit),
         speed: SOGO_RATE_SPEED,
         summary,
         activate: ecodeActive,
@@ -493,6 +523,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
 
   let primaryRates: SyncedCardRate[] = [];
   let minOfferOwners = FALLBACK_MIN_OFFER_OWNERS;
+  let ecodeReductionPercent = env.rateSync.sttEcodeReductionPercent;
   if (!env.safeTheTrade.enabled) {
     // The primary source being switched off is not a clean sync — the rows it
     // owns cannot refresh, so the run must report it rather than complete.
@@ -502,6 +533,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     try {
       const config = await getRateConfig();
       minOfferOwners = Math.max(1, config.sttMinOfferOwners);
+      ecodeReductionPercent = config.sttEcodeReductionPercent;
       ngnPerUsdt = config.rates.ngnPerUsdt;
       primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners);
     } catch (err) {
@@ -571,7 +603,10 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
       setRateSyncCurrentCard({ id: canonicalCardSlug(rate.cardName), name: rate.cardName }, processed);
     }
     try {
-      await syncPrimaryRate(rate, sogoReference, covered, touchedCards, capped, summary, minOfferOwners);
+      await syncPrimaryRate(rate, sogoReference, covered, touchedCards, capped, summary, {
+        minOfferOwners,
+        ecodeReductionPercent,
+      });
     } catch (err) {
       summary.errors.push(`${rate.cardName} ${rate.currency}: ${(err as Error).message}`);
     }
@@ -593,7 +628,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
 
   summary.cardTypes = touchedCards.size;
   if (capped.count) {
-    console.log(`Capped ${capped.count} SafeTheTrade rate(s) at the lower Sogo rate.`);
+    console.log(`Capped ${capped.count} SafeTheTrade rate(s) at a lower Sogo or physical rate.`);
   }
   await ensureCardSeoLandingPagesPublished();
 

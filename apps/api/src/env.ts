@@ -166,6 +166,11 @@ export const env = {
      * catalog. Seeds the admin setting; the dashboard value wins at runtime.
      */
     sttMinOfferOwners: num(process.env.STT_MIN_OFFER_OWNERS, 3),
+    /**
+     * % off a SafeTheTrade physical rate that gives the e-code rate for a card
+     * none of whose offers accept e-codes. Seeds the admin setting.
+     */
+    sttEcodeReductionPercent: num(process.env.STT_ECODE_REDUCTION_PERCENT, 20),
   },
 
   /**

@@ -12,6 +12,13 @@ export interface SyncedCardRate {
   nairaPerUnit: number;
   storedQuotes: StoredQuotes;
   /**
+   * E-code rate from the offers that say they accept e-codes. Undefined when
+   * none do — the sync then derives it from `nairaPerUnit`.
+   */
+  ecodeNairaPerUnit?: number;
+  /** Listings behind `ecodeNairaPerUnit`. */
+  ecodeOfferCount?: number;
+  /**
    * Listings the rate was derived from. Sources that publish one rate per card
    * leave this undefined; marketplaces set it so thin tiers can be held back.
    */

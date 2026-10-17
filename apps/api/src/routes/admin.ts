@@ -43,7 +43,7 @@ import {
   getUserModerationSummary,
   getUserTradeLimit,
 } from "../services/userModeration";
-import { storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
+import { findPhysicalSibling, storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
 import { parseStoredQuotes } from "../services/noones";
 import { generateDailyInsights } from "../services/insights/generator";
 import { getLast24hSummary, getTrafficReport, type TrafficRange } from "../services/analytics";
@@ -703,23 +703,8 @@ adminRouter.post(
 
     let nairaPerUnit = data.nairaPerUnit;
     if (nairaPerUnit == null && rateRow) {
-      const ecodeSibling =
-        rateRow.medium === "PHYSICAL"
-          ? await prisma.rate.findFirst({
-              where: {
-                cardTypeId: rateRow.cardTypeId,
-                country: rateRow.country,
-                medium: "ECODE",
-                minDenom: (rateRow as any).minDenom ?? null,
-                maxDenom: (rateRow as any).maxDenom ?? null,
-                active: true,
-              },
-            })
-          : null;
       nairaPerUnit = storedNairaFromRate(rateRow as any, receiptType, {
-        ecodeRate: ecodeSibling
-          ? { nairaPerUnit: Number(ecodeSibling.nairaPerUnit), storedQuotes: ecodeSibling.storedQuotes }
-          : null,
+        physicalRate: await findPhysicalSibling(rateRow as any),
       });
     }
     if (nairaPerUnit == null) {
@@ -1298,6 +1283,7 @@ adminRouter.put(
         minWithdrawalUsdt: z.number().positive(),
         noonesAutoResellEnabled: z.boolean(),
         sttMinOfferOwners: z.number().int().min(1).max(100),
+        sttEcodeReductionPercent: z.number().int().min(0).max(100),
         euroAppleOddDenomReductionPercent: z.number().int().min(0).max(100),
         maxBankAccounts: z.number().int().min(1).max(50),
         maxMomoAccounts: z.number().int().min(1).max(50),
@@ -1341,6 +1327,7 @@ adminRouter.put(
         minWithdrawalUsdt: new Prisma.Decimal(data.minWithdrawalUsdt),
         noonesAutoResellEnabled: data.noonesAutoResellEnabled,
         sttMinOfferOwners: data.sttMinOfferOwners,
+        sttEcodeReductionPercent: data.sttEcodeReductionPercent,
         euroAppleOddDenomReductionPercent: data.euroAppleOddDenomReductionPercent,
         maxBankAccounts: data.maxBankAccounts,
         maxMomoAccounts: data.maxMomoAccounts,

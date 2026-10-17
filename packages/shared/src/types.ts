@@ -21,38 +21,32 @@ function maxPositive(...values: (number | undefined)[]): number {
   return nums.length ? Math.max(...nums) : 0;
 }
 
-/** Pick the stored base rate for a receipt choice; falls back to nairaPerUnit. */
+function receiptRate(stored: StoredQuotes, receiptType: ReceiptType): number {
+  if (receiptType === "NONE") return maxPositive(stored.NONE, stored.CASH, stored.DEBIT);
+  if (receiptType === "CASH") return maxPositive(stored.CASH, stored.DEBIT) || stored.NONE || 0;
+  return maxPositive(stored.DEBIT, stored.CASH) || stored.NONE || 0;
+}
+
+/**
+ * Pick the stored base rate for a receipt choice; falls back to nairaPerUnit.
+ *
+ * An e-code never pays more than the physical card: given the physical
+ * sibling's quotes, an e-code rate above it drops to the physical rate.
+ */
 export function resolveStoredNairaPerUnit(
   nairaPerUnit: number,
   storedQuotes: StoredQuotes | null | undefined,
   receiptType: ReceiptType = "NONE",
-  options?: { ecodeQuotes?: StoredQuotes | null; medium?: CardMedium }
+  options?: { physicalQuotes?: StoredQuotes | null; physicalNairaPerUnit?: number; medium?: CardMedium }
 ): number {
-  const stored = storedQuotes ?? {};
-  let rate: number;
+  const rate = receiptRate(storedQuotes ?? {}, receiptType) || nairaPerUnit;
+  if (options?.medium !== "ECODE") return rate;
 
-  if (receiptType === "NONE") {
-    rate = maxPositive(stored.NONE, stored.CASH, stored.DEBIT) || nairaPerUnit;
-  } else if (receiptType === "CASH") {
-    rate = maxPositive(stored.CASH, stored.DEBIT) || stored.NONE || nairaPerUnit;
-  } else {
-    rate = maxPositive(stored.DEBIT, stored.CASH) || stored.NONE || nairaPerUnit;
-  }
-
-  if (options?.medium === "PHYSICAL" && options.ecodeQuotes) {
-    const ecode = options.ecodeQuotes;
-    let ecodeRate: number;
-    if (receiptType === "NONE") {
-      ecodeRate = maxPositive(ecode.NONE, ecode.CASH, ecode.DEBIT);
-    } else if (receiptType === "CASH") {
-      ecodeRate = maxPositive(ecode.CASH, ecode.DEBIT) || ecode.NONE || 0;
-    } else {
-      ecodeRate = maxPositive(ecode.DEBIT, ecode.CASH) || ecode.NONE || 0;
-    }
-    if (ecodeRate > rate) rate = ecodeRate;
-  }
-
-  return rate;
+  const physical =
+    (options.physicalQuotes ? receiptRate(options.physicalQuotes, receiptType) : 0) ||
+    options.physicalNairaPerUnit ||
+    0;
+  return physical > 0 ? Math.min(rate, physical) : rate;
 }
 
 /** Sort country labels by NoOnes offer count (highest first). "Other" is always last. */

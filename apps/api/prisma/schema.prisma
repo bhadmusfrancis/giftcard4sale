@@ -221,6 +221,8 @@ model RateConfig {
   minWithdrawalUsdt         Decimal @default(5) @db.Decimal(20, 6)
   noonesAutoResellEnabled   Boolean @default(false)
   sttMinOfferOwners         Int      @default(3)
+  // % off the SafeTheTrade physical rate for the e-code rate when no offer accepts e-codes.
+  sttEcodeReductionPercent  Int      @default(20)
   // Extra % off the payout for Euro Apple/iTunes amounts not divisible by 5 or 50.
   euroAppleOddDenomReductionPercent Int @default(15)
   // Saved payout-account caps per user (accounts can't be removed once added).

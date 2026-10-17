@@ -10,7 +10,7 @@ import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
 import { executeNoOnesResell, isAutoResellEnabledForCard, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
 import { paymentMethodRequiresPin, resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
-import { receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
+import { findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 import { generateTradeNumber } from "../services/tradeNumber";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
 import { canCancelTrade as canCancelTradeCheck } from "@gc4s/shared";
@@ -111,24 +111,8 @@ tradesRouter.post(
       preferNoReceipt: data.receiptType === "NONE",
     });
 
-    const ecodeSibling =
-      rate.medium === "PHYSICAL"
-        ? await prisma.rate.findFirst({
-            where: {
-              cardTypeId: rate.cardTypeId,
-              country: rate.country,
-              medium: "ECODE",
-              minDenom: rate.minDenom,
-              maxDenom: rate.maxDenom,
-              active: true,
-            },
-          })
-        : null;
-
     const nairaPerUnit = storedNairaFromRate(rate, receiptType, {
-      ecodeRate: ecodeSibling
-        ? { nairaPerUnit: Number(ecodeSibling.nairaPerUnit), storedQuotes: ecodeSibling.storedQuotes }
-        : null,
+      physicalRate: await findPhysicalSibling(rate),
     });
     const paymentMethod = resolvePaymentMethodSlug(
       rate.cardType.slug,

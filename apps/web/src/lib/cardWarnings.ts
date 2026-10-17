@@ -27,6 +27,13 @@ export function cardWarnings(name?: string | null, slug?: string | null): CardWa
     });
   }
 
+  if (/\bvisa\b|master\s*card/.test(`${n} ${s.replace(/-/g, " ")}`)) {
+    warnings.push({
+      title: "Only gift cards are accepted. Reward cards are not acceptable.",
+      body: "Submit Visa or Mastercard prepaid gift cards only. Reward, rebate, promotional and incentive cards are not acceptable — trades submitted with them will be rejected.",
+    });
+  }
+
   if (n.includes("starbucks") || s === "starbucks") {
     warnings.push({
       title: "Check your card balance before submitting.",
