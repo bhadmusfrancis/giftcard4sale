@@ -63,6 +63,10 @@ async function onSchedulerWake(): Promise<void> {
 
 export function startRateSyncScheduler(): void {
   if (schedulerStarted) return;
+  if (!env.rateSync.schedulerEnabled) {
+    console.log("Rate sync scheduler disabled (RATE_SYNC_ENABLED=false)");
+    return;
+  }
   schedulerStarted = true;
   console.log(
     `Rate sync scheduler on (interval from admin refresh hours; SafeTheTrade first, then ${env.sogo.ratesUrl})`

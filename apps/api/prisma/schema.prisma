@@ -144,6 +144,9 @@ model CardType {
   description String?
   imageUrl    String?
   active      Boolean  @default(true)
+  // Admin override: list the card in the public catalog even with no active rate.
+  // Rate syncs never change it (they only manage `active`).
+  forceActive Boolean  @default(false)
   // Cached NoOnes buy-offer count for catalog popularity sorting.
   offerCount  Int      @default(0)
   // Sum of completed trades across NoOnes offers (catalog tie-breaker).

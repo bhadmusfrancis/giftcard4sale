@@ -158,6 +158,8 @@ export const env = {
   },
 
   rateSync: {
+    /** Background sync scheduler. Off for local runs against a shared database. */
+    schedulerEnabled: (process.env.RATE_SYNC_ENABLED || "true") === "true",
     /** Sync cadence. The admin refresh interval wins; this is the fallback. */
     fallbackMinutes: num(process.env.RATE_SYNC_MINUTES, num(process.env.SOGO_RATE_SYNC_MINUTES, 15)),
     /**

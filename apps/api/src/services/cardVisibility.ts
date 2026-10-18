@@ -11,11 +11,13 @@ export const MANUAL_RATE_WHERE: Prisma.RateWhereInput = {
 
 export { isManualRateSpeed };
 
-/** Public catalog: any card that has at least one quotable rate row (Sogo, partner, or NoOnes). */
+/**
+ * Public catalog: any card with at least one quotable rate row, plus cards an
+ * admin has set active regardless of rates (`forceActive`).
+ */
 export function noOnesCatalogWhere(): Prisma.CardTypeWhereInput {
   return {
-    active: true,
-    rates: { some: { active: true } },
+    OR: [{ forceActive: true }, { active: true, rates: { some: { active: true } } }],
   };
 }
 

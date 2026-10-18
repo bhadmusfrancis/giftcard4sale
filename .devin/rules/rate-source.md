@@ -56,6 +56,7 @@ Until `SOGO_RATES_API_URL` is set to a working JSON API, Sogo rates come from an
 - A source that fails or returns nothing must leave existing rows untouched — the catalog keeps serving its last known rates.
 - Only retire a row when a **stronger** source actually wrote a replacement for the same card/country/medium (or same card/currency, which is what stops one currency showing twice under different country labels).
 - `refreshCardCatalogVisibility()` reinstates the newest retired row per country+medium rather than letting a card fall out of the catalog.
+- `CardType.forceActive` is admin-owned ("Always active" on the Rates page): such a card is listed on `/cards` even with no active rate (`noOnesCatalogWhere()`). Syncs manage only `CardType.active` and must never write `forceActive`.
 
 ## Free-tier budget
 

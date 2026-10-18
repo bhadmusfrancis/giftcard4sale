@@ -347,6 +347,22 @@ function CardsSection() {
     }
   }
 
+  async function toggleForceActive(card: { id: string; name: string; forceActive?: boolean }) {
+    setSyncMsg(null);
+    try {
+      const enabled = !card.forceActive;
+      await api(`/admin/cards/${card.id}`, { method: "PATCH", body: { forceActive: enabled } });
+      await load();
+      setSyncMsg(
+        enabled
+          ? `${card.name} is now listed on /cards even without an active rate.`
+          : `${card.name} is listed on /cards only while it has an active rate.`
+      );
+    } catch (e) {
+      setSyncMsg((e as Error).message);
+    }
+  }
+
   async function deleteCard(card: { id: string; name: string }) {
     if (!confirm(`Delete "${card.name}" and all its rates? This cannot be undone.`)) return;
     setSyncMsg(null);
@@ -379,8 +395,18 @@ function CardsSection() {
               >
                 <span className="font-medium">{c.name} <span className="text-slate-400">/{c.sellSlug}</span></span>
                 <span className="ml-2 text-sm text-slate-500">{c.rateCount} rates {expanded === c.id ? "▲" : "▼"}</span>
+                {!c.active && !c.forceActive ? (
+                  <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Hidden — no active rate</span>
+                ) : null}
               </button>
               <div className="flex shrink-0 items-center gap-1">
+                <label
+                  className="flex items-center gap-1.5 px-2 text-xs text-slate-600"
+                  title="List this card on /cards even when it has no active rate"
+                >
+                  <input type="checkbox" checked={c.forceActive === true} onChange={() => toggleForceActive(c)} />
+                  Always active
+                </label>
                 <label className="flex items-center gap-1.5 px-2 text-xs text-slate-600" title="Auto-open new trades on SafeTheTrade">
                   <input
                     type="checkbox"
