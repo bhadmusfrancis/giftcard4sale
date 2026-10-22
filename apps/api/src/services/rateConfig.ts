@@ -37,6 +37,7 @@ export async function getRateConfig(): Promise<{
   minWithdrawals: Record<WithdrawalCurrency, number>;
   noonesAutoResellEnabled: boolean;
   sttMinOfferOwners: number;
+  sttRecommendedSellers: number;
   sttEcodeReductionPercent: number;
   euroAppleOddDenomReductionPercent: number;
   maxBankAccounts: number;
@@ -64,6 +65,7 @@ export async function getRateConfig(): Promise<{
         minWithdrawalUsdt: DEFAULT_MIN_WITHDRAWAL_USDT,
         noonesAutoResellEnabled: false,
         sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
+        sttRecommendedSellers: env.rateSync.sttRecommendedSellers,
         sttEcodeReductionPercent: env.rateSync.sttEcodeReductionPercent,
         euroAppleOddDenomReductionPercent: env.reductions.euroAppleOddDenomReductionPercent,
         maxBankAccounts: DEFAULT_MAX_PAYOUT_ACCOUNTS,
@@ -96,6 +98,7 @@ export async function getRateConfig(): Promise<{
     },
     noonesAutoResellEnabled: cfg.noonesAutoResellEnabled,
     sttMinOfferOwners: cfg.sttMinOfferOwners,
+    sttRecommendedSellers: cfg.sttRecommendedSellers,
     sttEcodeReductionPercent: cfg.sttEcodeReductionPercent,
     euroAppleOddDenomReductionPercent: cfg.euroAppleOddDenomReductionPercent,
     maxBankAccounts: cfg.maxBankAccounts,

@@ -224,6 +224,8 @@ model RateConfig {
   minWithdrawalUsdt         Decimal @default(5) @db.Decimal(20, 6)
   noonesAutoResellEnabled   Boolean @default(false)
   sttMinOfferOwners         Int      @default(3)
+  // Distinct top "Recommended" SafeTheTrade sellers each brand + currency is priced from.
+  sttRecommendedSellers     Int      @default(10)
   // % off the SafeTheTrade physical rate for the e-code rate when no offer accepts e-codes.
   sttEcodeReductionPercent  Int      @default(20)
   // Extra % off the payout for Euro Apple/iTunes amounts not divisible by 5 or 50.

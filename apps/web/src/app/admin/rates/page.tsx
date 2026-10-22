@@ -54,6 +54,7 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           minWithdrawalUsdt: Number(config.minWithdrawals?.USDT ?? 5),
           noonesAutoResellEnabled: config.noonesAutoResellEnabled !== false,
           sttMinOfferOwners: Number(config.sttMinOfferOwners ?? 3),
+          sttRecommendedSellers: Number(config.sttRecommendedSellers ?? 10),
           sttEcodeReductionPercent: Number(config.sttEcodeReductionPercent ?? 20),
           euroAppleOddDenomReductionPercent: Number(config.euroAppleOddDenomReductionPercent ?? 15),
           maxBankAccounts: Number(config.maxBankAccounts ?? 5),
@@ -92,6 +93,11 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           label="Min SafeTheTrade sellers per rate"
           value={config.sttMinOfferOwners ?? 3}
           onChange={(v) => setConfig({ ...config, sttMinOfferOwners: v })}
+        />
+        <Field
+          label="Top recommended SafeTheTrade sellers per rate"
+          value={config.sttRecommendedSellers ?? 10}
+          onChange={(v) => setConfig({ ...config, sttRecommendedSellers: v })}
         />
         <Field
           label="E-code deduction % (no e-code offers)"

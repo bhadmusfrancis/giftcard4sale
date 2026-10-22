@@ -169,6 +169,11 @@ export const env = {
      */
     sttMinOfferOwners: num(process.env.STT_MIN_OFFER_OWNERS, 3),
     /**
+     * Distinct top "Recommended" sellers each SafeTheTrade brand + currency is
+     * priced from. Seeds the admin setting; the dashboard value wins at runtime.
+     */
+    sttRecommendedSellers: num(process.env.STT_RECOMMENDED_SELLERS, 10),
+    /**
      * % off a SafeTheTrade physical rate that gives the e-code rate for a card
      * none of whose offers accept e-codes. Seeds the admin setting.
      */

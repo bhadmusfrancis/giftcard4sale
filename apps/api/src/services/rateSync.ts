@@ -523,6 +523,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
 
   let primaryRates: SyncedCardRate[] = [];
   let minOfferOwners = FALLBACK_MIN_OFFER_OWNERS;
+  let recommendedSellers = env.rateSync.sttRecommendedSellers;
   let ecodeReductionPercent = env.rateSync.sttEcodeReductionPercent;
   if (!env.safeTheTrade.enabled) {
     // The primary source being switched off is not a clean sync — the rows it
@@ -533,16 +534,17 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     try {
       const config = await getRateConfig();
       minOfferOwners = Math.max(1, config.sttMinOfferOwners);
+      recommendedSellers = Math.max(1, config.sttRecommendedSellers);
       ecodeReductionPercent = config.sttEcodeReductionPercent;
       ngnPerUsdt = config.rates.ngnPerUsdt;
-      primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners);
+      primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners, recommendedSellers);
     } catch (err) {
       const first = (err as Error).message;
       // One retry — a transient fetch failure should not drop the primary
       // source for a whole refresh cycle.
       try {
         await new Promise((resolve) => setTimeout(resolve, 5_000));
-        primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners);
+        primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners, recommendedSellers);
         if (primaryRates.length) {
           console.warn(`SafeTheTrade recovered on retry after: ${first}`);
         } else {

@@ -45,11 +45,12 @@ const AGGREGATE_METHOD_NAME = /\b(any|misc|miscellaneous|other|various|virtual)\
  * The feed is requested pre-filtered to `sell` offers and sorted by the
  * marketplace's own "Recommended" ranking (rate, activity and reputation).
  * Each brand + currency is priced only from the offers of its first N
- * distinct recommended sellers — the counterparties a card seller would
- * actually be shown first — rather than the whole book's long tail.
+ * distinct recommended sellers (admin-set `RateConfig.sttRecommendedSellers`)
+ * — the counterparties a card seller would actually be shown first — rather
+ * than the whole book's long tail.
  */
 const OFFERS_QUERY = "category=gift-cards&type=sell&sort=recommended";
-const RECOMMENDED_OWNERS_PER_TIER = 10;
+const DEFAULT_RECOMMENDED_SELLERS = 10;
 
 /** Cards denominated in our own payout currency are not something we resell. */
 const SKIPPED_CURRENCIES = new Set(["NGN"]);
@@ -307,9 +308,11 @@ async function fetchGiftCardMethodNames(): Promise<Map<string, string>> {
  */
 export async function fetchSafeTheTradeRates(
   ngnPerUsdt: number,
-  minOfferOwners: number
+  minOfferOwners: number,
+  recommendedSellers = DEFAULT_RECOMMENDED_SELLERS
 ): Promise<SyncedCardRate[]> {
   if (!(ngnPerUsdt > 0)) return [];
+  const sellersPerTier = Math.max(1, Math.floor(recommendedSellers) || DEFAULT_RECOMMENDED_SELLERS);
 
   const [offers, methodNames] = await Promise.all([
     fetchJson<SttOffer[]>(`${env.safeTheTrade.apiUrl}/offers?${OFFERS_QUERY}`),
@@ -387,7 +390,7 @@ export async function fetchSafeTheTradeRates(
 
   const rows: SyncedCardRate[] = [];
   for (const { canonicalMethodId, currency, samples: book, catalogCandidate } of grouped.values()) {
-    const samples = topRecommended(book, RECOMMENDED_OWNERS_PER_TIER);
+    const samples = topRecommended(book, sellersPerTier);
     const usdtPerFiatUnit = median(samples.map((s) => s.usdtPerFiatUnit));
     const nairaPerUnit = usdtPerFiatUnit * ngnPerUsdt;
     if (!(nairaPerUnit > 0)) continue;
@@ -397,7 +400,7 @@ export async function fetchSafeTheTradeRates(
     // are ranked among themselves so a thin e-code book isn't cut to nothing.
     const ecodeSamples = topRecommended(
       book.filter((s) => s.acceptsEcode),
-      RECOMMENDED_OWNERS_PER_TIER
+      sellersPerTier
     );
     const ecodeNairaPerUnit = ecodeSamples.length
       ? median(ecodeSamples.map((s) => s.usdtPerFiatUnit)) * ngnPerUsdt

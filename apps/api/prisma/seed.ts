@@ -109,6 +109,7 @@ async function main() {
         referralPercent: env.referralPercent,
         minCountryOffersForDisplay: 5,
         sttMinOfferOwners: env.rateSync.sttMinOfferOwners,
+        sttRecommendedSellers: env.rateSync.sttRecommendedSellers,
         sttEcodeReductionPercent: env.rateSync.sttEcodeReductionPercent,
       },
     });
