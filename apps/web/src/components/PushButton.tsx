@@ -1,92 +1,75 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import {
+  PUSH_CHANGE_EVENT,
+  currentPushSubscription,
+  disablePush,
+  enablePush,
+  pushOptedOut,
+  pushSupported,
+} from "@/lib/push";
 
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
-}
+type PushState = "checking" | "unsupported" | "off" | "on" | "busy";
 
-async function getExistingSubscription() {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
-  if (Notification.permission !== "granted") return null;
-
-  const reg = await navigator.serviceWorker.register("/sw.js");
-  await navigator.serviceWorker.ready;
-  return reg.pushManager.getSubscription();
-}
-
+/** On/off switch for web push on this device. Push is on by default. */
 export function PushButton({ hideWhenEnabled = false }: { hideWhenEnabled?: boolean } = {}) {
-  const [state, setState] = useState<"checking" | "idle" | "done" | "error">("checking");
+  const [state, setState] = useState<PushState>("checking");
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-
-    (async () => {
+    const refresh = async () => {
+      if (!pushSupported()) return setState("unsupported");
       try {
-        const sub = await getExistingSubscription();
-        if (cancelled) return;
-        if (sub) {
-          setState("done");
-          // Re-sync with server in case the DB was reset or the user re-logged in.
-          api("/notifications/subscribe", { body: sub.toJSON() }).catch(() => {});
-        } else {
-          setState("idle");
-        }
+        const sub = await currentPushSubscription();
+        if (!cancelled) setState(sub && !pushOptedOut() ? "on" : "off");
       } catch {
-        if (!cancelled) setState("idle");
+        if (!cancelled) setState("off");
       }
-    })();
-
+    };
+    void refresh();
+    window.addEventListener(PUSH_CHANGE_EVENT, refresh);
     return () => {
       cancelled = true;
+      window.removeEventListener(PUSH_CHANGE_EVENT, refresh);
     };
   }, []);
 
-  async function enable() {
+  async function toggle() {
+    const turningOn = state !== "on";
+    setState("busy");
+    setMsg("");
     try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        throw new Error("Push not supported in this browser");
-      }
-      const { key } = await api<{ key: string }>("/notifications/vapid-public-key");
-      if (!key) throw new Error("Push not configured on the server (set VAPID keys)");
-
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") throw new Error("Permission denied");
-
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(key),
-      });
-      await api("/notifications/subscribe", { body: sub.toJSON() });
-      setState("done");
+      if (turningOn) await enablePush();
+      else await disablePush();
+      setState(turningOn ? "on" : "off");
     } catch (e: any) {
-      setState("error");
+      setState(turningOn ? "off" : "on");
       setMsg(e.message);
     }
   }
 
-  if (hideWhenEnabled && (state === "done" || state === "checking")) return null;
+  if (state === "unsupported") return null;
+  if (hideWhenEnabled && (state === "on" || state === "checking")) return null;
 
   return (
     <div>
       <button
-        onClick={enable}
+        type="button"
+        onClick={toggle}
         className="btn-ghost text-sm py-2"
-        disabled={state === "done" || state === "checking"}
+        disabled={state === "checking" || state === "busy"}
       >
-        {state === "done"
-          ? "🔔 Push enabled"
-          : state === "checking"
-            ? "Checking push status…"
-            : "Enable push notifications"}
+        {state === "checking"
+          ? "Checking push status…"
+          : state === "busy"
+            ? "Updating…"
+            : state === "on"
+              ? "🔔 Push on · Turn off"
+              : "🔕 Push off · Turn on"}
       </button>
-      {state === "error" && <p className="mt-1 text-xs text-red-600">{msg}</p>}
+      {msg && <p className="mt-1 text-xs text-red-600">{msg}</p>}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
+import { PushAutoEnable } from "@/components/PushAutoEnable";
 
 const NAV = [
   { href: "/admin", label: "Overview" },
@@ -35,6 +36,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="mx-auto max-w-7xl px-3 py-5 sm:px-4 sm:py-8">
+      <PushAutoEnable />
       <div className="mb-4 flex flex-wrap items-center gap-2 sm:mb-6">
         <span className="badge bg-slate-900 text-white">ADMIN</span>
         <h1 className="text-base font-bold text-slate-900 sm:text-lg">Admin console</h1>

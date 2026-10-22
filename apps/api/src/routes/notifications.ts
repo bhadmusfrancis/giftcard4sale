@@ -60,3 +60,13 @@ notificationsRouter.post(
     res.json({ ok: true });
   })
 );
+
+notificationsRouter.post(
+  "/unsubscribe",
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { endpoint } = validate(z.object({ endpoint: z.string().url() }), req.body);
+    await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: req.userId! } });
+    res.json({ ok: true });
+  })
+);

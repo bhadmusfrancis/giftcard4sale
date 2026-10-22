@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
+import { PushAutoEnable } from "@/components/PushAutoEnable";
 
 const NAV = [
   { href: "/dashboard", label: "Overview" },
@@ -35,6 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-5 sm:px-4 sm:py-8">
+      <PushAutoEnable />
       {!user.emailVerified && (
         <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
           <span>Please verify your email to open trades and withdraw funds.</span>

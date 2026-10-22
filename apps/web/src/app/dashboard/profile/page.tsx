@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
+import { PushButton } from "@/components/PushButton";
 
 export default function ProfilePage() {
   const { user, setUser } = useAuth();
@@ -176,6 +177,13 @@ function NotificationPreferencesSection() {
       <p className="mt-1 text-sm text-slate-500">
         Choose how you want to be notified for each type of activity.
       </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-4">
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold">Push on this device</div>
+          <p className="text-xs text-slate-500">On by default. Turn off to stop all push alerts in this browser.</p>
+        </div>
+        <PushButton />
+      </div>
       <form onSubmit={save} className="mt-4 space-y-5">
         {PREF_LABELS.map(({ key, label, hint }) => (
           <div key={key} className="rounded-xl border border-slate-200 p-4">
