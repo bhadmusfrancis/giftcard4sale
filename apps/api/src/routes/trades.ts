@@ -4,7 +4,7 @@ import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, needsCardCo
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
-import { upload, chatUpload, fileRef, mediaUrl } from "../lib/upload";
+import { upload, chatUpload, fileRef, mediaUrl, MAX_CHAT_FILES } from "../lib/upload";
 import { getRateConfig } from "../services/rateConfig";
 import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
@@ -445,11 +445,15 @@ tradesRouter.post(
 tradesRouter.post(
   "/:id/messages",
   requireAuth,
-  chatUpload.single("file"),
+  chatUpload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "files", maxCount: MAX_CHAT_FILES },
+  ]),
   asyncHandler(async (req: AuthedRequest, res) => {
     const text = typeof req.body?.body === "string" ? req.body.body.trim() : "";
-    const file = req.file;
-    if (!text && !file) {
+    const uploaded = req.files as { file?: Express.Multer.File[]; files?: Express.Multer.File[] } | undefined;
+    const files = [...(uploaded?.file ?? []), ...(uploaded?.files ?? [])].slice(0, MAX_CHAT_FILES);
+    if (!text && !files.length) {
       return res.status(400).json({ error: "Message text or a file attachment is required" });
     }
 
@@ -464,23 +468,42 @@ tradesRouter.post(
       return res.status(403).json({ error: "This trade is closed. Chat is no longer available." });
     }
 
-    const message = await prisma.tradeMessage.create({
-      data: {
-        tradeId: trade.id,
-        senderId: req.userId!,
-        body: text,
-        ...(file
-          ? {
-              attachmentUrl: fileRef(file),
-              attachmentFilename: file.originalname,
-              attachmentMimeType: file.mimetype,
-            }
-          : {}),
-      },
-      include: { sender: true },
-    });
+    // One message per attachment (the text rides on the first), so each file
+    // renders and is receipted like any other message. Timestamps are spaced
+    // by a millisecond to keep the upload order stable in the chat.
+    const sentAt = Date.now();
+    const slots: (Express.Multer.File | undefined)[] = files.length ? files : [undefined];
+    const messages = [];
+    for (const [i, file] of slots.entries()) {
+      messages.push(
+        await prisma.tradeMessage.create({
+          data: {
+            tradeId: trade.id,
+            senderId: req.userId!,
+            body: i === 0 ? text : "",
+            createdAt: new Date(sentAt + i),
+            ...(file
+              ? {
+                  attachmentUrl: fileRef(file),
+                  attachmentFilename: file.originalname,
+                  attachmentMimeType: file.mimetype,
+                }
+              : {}),
+          },
+          include: { sender: true },
+        })
+      );
+    }
+    const message = messages[0];
+    const messageIds = messages.map((m) => m.id);
 
-    const notifyBody = text || (file ? `Sent a file: ${file.originalname}` : "New message");
+    const notifyBody =
+      text ||
+      (files.length === 1
+        ? `Sent a file: ${files[0].originalname}`
+        : files.length
+          ? `Sent ${files.length} files`
+          : "New message");
     const isAdminSender = req.userRole === "ADMIN";
 
     if (isAdminSender) {
@@ -497,7 +520,7 @@ tradesRouter.post(
       });
     } else {
       // Batch user-to-admin chat alerts so admins are not flooded.
-      const shouldNotify = await shouldSendTradeChatNotification(trade.id, message.id);
+      const shouldNotify = await shouldSendTradeChatNotification(trade.id, messageIds);
       if (shouldNotify) {
         await notifyAdmins({
           title: "Trade chat reply",
@@ -506,12 +529,12 @@ tradesRouter.post(
           emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
           category: "tradeChat",
           tradeId: trade.id,
-          messageId: message.id,
+          messageId: messageIds,
         });
       }
     }
 
-    res.status(201).json({ message: serializeMessage(message) });
+    res.status(201).json({ message: serializeMessage(message), messages: messages.map(serializeMessage) });
   })
 );
 

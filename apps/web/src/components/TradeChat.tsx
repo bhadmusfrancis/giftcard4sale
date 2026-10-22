@@ -19,6 +19,7 @@ type ChatMessage = {
 };
 
 const NEAR_BOTTOM_PX = 80;
+const MAX_FILES = 10;
 
 export function TradeChat({
   tradeId,
@@ -39,7 +40,7 @@ export function TradeChat({
   // Watermarks: how far the partner has delivered/read MY messages.
   const [receipts, setReceipts] = useState<{ readAt?: string | null; deliveredAt?: string | null }>({});
   const [body, setBody] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const sendAction = useAsyncAction();
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -129,20 +130,69 @@ export function TradeChat({
 
   async function submitMessage() {
     if (chatClosed) return;
-    if (!body.trim() && !file) return;
+    if (!body.trim() && !files.length) return;
     stopTyping();
     await sendAction.run(async () => {
       const form = new FormData();
       if (body.trim()) form.append("body", body.trim());
-      if (file) form.append("file", file);
+      files.forEach((f) => form.append("files", f));
       await api(`/trades/${tradeId}/messages`, { body: form, isForm: true });
       setBody("");
-      setFile(null);
-      if (fileRef.current) fileRef.current.value = "";
+      setFiles([]);
       stickToBottomRef.current = true;
       await load();
     }, "Message sent.");
   }
+
+  function addFiles(list: FileList | null) {
+    if (list?.length) setFiles((prev) => [...prev, ...Array.from(list)].slice(0, MAX_FILES));
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  const filePicker = (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          accept="image/*,application/pdf"
+          className="max-w-full text-xs"
+          disabled={files.length >= MAX_FILES}
+          onChange={(e) => addFiles(e.target.files)}
+        />
+        {files.length > 0 && (
+          <span className="shrink-0 text-xs">
+            {files.length}/{MAX_FILES} files
+          </span>
+        )}
+      </div>
+      {files.length > 0 && (
+        <ul className="flex flex-wrap gap-2">
+          {files.map((f, i) => (
+            <li
+              key={`${f.name}-${f.size}-${i}`}
+              className="flex max-w-[14rem] items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+            >
+              <span className="truncate">{f.name}</span>
+              <button
+                type="button"
+                onClick={() => removeFile(i)}
+                className="shrink-0 text-slate-400 hover:text-red-600"
+                aria-label={`Remove ${f.name}`}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -277,20 +327,11 @@ export function TradeChat({
                 }}
               />
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-500">
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/*,application/pdf"
-                    className="max-w-full text-xs"
-                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  />
-                  {file && <span className="truncate">{file.name}</span>}
-                </div>
+                <div className="min-w-0 flex-1">{filePicker}</div>
                 <button
                   type="submit"
                   className="btn-primary shrink-0"
-                  disabled={sendAction.busy || (!body.trim() && !file)}
+                  disabled={sendAction.busy || (!body.trim() && !files.length)}
                 >
                   {sendAction.busy ? "Sending…" : "Send message"}
                 </button>
@@ -311,21 +352,12 @@ export function TradeChat({
                 <button
                   type="submit"
                   className="btn-primary shrink-0"
-                  disabled={sendAction.busy || (!body.trim() && !file)}
+                  disabled={sendAction.busy || (!body.trim() && !files.length)}
                 >
                   {sendAction.busy ? "Sending…" : "Send"}
                 </button>
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  className="text-xs"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                />
-                {file && <span className="truncate">{file.name}</span>}
-              </div>
+              {filePicker}
             </>
           )}
           <FormFeedback status={sendAction.status} anchorRef={sendAction.statusRef} />

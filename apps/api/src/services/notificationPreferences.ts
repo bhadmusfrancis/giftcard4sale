@@ -65,8 +65,9 @@ export const TRADE_CHAT_NOTIFY_COOLDOWN_MS = 15 * 60 * 1000;
 /** Chat alerts only if the prior message on this trade was 15+ minutes ago (and trade not muted). */
 export async function shouldSendTradeChatNotification(
   tradeId: string,
-  excludeMessageId: string
+  excludeMessageId: string | string[]
 ): Promise<boolean> {
+  const excluded = Array.isArray(excludeMessageId) ? excludeMessageId : [excludeMessageId];
   const trade = await prisma.trade.findUnique({
     where: { id: tradeId },
     select: { notificationsMuted: true },
@@ -74,7 +75,7 @@ export async function shouldSendTradeChatNotification(
   if (trade?.notificationsMuted) return false;
 
   const previous = await prisma.tradeMessage.findFirst({
-    where: { tradeId, id: { not: excludeMessageId } },
+    where: { tradeId, id: { notIn: excluded } },
     orderBy: { createdAt: "desc" },
     select: { createdAt: true },
   });

@@ -88,7 +88,7 @@ export async function notifyAdmins(opts: {
   emailDetail?: string;
   category?: NotificationCategory;
   tradeId?: string;
-  messageId?: string;
+  messageId?: string | string[];
 }): Promise<void> {
   const category = opts.category ?? inferNotificationCategory(opts.title);
 

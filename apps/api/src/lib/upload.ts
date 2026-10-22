@@ -52,6 +52,9 @@ export const upload = multer({
   },
 });
 
+/** Most attachments one trade chat send may carry. */
+export const MAX_CHAT_FILES = 10;
+
 /** Trade chat: images and PDFs. */
 export const chatUpload = multer({
   storage,
