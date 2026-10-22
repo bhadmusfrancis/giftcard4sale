@@ -41,6 +41,16 @@ const MAX_FACE_FRACTION = 0.8;
  */
 const AGGREGATE_METHOD_NAME = /\b(any|misc|miscellaneous|other|various|virtual)\b|[/(]/i;
 
+/**
+ * The feed is requested pre-filtered to `sell` offers and sorted by the
+ * marketplace's own "Recommended" ranking (rate, activity and reputation).
+ * Each brand + currency is priced only from the offers of its first N
+ * distinct recommended sellers — the counterparties a card seller would
+ * actually be shown first — rather than the whole book's long tail.
+ */
+const OFFERS_QUERY = "category=gift-cards&type=sell&sort=recommended";
+const RECOMMENDED_OWNERS_PER_TIER = 10;
+
 /** Cards denominated in our own payout currency are not something we resell. */
 const SKIPPED_CURRENCIES = new Set(["NGN"]);
 
@@ -74,6 +84,8 @@ interface SttOffer {
   maxFiat?: number;
   terms?: string | null;
   tags?: unknown;
+  scheduleOnline?: boolean;
+  autoOff?: unknown;
   pricing?: { fiatCurrency?: string; spotRate?: number; pricePerUnit?: number } | null;
 }
 
@@ -138,6 +150,22 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Samples (already in recommended order) belonging to the first `owners`
+ * distinct sellers. All of a kept seller's listings stay — they matter for
+ * the denomination band — while the cut is by seller, so one trader's many
+ * listings cannot crowd everyone else out of the top.
+ */
+function topRecommended<T extends { owner: string }>(samples: T[], owners: number): T[] {
+  const kept = new Set<string>();
+  return samples.filter((s) => {
+    if (kept.has(s.owner)) return true;
+    if (kept.size >= owners) return false;
+    kept.add(s.owner);
+    return true;
+  });
 }
 
 interface DenomSample {
@@ -284,7 +312,7 @@ export async function fetchSafeTheTradeRates(
   if (!(ngnPerUsdt > 0)) return [];
 
   const [offers, methodNames] = await Promise.all([
-    fetchJson<SttOffer[]>(`${env.safeTheTrade.apiUrl}/offers?category=gift-cards`),
+    fetchJson<SttOffer[]>(`${env.safeTheTrade.apiUrl}/offers?${OFFERS_QUERY}`),
     fetchGiftCardMethodNames(),
   ]);
   if (!Array.isArray(offers)) throw new Error("SafeTheTrade returned an unexpected offers payload");
@@ -308,6 +336,7 @@ export async function fetchSafeTheTradeRates(
   for (const offer of offers) {
     if (offer.type !== "sell") continue;
     if (offer.active === false || offer.deauthorized || offer.visibility !== "public") continue;
+    if (offer.scheduleOnline === false || offer.autoOff) continue;
 
     const methodId = String(offer.paymentMethodId ?? "").trim();
     const currency = String(offer.fiatCurrency ?? offer.pricing?.fiatCurrency ?? "").toUpperCase();
@@ -357,14 +386,19 @@ export async function fetchSafeTheTradeRates(
   }
 
   const rows: SyncedCardRate[] = [];
-  for (const { canonicalMethodId, currency, samples, catalogCandidate } of grouped.values()) {
+  for (const { canonicalMethodId, currency, samples: book, catalogCandidate } of grouped.values()) {
+    const samples = topRecommended(book, RECOMMENDED_OWNERS_PER_TIER);
     const usdtPerFiatUnit = median(samples.map((s) => s.usdtPerFiatUnit));
     const nairaPerUnit = usdtPerFiatUnit * ngnPerUsdt;
     if (!(nairaPerUnit > 0)) continue;
 
     // Only offers whose page says they take e-codes price the e-code tier;
-    // with none, the sync derives it from the physical rate.
-    const ecodeSamples = samples.filter((s) => s.acceptsEcode);
+    // with none, the sync derives it from the physical rate. E-code takers
+    // are ranked among themselves so a thin e-code book isn't cut to nothing.
+    const ecodeSamples = topRecommended(
+      book.filter((s) => s.acceptsEcode),
+      RECOMMENDED_OWNERS_PER_TIER
+    );
     const ecodeNairaPerUnit = ecodeSamples.length
       ? median(ecodeSamples.map((s) => s.usdtPerFiatUnit)) * ngnPerUsdt
       : undefined;

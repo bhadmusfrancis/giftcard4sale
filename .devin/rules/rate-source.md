@@ -13,12 +13,13 @@ Displayed gift-card rates are synced from **SafeTheTrade first**, then Sogo for 
 
 `apps/api/src/services/safethetrade` reads the public JSON feed:
 
-- `GET https://safethetrade.com/api/v1/offers?category=gift-cards` — no key or account required. The site itself is a client-rendered SPA with no scrapeable HTML.
+- `GET https://safethetrade.com/api/v1/offers?category=gift-cards&type=sell&sort=recommended` — no key or account required. The feed is filtered server-side to `sell` offers and returned in the marketplace's "Recommended" order; offers outside their schedule (`scheduleOnline: false`) or auto-switched off (`autoOff`) are also dropped.
+- Each brand + currency is priced only from the offers of its **first 10 distinct recommended sellers** (`topRecommended()`, `RECOMMENDED_OWNERS_PER_TIER`), not the whole book. E-code takers are ranked among themselves the same way. The site itself is a client-rendered SPA with no scrapeable HTML.
 - The origin answers **HTTP 451 to some hosting IP ranges** (Render's egress included), so `SAFETHETRADE_PROXY_URL` routes the feed through another egress: a CONNECT proxy (`http://user:pass@host:port`) or a URL relay template (`https://host/?u={url}` — worker at `apps/api/scripts/stt-feed-relay.js`).
 - `GET .../payment-methods?category=gift-cards` supplies brand display names (226 brands listed, ~86 with live offers).
 - **Only `sell` offers are priced.** An offer's type is stated from its owner's side: a `sell` owner sells crypto and is paid in gift cards, so they are the counterparty that takes a card off our hands and releases crypto. `buy` offers are card holders shopping for crypto — the mirror side, and useless as a resale price. That book is also 30x thinner (≈76 offers against ≈2,300).
 - Every brand + currency pair with a live offer is priced, which is what covers the brands Sogo never publishes.
-- Offers are reduced with a **median**, never a maximum: the top of that book is consistently bait priced near face value.
+- Those recommended offers are reduced with a **median**, never a maximum: the top of that book is consistently bait priced near face value.
 - Rates outside **15-80% of face value** are discarded, so a marketplace quote can never commit us to a payout above what the card is worth.
 - **The lowest rate always wins, irrespective of source** — each medium's SafeTheTrade rate is capped at Sogo's rate for the same medium (`primaryTierRates()` in `rateSync.ts`); there is no premium allowance. Sogo's remaining role is the cap reference and filling cards/currencies SafeTheTrade does not price at all.
 - **E-code rate:** only offers whose page says they accept e-codes (`offerAcceptsEcode()` — an e-code tag, or a terms sentence naming e-codes that doesn't refuse/defer them) price the e-code tier, by median. With no such offer for a brand + currency, the e-code rate is the physical rate less `RateConfig.sttEcodeReductionPercent` (admin-set on the Rates page, default 20; `STT_ECODE_REDUCTION_PERCENT` only seeds it).
