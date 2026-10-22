@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { money, date, STATUS_COLORS, SELLER_STATUS_DESCRIPTIONS } from "@/lib/format";
 import { trackGoogleAdsPurchase } from "@/lib/googleAds";
 import { TradeChat } from "@/components/TradeChat";
+import { PushButton } from "@/components/PushButton";
 
 export default function TradeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,7 +59,10 @@ export default function TradeDetailPage() {
           <h1 className="text-2xl font-bold">{trade.cardType?.name} trade</h1>
           <p className="mt-1 font-mono text-sm text-slate-500">{trade.tradeNumber}</p>
         </div>
-        <span className={`badge ${STATUS_COLORS[trade.status]}`} title={SELLER_STATUS_DESCRIPTIONS[trade.status]}>{trade.status}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <PushButton hideWhenEnabled />
+          <span className={`badge ${STATUS_COLORS[trade.status]}`} title={SELLER_STATUS_DESCRIPTIONS[trade.status]}>{trade.status}</span>
+        </div>
       </div>
 
       {SELLER_STATUS_DESCRIPTIONS[trade.status] && (

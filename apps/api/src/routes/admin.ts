@@ -609,7 +609,8 @@ adminRouter.patch(
         emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
         category: "tradeStatus",
       });
-    } else if (data.status && data.status !== "PROCESSING" && data.status !== "PENDING") {
+    } else if (data.status && data.status !== trade.status && data.status !== "PAID") {
+      // PAID is announced by payTrade() itself, with the credited amount.
       await notify({
         userId: trade.userId,
         title: `Trade ${data.status.toLowerCase().replace("_", " ")}`,
@@ -617,6 +618,20 @@ adminRouter.patch(
         link: `/dashboard/trades/${trade.id}`,
         email: data.status === "APPROVED",
         emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+        category: "tradeStatus",
+      });
+    }
+
+    const previousPayout = Number(trade.finalPayout ?? trade.quotedPayout);
+    if (data.finalPayout != null && data.finalPayout !== previousPayout && data.status !== "PAID") {
+      await notify({
+        userId: trade.userId,
+        title: "Trade payout updated",
+        body: `The payout for your trade ${trade.tradeNumber ?? ""} is now ${data.finalPayout} ${trade.payoutCurrency}.`,
+        link: `/dashboard/trades/${trade.id}`,
+        email: false,
+        emailDetail: trade.tradeNumber ? `Trade ID: ${trade.tradeNumber}` : undefined,
+        category: "tradeStatus",
       });
     }
 

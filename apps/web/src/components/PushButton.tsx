@@ -19,7 +19,7 @@ async function getExistingSubscription() {
   return reg.pushManager.getSubscription();
 }
 
-export function PushButton() {
+export function PushButton({ hideWhenEnabled = false }: { hideWhenEnabled?: boolean } = {}) {
   const [state, setState] = useState<"checking" | "idle" | "done" | "error">("checking");
   const [msg, setMsg] = useState("");
 
@@ -70,6 +70,8 @@ export function PushButton() {
       setMsg(e.message);
     }
   }
+
+  if (hideWhenEnabled && (state === "done" || state === "checking")) return null;
 
   return (
     <div>
