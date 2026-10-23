@@ -52,6 +52,22 @@ const AGGREGATE_METHOD_NAME = /\b(any|misc|miscellaneous|other|various|virtual)\
 const OFFERS_QUERY = "category=gift-cards&type=sell&sort=recommended";
 const DEFAULT_RECOMMENDED_SELLERS = 10;
 
+/**
+ * Listings stay in the feed while their owner is away, so an offline trader's
+ * $25 minimum would advertise an amount nobody is there to take. The amounts
+ * a tier accepts therefore come only from sellers online now; its price still
+ * comes from the recommended book. The feed's activity stamps are bimodal —
+ * owners online are seen within ~5 minutes, everyone else hours ago — so this
+ * window separates the two with margin for the sync's own fetch.
+ */
+const OWNER_ONLINE_WITHIN_MS = 15 * 60_000;
+
+function ownerOnline(offer: { ownerLastSeenAt?: string | null }, now: number): boolean {
+  const seen = offer.ownerLastSeenAt ? Date.parse(offer.ownerLastSeenAt) : NaN;
+  // A feed that stops reporting activity must not empty every tier's range.
+  return Number.isNaN(seen) || now - seen <= OWNER_ONLINE_WITHIN_MS;
+}
+
 /** Cards denominated in our own payout currency are not something we resell. */
 const SKIPPED_CURRENCIES = new Set(["NGN"]);
 
@@ -74,6 +90,7 @@ interface SttOffer {
   id?: string;
   ownerId?: string;
   ownerUsername?: string;
+  ownerLastSeenAt?: string | null;
   active?: boolean;
   deauthorized?: boolean;
   visibility?: string;
@@ -329,7 +346,9 @@ export async function fetchSafeTheTradeRates(
     maxFiat: number;
     owner: string;
     acceptsEcode: boolean;
+    online: boolean;
   }
+  const now = Date.now();
   const grouped = new Map<
     string,
     { canonicalMethodId: string; currency: string; samples: Sample[]; catalogCandidate: boolean }
@@ -384,12 +403,19 @@ export async function fetchSafeTheTradeRates(
         String(offer.ownerId ?? offer.ownerUsername ?? offer.id ?? "").trim() ||
         `anonymous-${++anonymousOwner}`,
       acceptsEcode: offerAcceptsEcode(offer),
+      online: ownerOnline(offer, now),
     });
     grouped.set(key, entry);
   }
 
   const rows: SyncedCardRate[] = [];
   for (const { canonicalMethodId, currency, samples: book, catalogCandidate } of grouped.values()) {
+    // With every seller offline there is no amount anyone can take right now.
+    // Leaving the tier out keeps its last synced rate and range untouched
+    // rather than re-advertising the offline traders' amounts.
+    const online = book.filter((s) => s.online);
+    if (!online.length) continue;
+
     const samples = topRecommended(book, sellersPerTier);
     const usdtPerFiatUnit = median(samples.map((s) => s.usdtPerFiatUnit));
     const nairaPerUnit = usdtPerFiatUnit * ngnPerUsdt;
@@ -407,7 +433,7 @@ export async function fetchSafeTheTradeRates(
       : undefined;
 
     const tier = currencyTierFromCode(currency);
-    const range = coveredDenomRange(samples, minOfferOwners);
+    const range = coveredDenomRange(online, minOfferOwners);
     const minDenom = Math.max(1, Math.round(range?.min ?? tier.minDenom ?? 1));
     const maxDenom = Math.max(minDenom, Math.round(range?.max ?? tier.maxDenom ?? minDenom));
 
