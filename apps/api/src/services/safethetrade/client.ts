@@ -52,21 +52,6 @@ const AGGREGATE_METHOD_NAME = /\b(any|misc|miscellaneous|other|various|virtual)\
 const OFFERS_QUERY = "category=gift-cards&type=sell&sort=recommended";
 const DEFAULT_RECOMMENDED_SELLERS = 10;
 
-/**
- * Only sellers online now price a tier. Listings stay up while their owner is
- * away, so an offline trader's $25 minimum would otherwise advertise an
- * amount nobody is there to take. The feed's activity stamps are bimodal —
- * owners online are seen within ~5 minutes, everyone else hours ago — so this
- * window separates the two with margin for the sync's own fetch.
- */
-const OWNER_ONLINE_WITHIN_MS = 15 * 60_000;
-
-function ownerOnline(offer: { ownerLastSeenAt?: string | null }, now: number): boolean {
-  const seen = offer.ownerLastSeenAt ? Date.parse(offer.ownerLastSeenAt) : NaN;
-  // A feed that stops reporting activity must not empty the whole book.
-  return Number.isNaN(seen) || now - seen <= OWNER_ONLINE_WITHIN_MS;
-}
-
 /** Cards denominated in our own payout currency are not something we resell. */
 const SKIPPED_CURRENCIES = new Set(["NGN"]);
 
@@ -89,7 +74,6 @@ interface SttOffer {
   id?: string;
   ownerId?: string;
   ownerUsername?: string;
-  ownerLastSeenAt?: string | null;
   active?: boolean;
   deauthorized?: boolean;
   visibility?: string;
@@ -345,9 +329,7 @@ export async function fetchSafeTheTradeRates(
     maxFiat: number;
     owner: string;
     acceptsEcode: boolean;
-    online: boolean;
   }
-  const now = Date.now();
   const grouped = new Map<
     string,
     { canonicalMethodId: string; currency: string; samples: Sample[]; catalogCandidate: boolean }
@@ -402,19 +384,14 @@ export async function fetchSafeTheTradeRates(
         String(offer.ownerId ?? offer.ownerUsername ?? offer.id ?? "").trim() ||
         `anonymous-${++anonymousOwner}`,
       acceptsEcode: offerAcceptsEcode(offer),
-      online: ownerOnline(offer, now),
     });
     grouped.set(key, entry);
   }
 
   const rows: SyncedCardRate[] = [];
-  for (const { canonicalMethodId, currency, samples: listed, catalogCandidate } of grouped.values()) {
-    // A tier whose sellers are all offline is still emitted, with no sellers
-    // behind it, so the sync retires its row instead of treating it as absent
-    // from the feed and leaving the last rate quoting.
-    const book = listed.filter((s) => s.online);
+  for (const { canonicalMethodId, currency, samples: book, catalogCandidate } of grouped.values()) {
     const samples = topRecommended(book, sellersPerTier);
-    const usdtPerFiatUnit = median((samples.length ? samples : listed).map((s) => s.usdtPerFiatUnit));
+    const usdtPerFiatUnit = median(samples.map((s) => s.usdtPerFiatUnit));
     const nairaPerUnit = usdtPerFiatUnit * ngnPerUsdt;
     if (!(nairaPerUnit > 0)) continue;
 
