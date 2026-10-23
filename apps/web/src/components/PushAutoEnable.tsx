@@ -20,12 +20,16 @@ export function PushAutoEnable() {
       return;
     }
 
+    // A permission prompt opening over a file picker or a field being typed
+    // into can cancel or interrupt it, so those interactions don't trigger it.
     const events = ["pointerdown", "keydown"] as const;
-    const onFirstInteraction = () => {
-      events.forEach((e) => window.removeEventListener(e, onFirstInteraction));
+    const onFirstInteraction = (e: Event) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.("input, textarea, select, label, [contenteditable]")) return;
+      events.forEach((name) => window.removeEventListener(name, onFirstInteraction));
       void enablePush().catch(() => {});
     };
-    events.forEach((e) => window.addEventListener(e, onFirstInteraction, { once: true }));
+    events.forEach((name) => window.addEventListener(name, onFirstInteraction));
     return () => events.forEach((e) => window.removeEventListener(e, onFirstInteraction));
   }, []);
 

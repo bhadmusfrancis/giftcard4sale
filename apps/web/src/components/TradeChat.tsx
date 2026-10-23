@@ -145,8 +145,11 @@ export function TradeChat({
   }
 
   function addFiles(list: FileList | null) {
-    if (list?.length) setFiles((prev) => [...prev, ...Array.from(list)].slice(0, MAX_FILES));
+    // Copy before clearing the input: its FileList is live and empties when
+    // the value is reset, and the state updater only runs on the next render.
+    const picked = list ? Array.from(list) : [];
     if (fileRef.current) fileRef.current.value = "";
+    if (picked.length) setFiles((prev) => [...prev, ...picked].slice(0, MAX_FILES));
   }
 
   function removeFile(index: number) {
