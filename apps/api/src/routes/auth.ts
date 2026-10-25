@@ -14,6 +14,7 @@ import {
 } from "../lib/auth";
 import { mediaUrl } from "../lib/upload";
 import { sendTransactionalEmail } from "../services/email";
+import { sendAppInstallGuideEmail } from "../services/appInstallGuideEmail";
 import { notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getUserRestriction } from "../services/userModeration";
@@ -188,6 +189,10 @@ authRouter.post(
       ctaLabel: "Go to dashboard",
       ctaHref: `${env.webUrl}/dashboard`,
     });
+
+    void sendAppInstallGuideEmail({ email: user.email, displayName }).catch((err) =>
+      console.error("[email] app install guide failed:", (err as Error).message)
+    );
 
     const meta = metaAttributionFromRequest(req);
     trackMetaEvent({
