@@ -158,7 +158,7 @@ export function buildAppGuideEmail(options: AppGuideEmailOptions = {}): { html: 
       ${btn("Set my notifications", profileUrl, false)}
     </td></tr>
     <tr><td align="center" style="padding:6px 32px 32px;font-size:13px;color:${MUTED};line-height:1.6">
-      Need help installing? Just reply to <a href="mailto:${env.supportEmail}" style="color:${TEAL}">${env.supportEmail}</a> and we'll walk you through it.
+      This is an automated message, so replies aren't received. Need help installing? Email <a href="mailto:${env.supportEmail}" style="color:${TEAL}">${env.supportEmail}</a> and we'll walk you through it.
     </td></tr>
 
     <tr><td style="padding:18px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;color:${MUTED};font-size:12px;line-height:1.6">
@@ -195,7 +195,7 @@ export function buildAppGuideEmail(options: AppGuideEmailOptions = {}): { html: 
     "",
     `Set my notifications: ${profileUrl}`,
     "",
-    `Need help? ${env.supportEmail}`,
+    `This is an automated message, so replies aren't received. Need help? Email ${env.supportEmail}`,
     `GiftCard4Sale (${site})`,
   ].join("\n");
 
