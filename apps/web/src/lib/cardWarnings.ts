@@ -42,5 +42,13 @@ export function cardWarnings(name?: string | null, slug?: string | null): CardWa
     });
   }
 
+  if (n.replace(/\s+/g, "").includes("bestbuy") || s.startsWith("best-buy")) {
+    warnings.push({
+      title: "Check your card balance before submitting.",
+      body: "Visit the Best Buy website to check your gift card balance before uploading your card or code.",
+      link: { href: "https://www.bestbuy.com/gift-card-balance", label: "bestbuy.com/gift-card-balance" },
+    });
+  }
+
   return warnings;
 }
