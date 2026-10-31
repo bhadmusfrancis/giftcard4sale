@@ -1,7 +1,9 @@
 import { CardType, Prisma } from "@prisma/client";
 import { canonicalCardSlug, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
 import { prisma } from "../prisma";
+import { refreshCardCatalogVisibility } from "./cardVisibility";
 import { paymentMethodToCardName } from "./noones/rateCatalog";
+import { SYNCED_RATE_SPEEDS, weakerRateSources } from "./rateSources";
 
 type CardTypeWithCounts = CardType & { _count: { rates: number; trades: number } };
 
@@ -61,6 +63,115 @@ export async function findExistingCardType(
   });
 }
 
+/**
+ * Move everything a duplicate card owns onto the keeper, then delete it. Rate
+ * rows the keeper already has for the same tier and band are dropped.
+ */
+async function absorbCardType(keeperId: string, dupId: string): Promise<{ ratesMoved: number; ratesDropped: number }> {
+  let ratesMoved = 0;
+  let ratesDropped = 0;
+
+  const keeperRates = await prisma.rate.findMany({ where: { cardTypeId: keeperId } });
+  const keeperKeys = new Set(keeperRates.map(rateKey));
+  const dupRates = await prisma.rate.findMany({ where: { cardTypeId: dupId } });
+
+  for (const rate of dupRates) {
+    const key = rateKey(rate);
+    if (keeperKeys.has(key)) {
+      await prisma.rate.delete({ where: { id: rate.id } });
+      ratesDropped++;
+    } else {
+      await prisma.rate.update({ where: { id: rate.id }, data: { cardTypeId: keeperId } });
+      keeperKeys.add(key);
+      ratesMoved++;
+    }
+  }
+
+  await prisma.trade.updateMany({ where: { cardTypeId: dupId }, data: { cardTypeId: keeperId } });
+
+  const dupLanding = await prisma.landingPage.findUnique({ where: { cardTypeId: dupId } });
+  if (dupLanding) {
+    const keeperLanding = await prisma.landingPage.findUnique({ where: { cardTypeId: keeperId } });
+    if (keeperLanding) {
+      await prisma.landingPage.delete({ where: { id: dupLanding.id } });
+    } else {
+      await prisma.landingPage.update({ where: { id: dupLanding.id }, data: { cardTypeId: keeperId } });
+    }
+  }
+
+  // Currency meta and insight posts cascade with the card, so carry over what
+  // the keeper does not already have.
+  const keeperCurrencies = new Set(
+    (await prisma.cardCurrencyMeta.findMany({ where: { cardTypeId: keeperId }, select: { currency: true } })).map(
+      (m) => m.currency
+    )
+  );
+  for (const meta of await prisma.cardCurrencyMeta.findMany({ where: { cardTypeId: dupId } })) {
+    if (keeperCurrencies.has(meta.currency)) continue;
+    await prisma.cardCurrencyMeta.update({ where: { id: meta.id }, data: { cardTypeId: keeperId } });
+  }
+  const keeperBatches = new Set(
+    (await prisma.insightPost.findMany({ where: { cardTypeId: keeperId }, select: { batchDate: true } })).map((p) =>
+      p.batchDate.getTime()
+    )
+  );
+  for (const post of await prisma.insightPost.findMany({ where: { cardTypeId: dupId } })) {
+    if (keeperBatches.has(post.batchDate.getTime())) continue;
+    await prisma.insightPost.update({ where: { id: post.id }, data: { cardTypeId: keeperId } });
+  }
+
+  // The two cards may each have held a live rate for the same currency and
+  // medium; only the strongest source's row may keep quoting.
+  const active = await prisma.rate.findMany({
+    where: { cardTypeId: keeperId, active: true, speed: { in: SYNCED_RATE_SPEEDS } },
+    select: { currency: true, medium: true, speed: true },
+  });
+  for (const row of active) {
+    const weaker = weakerRateSources(row.speed!);
+    if (!weaker.length) continue;
+    await prisma.rate.updateMany({
+      where: { cardTypeId: keeperId, currency: row.currency, medium: row.medium, active: true, speed: { in: weaker } },
+      data: { active: false },
+    });
+  }
+
+  await prisma.cardType.delete({ where: { id: dupId } });
+  return { ratesMoved, ratesDropped };
+}
+
+/**
+ * Brands that reach the catalog under names no slug rule can join — "Dicks"
+ * from Sogo, "Dick's Sporting Goods" from SafeTheTrade. Keyed by the slug of
+ * the card to keep; the sync's name aliases route both sources to it after.
+ */
+const CARD_MERGES: Record<string, string[]> = {
+  dicks: ["dick-s-sporting-goods", "dicks-sporting-goods"],
+};
+
+/** Fold the cards listed in `CARD_MERGES` into their keeper. Runs on boot; a no-op once merged. */
+export async function mergeAliasedCardTypes(): Promise<DedupSummary> {
+  const summary: DedupSummary = { merged: [] };
+  for (const [keeperSlug, aliasSlugs] of Object.entries(CARD_MERGES)) {
+    const keeper = await prisma.cardType.findUnique({ where: { slug: keeperSlug } });
+    if (!keeper) continue;
+    const dups = await prisma.cardType.findMany({ where: { slug: { in: aliasSlugs } } });
+    for (const dup of dups) {
+      const { ratesMoved, ratesDropped } = await absorbCardType(keeper.id, dup.id);
+      if (!keeper.noonesPaymentMethod && dup.noonesPaymentMethod) {
+        await prisma.cardType.update({ where: { id: keeper.id }, data: { noonesPaymentMethod: dup.noonesPaymentMethod } });
+      }
+      summary.merged.push({
+        keeper: `${keeper.name} (${keeper.slug})`,
+        removed: `${dup.name} (${dup.slug})`,
+        ratesMoved,
+        ratesDropped,
+      });
+    }
+    if (dups.length) await refreshCardCatalogVisibility(keeper.id);
+  }
+  return summary;
+}
+
 export interface DedupSummary {
   merged: { keeper: string; removed: string; ratesMoved: number; ratesDropped: number }[];
 }
@@ -83,45 +194,7 @@ export async function dedupeCardTypes(): Promise<DedupSummary> {
     const canonicalName = normalizeCardTypeName(keeper.name);
 
     for (const dup of duplicates) {
-      let ratesMoved = 0;
-      let ratesDropped = 0;
-
-      const keeperRates = await prisma.rate.findMany({ where: { cardTypeId: keeper.id } });
-      const keeperKeys = new Set(keeperRates.map(rateKey));
-      const dupRates = await prisma.rate.findMany({ where: { cardTypeId: dup.id } });
-
-      for (const rate of dupRates) {
-        const key = rateKey(rate);
-        if (keeperKeys.has(key)) {
-          await prisma.rate.delete({ where: { id: rate.id } });
-          ratesDropped++;
-        } else {
-          await prisma.rate.update({
-            where: { id: rate.id },
-            data: { cardTypeId: keeper.id },
-          });
-          keeperKeys.add(key);
-          ratesMoved++;
-        }
-      }
-
-      await prisma.trade.updateMany({
-        where: { cardTypeId: dup.id },
-        data: { cardTypeId: keeper.id },
-      });
-
-      const dupLanding = await prisma.landingPage.findUnique({ where: { cardTypeId: dup.id } });
-      if (dupLanding) {
-        const keeperLanding = await prisma.landingPage.findUnique({ where: { cardTypeId: keeper.id } });
-        if (keeperLanding) {
-          await prisma.landingPage.delete({ where: { id: dupLanding.id } });
-        } else {
-          await prisma.landingPage.update({
-            where: { id: dupLanding.id },
-            data: { cardTypeId: keeper.id },
-          });
-        }
-      }
+      const { ratesMoved, ratesDropped } = await absorbCardType(keeper.id, dup.id);
 
       await prisma.cardType.update({
         where: { id: keeper.id },
@@ -131,8 +204,6 @@ export async function dedupeCardTypes(): Promise<DedupSummary> {
           active: true,
         },
       });
-
-      await prisma.cardType.delete({ where: { id: dup.id } });
 
       summary.merged.push({
         keeper: `${keeper.name} (${keeper.slug})`,

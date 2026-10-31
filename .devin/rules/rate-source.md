@@ -38,6 +38,11 @@ Until `SOGO_RATES_API_URL` is set to a working JSON API, Sogo rates come from an
 - Sogo runs after SafeTheTrade. For a `card + currency + medium` SafeTheTrade priced, Sogo still writes its row but **retired** (`active: false`) — that row is the resale reference the cap reads, so it must keep being refreshed.
 - If SafeTheTrade fails or returns nothing, Sogo refreshes everything — the fallback must not be blocked by the rows a failed primary left behind.
 - Ignore Vertical/Horizontal card-orientation splits; persist the **lowest** physical rate for that currency.
+- **Amount ranges: STT always wins.** Where SafeTheTrade has a band for a card + currency (live this run, or its last stored STT row — `loadSttRanges()`), Sogo rows are written with STT's `minDenom`/`maxDenom`, including tiers where STT's book is too thin to quote and Sogo prices them. The card page (`listCardCurrencyMetaForDisplay`) likewise shows only the newest STT band for such a currency.
+
+## Card merges
+
+Brands whose names no slug rule joins are folded together on boot by `mergeAliasedCardTypes()` (`CARD_MERGES` in `services/cardTypeDedup.ts`), and `NAME_ALIASES` in `rateSync.ts` routes both sources to the kept card afterwards. E.g. Sogo's "Dicks" (`dicks`, kept) and STT's "Dick's Sporting Goods" (`dick-s-sporting-goods`).
 
 ## Persist flags
 

@@ -66,8 +66,9 @@ const NAME_ALIASES: Record<string, string[]> = {
   vanilla: ["vanilla-visa"],
   visa: ["visa-gift-card"],
   "american-express": ["amex"],
-  dicks: ["dicks-sporting-goods"],
-  "dicks-sporting-goods": ["dicks"],
+  dicks: ["dicks-sporting-goods", "dick-s-sporting-goods"],
+  "dicks-sporting-goods": ["dicks", "dick-s-sporting-goods"],
+  "dick-s-sporting-goods": ["dicks", "dicks-sporting-goods"],
 };
 
 function aliasSlugs(slug: string): string[] {
@@ -273,6 +274,30 @@ async function loadSogoReference(): Promise<SogoReference> {
   return reference;
 }
 
+/** SafeTheTrade amount band per `cardTypeId|currency`. */
+type SttRanges = Map<string, { min: number; max: number }>;
+
+/**
+ * The last band SafeTheTrade recorded for every card + currency, retired rows
+ * included. Where both sources know a tier, SafeTheTrade's amounts are the
+ * ones shown and accepted — Sogo's are a static published range, STT's are
+ * what sellers take now — so Sogo rows are written with this band. Live
+ * ranges from the current run overwrite these as each tier is processed.
+ */
+async function loadSttRanges(): Promise<SttRanges> {
+  const rows = await prisma.rate.findMany({
+    where: { speed: STT_RATE_SPEED, minDenom: { not: null }, maxDenom: { not: null } },
+    select: { cardTypeId: true, currency: true, minDenom: true, maxDenom: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  const ranges: SttRanges = new Map();
+  for (const row of rows) {
+    const key = `${row.cardTypeId}|${row.currency}`;
+    if (!ranges.has(key)) ranges.set(key, { min: row.minDenom!, max: row.maxDenom! });
+  }
+  return ranges;
+}
+
 /** Scale a rate and its receipt variants by the same factor. */
 function scaleQuotes(quotes: StoredQuotes, factor: number): StoredQuotes {
   if (factor >= 1) return quotes;
@@ -368,6 +393,7 @@ function primaryTierRates(
 async function syncPrimaryRate(
   rate: SyncedCardRate,
   sogoReference: SogoReference,
+  sttRanges: SttRanges,
   covered: Set<string>,
   touchedCards: Set<string>,
   capped: { count: number },
@@ -381,6 +407,9 @@ async function syncPrimaryRate(
     summary.skipped++;
     return;
   }
+  // Recorded even when the book is too thin to quote: Sogo then prices the
+  // tier, but over the amounts SafeTheTrade's sellers actually take.
+  sttRanges.set(`${dbCard.id}|${rate.currency}`, { min: rate.minDenom, max: rate.maxDenom });
 
   const reference = sogoReference.get(`${dbCard.id}|${rate.currency}`) ?? new Map<CardMedium, number>();
   const tierRates = primaryTierRates(rate, reference, policy);
@@ -435,6 +464,7 @@ async function syncPrimaryRate(
  */
 async function syncSogoCard(
   card: SogoCardRates,
+  sttRanges: SttRanges,
   covered: Set<string>,
   touchedCards: Set<string>,
   summary: RateSyncSummary
@@ -442,7 +472,9 @@ async function syncSogoCard(
   const dbCard = await ensureCardType(card.name, card.slugHint);
   const metaRows: Array<{ country: string; currency: string; minDenom: number; maxDenom: number }> = [];
 
-  for (const row of card.currencies) {
+  for (const sogoRow of card.currencies) {
+    const stt = sttRanges.get(`${dbCard.id}|${sogoRow.currency}`);
+    const row = stt ? { ...sogoRow, minDenom: stt.min, maxDenom: stt.max } : sogoRow;
     const physicalActive = !covered.has(`${dbCard.id}|${row.currency}|PHYSICAL`);
     const ecodeActive = !covered.has(`${dbCard.id}|${row.currency}|ECODE`);
     if (row.physical) {
@@ -597,6 +629,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
   const touchedCards = new Set<string>();
   const capped = { count: 0 };
   const sogoReference = primaryRates.length ? await loadSogoReference() : new Map();
+  const sttRanges = await loadSttRanges();
   let processed = 0;
 
   for (const rate of primaryRates) {
@@ -605,7 +638,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
       setRateSyncCurrentCard({ id: canonicalCardSlug(rate.cardName), name: rate.cardName }, processed);
     }
     try {
-      await syncPrimaryRate(rate, sogoReference, covered, touchedCards, capped, summary, {
+      await syncPrimaryRate(rate, sogoReference, sttRanges, covered, touchedCards, capped, summary, {
         minOfferOwners,
         ecodeReductionPercent,
       });
@@ -619,7 +652,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     processed++;
     if (isRateSyncActive()) setRateSyncCurrentCard({ id: card.slugHint || card.name, name: card.name }, processed);
     try {
-      await syncSogoCard(card, covered, touchedCards, summary);
+      await syncSogoCard(card, sttRanges, covered, touchedCards, summary);
     } catch (err) {
       summary.errors.push(`${card.name}: ${(err as Error).message}`);
     }

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type { CurrencyOfferMeta, OfferDenomRange } from "./offers";
-import { SYNCED_RATE_SPEEDS } from "../rateSources";
+import { STT_RATE_SPEED, SYNCED_RATE_SPEEDS } from "../rateSources";
 
 export interface StoredDenomRange {
   min: number;
@@ -102,9 +102,20 @@ export async function listCardCurrencyMetaForDisplay(cardTypeId: string) {
         minDenom: true,
         maxDenom: true,
         countryOfferCount: true,
+        speed: true,
       },
+      orderBy: { updatedAt: "desc" },
     }),
   ]);
+
+  // Where SafeTheTrade has a band for a currency, it is the only one shown —
+  // Sogo's published range and older stored meta must not widen it.
+  const sttRange = new Map<string, StoredDenomRange[]>();
+  for (const rate of rates) {
+    if (rate.speed !== STT_RATE_SPEED || sttRange.has(rate.currency)) continue;
+    const range = rangesFromRateRow(rate.minDenom, rate.maxDenom);
+    if (range.length) sttRange.set(rate.currency, range);
+  }
 
   const byCurrency = new Map<
     string,
@@ -122,13 +133,13 @@ export async function listCardCurrencyMetaForDisplay(cardTypeId: string) {
       country: row.country,
       currency: row.currency,
       offerCount: row.offerCount,
-      denomRanges: parseStoredDenomRanges(row.denomRanges),
+      denomRanges: sttRange.get(row.currency) ?? parseStoredDenomRanges(row.denomRanges),
       syncedAt: row.syncedAt.toISOString(),
     });
   }
 
   for (const rate of rates) {
-    const fromRate = rangesFromRateRow(rate.minDenom, rate.maxDenom);
+    const fromRate = sttRange.get(rate.currency) ?? rangesFromRateRow(rate.minDenom, rate.maxDenom);
     if (!fromRate.length) continue;
 
     const existing = byCurrency.get(rate.currency);
