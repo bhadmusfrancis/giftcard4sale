@@ -100,6 +100,15 @@ interface SttOffer {
   fiatCurrency?: string;
   minFiat?: number;
   maxFiat?: number;
+  /**
+   * Card face-value bounds the marketplace shows on the offer page. `maxFiat`
+   * is the crypto limit valued at spot, which understates the card amount by
+   * the offer's margin (a 0.00217 BTC cap reads €150 at spot but takes a €240
+   * card at a 60% margin); the effective bounds are that limit at the offer's
+   * own price, and also reflect what the seller's balance can actually cover.
+   */
+  effectiveMinFiat?: number;
+  effectiveMaxFiat?: number;
   terms?: string | null;
   tags?: unknown;
   scheduleOnline?: boolean;
@@ -389,10 +398,11 @@ export async function fetchSafeTheTradeRates(
       entry.catalogCandidate = false;
     }
 
-    const maxFiat = num(offer.maxFiat);
+    const minFiat = num(offer.effectiveMinFiat) || num(offer.minFiat);
+    const maxFiat = num(offer.effectiveMaxFiat) || num(offer.maxFiat);
     entry.samples.push({
       usdtPerFiatUnit,
-      minFiat: Math.max(1, Math.round(num(offer.minFiat))),
+      minFiat: Math.max(1, Math.round(minFiat)),
       // An offer that states no upper bound takes any amount above its
       // minimum — Infinity, not a bogus $1 ceiling.
       maxFiat: maxFiat > 0 ? Math.max(1, Math.round(maxFiat)) : Infinity,
