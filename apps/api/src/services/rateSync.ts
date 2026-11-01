@@ -1,5 +1,5 @@
 import { CardMedium, Prisma } from "@prisma/client";
-import { canonicalCardSlug, sellSlug, StoredQuotes } from "@gc4s/shared";
+import { canonicalCardSlug, cardBrandKey, sellSlug, StoredQuotes } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { findExistingCardType } from "./cardTypeDedup";
 import { ensureCardSeoLandingPagesPublished, refreshCardCatalogVisibility } from "./cardVisibility";
@@ -51,7 +51,9 @@ const NAME_ALIASES: Record<string, string[]> = {
   xbox: ["x-box"],
   playstation: ["playstation-network", "psn"],
   "google-play": ["google"],
-  footlocker: ["foot-locker"],
+  footlocker: ["foot-locker", "footlocker-sports"],
+  roblox: ["roblox-game-card"],
+  "roblox-game-card": ["roblox"],
   "footlocker-sports": ["foot-locker", "footlocker"],
   macys: ["macy-s", "macys"],
   delta: ["delta-air-lines", "delta-air-line"],
@@ -98,7 +100,40 @@ async function findCardByName(name: string, slugHint?: string) {
     const byMethod = await findExistingCardType({ slug: paymentGuess, name });
     if (byMethod) return byMethod;
   }
+
+  // Last resort before a brand counts as new: the same brand under other
+  // gift-card wording ("Dicks Gift Cards" for "Dicks"), so a sync never
+  // creates the duplicate the boot-time dedupe would have to fold back in.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const index = await brandKeyIndex();
+    const id = index.get(cardBrandKey(name)) ?? (slugHint ? index.get(cardBrandKey(slugHint)) : undefined);
+    if (!id) return null;
+    const card = await prisma.cardType.findUnique({ where: { id } });
+    if (card) return card;
+    // The cached card was merged away since; rebuild and look again.
+    brandKeyCache = null;
+  }
   return null;
+}
+
+/**
+ * `cardBrandKey` -> card id for the whole catalog. Cached briefly because a
+ * sync looks up hundreds of tiers and only the misses reach it; a create
+ * clears it so the new card is found by the next tier.
+ */
+let brandKeyCache: { at: number; index: Map<string, string> } | null = null;
+const BRAND_KEY_CACHE_MS = 5 * 60_000;
+
+async function brandKeyIndex(): Promise<Map<string, string>> {
+  if (brandKeyCache && Date.now() - brandKeyCache.at < BRAND_KEY_CACHE_MS) return brandKeyCache.index;
+  const cards = await prisma.cardType.findMany({ select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+  const index = new Map<string, string>();
+  for (const card of cards) {
+    const key = cardBrandKey(card.name);
+    if (!index.has(key)) index.set(key, card.id);
+  }
+  brandKeyCache = { at: Date.now(), index };
+  return index;
 }
 
 async function ensureCardType(name: string, slugHint?: string) {
@@ -115,6 +150,7 @@ async function ensureCardType(name: string, slugHint?: string) {
     return existing;
   }
 
+  brandKeyCache = null;
   return prisma.cardType.create({
     data: {
       name,

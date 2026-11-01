@@ -36,6 +36,23 @@ export function canonicalCardSlug(name: string): string {
   return stripGiftCardSlugSuffix(slugifyCardType(normalizeCardTypeName(name)));
 }
 
+/**
+ * Brand identity for spotting duplicate card types — looser than the slug.
+ * Gift-card wording a source tacks on ("Gift Cards", "E-Gift Code",
+ * "Vouchers", a bare "Gift") and apostrophes are ignored, so "Dicks Gift
+ * Cards", "Cabela's E-Gift Code" and "CASHlib Vouchers" key the same as
+ * "Dicks", "Cabela's" and "CASHlib Voucher". Never used as a URL.
+ */
+export function cardBrandKey(name: string): string {
+  let n = name.toLowerCase().replace(/['’`]/g, "").trim();
+  let prev = "";
+  while (n !== prev) {
+    prev = n;
+    n = n.replace(/(^|[\s._-]+)(e-?gifts?|gifts?|cards?|codes?|e-?codes?|vouchers?)$/, "").trim();
+  }
+  return n.replace(/[^a-z0-9]/g, "") || name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 // e.g. "Lowes" -> "sell-lowes-gift-card"; "H&M Gift Card" -> "sell-h-m-gift-card"
 export function sellSlug(name: string): string {
   const base = stripGiftCardSlugSuffix(slugifyCardType(normalizeCardTypeName(name)));

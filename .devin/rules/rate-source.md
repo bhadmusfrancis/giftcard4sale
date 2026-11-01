@@ -42,7 +42,9 @@ Until `SOGO_RATES_API_URL` is set to a working JSON API, Sogo rates come from an
 
 ## Card merges
 
-Brands whose names no slug rule joins are folded together on boot by `mergeAliasedCardTypes()` (`CARD_MERGES` in `services/cardTypeDedup.ts`), and `NAME_ALIASES` in `rateSync.ts` routes both sources to the kept card afterwards. E.g. Sogo's "Dicks" (`dicks`, kept) and STT's "Dick's Sporting Goods" (`dick-s-sporting-goods`).
+- `dedupeCardTypes()` runs on boot and merges cards with the same `cardBrandKey()` (shared): gift-card wording ("Gift Cards", "E-Gift Code", "Voucher(s)", a bare "Gift") and apostrophes are ignored, so old NoOnes-imported names ("CASHlib Vouchers", "Dicks Gift Cards", "GAP Gift") fold into the plain name the rate sources produce. The keeper is the plainest name; rates, trades, landing page (old URL keeps working), insight posts and admin-set details move to it.
+- Brands no name rule can join are listed in `CARD_MERGES` (`services/cardTypeDedup.ts`), e.g. "Dick's Sporting Goods" → `dicks`, "Roblox Game Card" → `roblox`, "Footlocker Sports" → `footlocker`; `NAME_ALIASES` in `rateSync.ts` routes both sources to the kept card.
+- Before a sync creates a card, `findCardByName` falls back to a brand-key match, so a source's alternate wording never recreates a duplicate.
 
 ## Persist flags
 

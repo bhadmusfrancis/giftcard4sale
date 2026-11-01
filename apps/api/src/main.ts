@@ -27,7 +27,7 @@ import {
   repairManualRateCatalog,
   syncNoOnesCatalogVisibilityFromStored,
 } from "./services/cardVisibility";
-import { mergeAliasedCardTypes, repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
+import { dedupeCardTypes, repairCardSlugSuffixes, repairEuroCountryLabels } from "./services/cardTypeDedup";
 import { purgeNoOnesRates } from "./services/noonesRatePurge";
 import { reconcilePaidTrades } from "./services/payout";
 import { getEmailTransport, isEmailConfigured, isEmailVerified, verifyEmailDelivery } from "./services/email";
@@ -95,16 +95,16 @@ export function mountApi(app: Express): void {
       if (n > 0) console.log(`Reactivated ${n} manually imported rate row(s).`);
     })
     .catch((e) => console.warn("Manual rate repair:", (e as Error).message))
+    .then(() => dedupeCardTypes())
+    .then(({ merged }) => {
+      for (const m of merged) console.log(`Merged card ${m.removed} into ${m.keeper} (${m.ratesMoved} rate(s) moved).`);
+    })
+    .catch((e) => console.warn("Card dedupe:", (e as Error).message))
     .then(() => repairCardSlugSuffixes())
     .then((n) => {
       if (n > 0) console.log(`Repaired ${n} card/landing slug(s) with duplicate gift-card suffix.`);
     })
     .catch((e) => console.warn("Card slug repair:", (e as Error).message))
-    .then(() => mergeAliasedCardTypes())
-    .then(({ merged }) => {
-      for (const m of merged) console.log(`Merged card ${m.removed} into ${m.keeper} (${m.ratesMoved} rate(s) moved).`);
-    })
-    .catch((e) => console.warn("Card alias merge:", (e as Error).message))
     .then(() => repairEuroCountryLabels())
     .then((n) => {
       if (n > 0) console.log(`Renamed ${n} EUR rate row(s) from Germany to Euro.`);

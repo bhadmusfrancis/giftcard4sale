@@ -1,5 +1,5 @@
 import { CardType, Prisma } from "@prisma/client";
-import { canonicalCardSlug, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
+import { canonicalCardSlug, cardBrandKey, normalizeCardTypeName, sellSlug } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { refreshCardCatalogVisibility } from "./cardVisibility";
 import { paymentMethodToCardName } from "./noones/rateCatalog";
@@ -16,13 +16,18 @@ function rateKey(r: {
   return [r.country, r.medium, r.minDenom ?? "", r.maxDenom ?? ""].join("|");
 }
 
-/** Pick the card to keep when two rows represent the same brand. */
+/**
+ * Pick the card to keep when two rows represent the same brand: the plainest
+ * name ("Dicks" over "Dicks Gift Cards") — the one the rate sources produce
+ * now, so later syncs keep matching it by slug.
+ */
 export function pickKeeperCard(cards: CardTypeWithCounts[]): CardTypeWithCounts {
   const canonical = cards.filter((c) => c.slug === canonicalCardSlug(c.name));
-  const candidates = canonical.length ? canonical : cards.filter((c) => !c.slug.endsWith("-gift-card"));
-  const pool = candidates.length ? candidates : cards;
+  const pool = canonical.length ? canonical : cards;
 
   return [...pool].sort((a, b) => {
+    const plain = normalizeCardTypeName(a.name).length - normalizeCardTypeName(b.name).length;
+    if (plain) return plain;
     if (b._count.rates !== a._count.rates) return b._count.rates - a._count.rates;
     if (b._count.trades !== a._count.trades) return b._count.trades - a._count.trades;
     return a.createdAt.getTime() - b.createdAt.getTime();
@@ -34,7 +39,7 @@ export function groupDuplicateCardTypes(
 ): Map<string, Pick<CardType, "id" | "name" | "slug">[]> {
   const groups = new Map<string, Pick<CardType, "id" | "name" | "slug">[]>();
   for (const card of cards) {
-    const key = canonicalCardSlug(card.name);
+    const key = cardBrandKey(card.name);
     const list = groups.get(key) ?? [];
     list.push(card);
     groups.set(key, list);
@@ -99,17 +104,10 @@ async function absorbCardType(keeperId: string, dupId: string): Promise<{ ratesM
     }
   }
 
-  // Currency meta and insight posts cascade with the card, so carry over what
-  // the keeper does not already have.
-  const keeperCurrencies = new Set(
-    (await prisma.cardCurrencyMeta.findMany({ where: { cardTypeId: keeperId }, select: { currency: true } })).map(
-      (m) => m.currency
-    )
-  );
-  for (const meta of await prisma.cardCurrencyMeta.findMany({ where: { cardTypeId: dupId } })) {
-    if (keeperCurrencies.has(meta.currency)) continue;
-    await prisma.cardCurrencyMeta.update({ where: { id: meta.id }, data: { cardTypeId: keeperId } });
-  }
+  // Insight posts cascade with the card, so carry over the days the keeper has
+  // no post for. Currency meta is left to cascade: the next sync rewrites it
+  // for every currency the moved rates cover, and the card page reads ranges
+  // from the rate rows meanwhile.
   const keeperBatches = new Set(
     (await prisma.insightPost.findMany({ where: { cardTypeId: keeperId }, select: { batchDate: true } })).map((p) =>
       p.batchDate.getTime()
@@ -139,35 +137,54 @@ async function absorbCardType(keeperId: string, dupId: string): Promise<{ ratesM
   return { ratesMoved, ratesDropped };
 }
 
+/** Fold `dups` into `keeper`, keeping any admin-set details only a duplicate had. */
+async function mergeCardGroup(keeper: CardType, dups: CardType[], summary: DedupSummary): Promise<void> {
+  if (!dups.length) return;
+  for (const dup of dups) {
+    const { ratesMoved, ratesDropped } = await absorbCardType(keeper.id, dup.id);
+    summary.merged.push({
+      keeper: `${keeper.name} (${keeper.slug})`,
+      removed: `${dup.name} (${dup.slug})`,
+      ratesMoved,
+      ratesDropped,
+    });
+  }
+  const pick = <K extends keyof CardType>(key: K) => keeper[key] ?? dups.find((d) => d[key] != null)?.[key] ?? null;
+  await prisma.cardType.update({
+    where: { id: keeper.id },
+    data: {
+      name: normalizeCardTypeName(keeper.name),
+      noonesPaymentMethod: pick("noonesPaymentMethod"),
+      description: pick("description"),
+      imageUrl: pick("imageUrl"),
+      nairaReductionPercent: pick("nairaReductionPercent"),
+      usdtReductionPercent: pick("usdtReductionPercent"),
+      ghsReductionPercent: pick("ghsReductionPercent"),
+      forceActive: keeper.forceActive || dups.some((d) => d.forceActive),
+    },
+  });
+  await refreshCardCatalogVisibility(keeper.id);
+}
+
 /**
- * Brands that reach the catalog under names no slug rule can join — "Dicks"
- * from Sogo, "Dick's Sporting Goods" from SafeTheTrade. Keyed by the slug of
- * the card to keep; the sync's name aliases route both sources to it after.
+ * Brands no name rule can join — "Dicks" from Sogo, "Dick's Sporting Goods"
+ * from SafeTheTrade. Keyed by the slug of the card to keep; the sync's name
+ * aliases route both sources to it after.
  */
 const CARD_MERGES: Record<string, string[]> = {
   dicks: ["dick-s-sporting-goods", "dicks-sporting-goods"],
+  roblox: ["roblox-game-card"],
+  footlocker: ["footlocker-sports", "foot-locker"],
 };
 
-/** Fold the cards listed in `CARD_MERGES` into their keeper. Runs on boot; a no-op once merged. */
+/** Fold the cards listed in `CARD_MERGES` into their keeper. A no-op once merged. */
 export async function mergeAliasedCardTypes(): Promise<DedupSummary> {
   const summary: DedupSummary = { merged: [] };
   for (const [keeperSlug, aliasSlugs] of Object.entries(CARD_MERGES)) {
     const keeper = await prisma.cardType.findUnique({ where: { slug: keeperSlug } });
     if (!keeper) continue;
     const dups = await prisma.cardType.findMany({ where: { slug: { in: aliasSlugs } } });
-    for (const dup of dups) {
-      const { ratesMoved, ratesDropped } = await absorbCardType(keeper.id, dup.id);
-      if (!keeper.noonesPaymentMethod && dup.noonesPaymentMethod) {
-        await prisma.cardType.update({ where: { id: keeper.id }, data: { noonesPaymentMethod: dup.noonesPaymentMethod } });
-      }
-      summary.merged.push({
-        keeper: `${keeper.name} (${keeper.slug})`,
-        removed: `${dup.name} (${dup.slug})`,
-        ratesMoved,
-        ratesDropped,
-      });
-    }
-    if (dups.length) await refreshCardCatalogVisibility(keeper.id);
+    await mergeCardGroup(keeper, dups, summary);
   }
   return summary;
 }
@@ -176,44 +193,30 @@ export interface DedupSummary {
   merged: { keeper: string; removed: string; ratesMoved: number; ratesDropped: number }[];
 }
 
-/** Merge duplicate card types that share the same canonical brand name. */
+/**
+ * Merge duplicate card types of the same brand (`cardBrandKey`) — e.g. an old
+ * NoOnes-imported "CASHlib Vouchers" beside SafeTheTrade's "CASHlib Voucher" —
+ * then the explicit `CARD_MERGES`. Runs on boot; a no-op once merged.
+ */
 export async function dedupeCardTypes(): Promise<DedupSummary> {
   const cards = await prisma.cardType.findMany({
     include: { _count: { select: { rates: true, trades: true } } },
   });
 
   const summary: DedupSummary = { merged: [] };
-  const groups = groupDuplicateCardTypes(cards);
-
-  for (const [, members] of groups) {
+  for (const [, members] of groupDuplicateCardTypes(cards)) {
     if (members.length < 2) continue;
-
     const fullMembers = members.map((m) => cards.find((c) => c.id === m.id)!);
     const keeper = pickKeeperCard(fullMembers);
-    const duplicates = fullMembers.filter((c) => c.id !== keeper.id);
-    const canonicalName = normalizeCardTypeName(keeper.name);
-
-    for (const dup of duplicates) {
-      const { ratesMoved, ratesDropped } = await absorbCardType(keeper.id, dup.id);
-
-      await prisma.cardType.update({
-        where: { id: keeper.id },
-        data: {
-          name: canonicalName,
-          noonesPaymentMethod: keeper.noonesPaymentMethod ?? dup.noonesPaymentMethod,
-          active: true,
-        },
-      });
-
-      summary.merged.push({
-        keeper: `${keeper.name} (${keeper.slug})`,
-        removed: `${dup.name} (${dup.slug})`,
-        ratesMoved,
-        ratesDropped,
-      });
-    }
+    await mergeCardGroup(
+      keeper,
+      fullMembers.filter((c) => c.id !== keeper.id),
+      summary
+    );
   }
 
+  const aliased = await mergeAliasedCardTypes();
+  summary.merged.push(...aliased.merged);
   return summary;
 }
 
