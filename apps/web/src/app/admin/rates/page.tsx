@@ -12,8 +12,8 @@ export default function AdminRatesPage() {
 
   return (
     <RateSyncProvider>
-      <div className="space-y-8">
-        <h2 className="text-2xl font-bold">Rates &amp; cards</h2>
+      <div className="space-y-5 sm:space-y-8">
+        <h2 className="page-title">Rates &amp; cards</h2>
         <RateSyncPanel onSyncFinished={() => setCardsKey((k) => k + 1)} />
         <ConfigSection onCardsChanged={() => setCardsKey((k) => k + 1)} />
         <ImportSection />
@@ -70,14 +70,14 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
   if (!config) return null;
 
   return (
-    <form onSubmit={save} className="card p-6">
+    <form onSubmit={save} className="card p-4 sm:p-6">
       <h3 className="font-bold">Exchange rates &amp; deductions</h3>
-      <p className="text-sm text-slate-500">
+      <p className="mt-1 text-sm text-slate-500">
         Used to convert Naira card value to USDT/Cedi and to deduct the margin. Gift-card buy rates sync from
         sogo.africa/rates on the refresh interval below; brands Sogo does not list use last traded rates from
         contacted partners.
       </p>
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:gap-4 xl:grid-cols-3">
         <Field label="NGN per 1 USDT" value={config.rates.ngnPerUsdt} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerUsdt: v } })} />
         <Field label="NGN per 1 GHS (Cedi)" value={config.rates.ngnPerGhs} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerGhs: v } })} />
         <Field label="Referral %" value={config.referralPercent} onChange={(v) => setConfig({ ...config, referralPercent: v })} />
@@ -109,7 +109,7 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           value={config.euroAppleOddDenomReductionPercent ?? 15}
           onChange={(v) => setConfig({ ...config, euroAppleOddDenomReductionPercent: v })}
         />
-        <div className="sm:col-span-3">
+        <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50 p-3">
           <label className="flex items-start gap-3 text-sm">
             <input
               type="checkbox"
@@ -212,7 +212,7 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           </div>
         ) : null}
         <FormFeedback status={status} anchorRef={statusRef} />
-        <button type="submit" className="btn-primary" disabled={saving}>
+        <button type="submit" className="btn-primary w-full sm:w-auto" disabled={saving}>
           {saving ? "Saving…" : "Save config"}
         </button>
       </div>
@@ -255,22 +255,22 @@ function ImportSection() {
   }, [status]);
 
   return (
-    <div className="card p-6">
+    <div className="card p-4 sm:p-6">
       <h3 className="font-bold">Paste rate text (Naira format)</h3>
-      <p className="text-sm text-slate-500">
+      <p className="mt-1 text-sm text-slate-500">
         Paste the rate list. The system deducts the configured Naira, USDT, and Cedi percentages, ignores &quot;in Ns&quot;, and always
         uses the SLOW rate.
       </p>
       <textarea className="input mt-3 min-h-[200px] font-mono text-sm" value={text} onChange={(e) => setText(e.target.value)} placeholder="===【Apple/iTunes】SLOW ===&#10;● US (200-500 in 100s) = 1092 ..." />
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button type="button" onClick={doPreview} className="btn-ghost" disabled={!text || previewAction.busy || importAction.busy}>
-          {previewAction.busy ? "Previewing…" : "Preview parse"}
-        </button>
-        <label className="flex items-center gap-2 text-sm">
+      <div className="mt-3 grid grid-cols-2 items-center gap-3 sm:flex sm:flex-wrap">
+        <label className="col-span-2 flex items-center gap-2 text-sm sm:order-2">
           <input type="checkbox" checked={replaceExisting} onChange={(e) => setReplaceExisting(e.target.checked)} />
           Replace existing rates for these card types
         </label>
-        <button type="button" onClick={doImport} className="btn-primary" disabled={!text || previewAction.busy || importAction.busy}>
+        <button type="button" onClick={doPreview} className="btn-ghost sm:order-1" disabled={!text || previewAction.busy || importAction.busy}>
+          {previewAction.busy ? "Previewing…" : "Preview parse"}
+        </button>
+        <button type="button" onClick={doImport} className="btn-primary sm:order-3" disabled={!text || previewAction.busy || importAction.busy}>
           {importAction.busy ? "Importing…" : "Import"}
         </button>
       </div>
@@ -280,8 +280,8 @@ function ImportSection() {
       {preview && (
         <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm">
           <p className="font-semibold">{preview.entries.length} rate rows parsed</p>
-          <div className="mt-2 max-h-64 overflow-y-auto">
-            <table className="w-full text-xs">
+          <div className="mt-2 max-h-64 overflow-auto">
+            <table className="w-full min-w-[30rem] text-xs">
               <thead className="text-left text-slate-500">
                 <tr><th className="p-1">Card</th><th className="p-1">Country</th><th className="p-1">Cur</th><th className="p-1">Denom</th><th className="p-1">Medium</th><th className="p-1">₦/unit</th></tr>
               </thead>
@@ -383,10 +383,12 @@ function CardsSection() {
   }
 
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold">Card types</h3>
-        <button onClick={addCard} className="btn-ghost text-sm">Add card type</button>
+    <div className="card p-4 sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-bold">
+          Card types <span className="text-sm font-normal text-slate-400">({cards.length})</span>
+        </h3>
+        <button onClick={addCard} className="btn-ghost py-2 text-sm">+ Add card</button>
       </div>
       {syncMsg ? (
         <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">{syncMsg}</p>
@@ -394,26 +396,34 @@ function CardsSection() {
       <div className="mt-4 divide-y divide-slate-100">
         {cards.map((c) => (
           <div key={c.id}>
-            <div className="flex w-full items-center justify-between gap-2 py-3">
+            <div className="flex w-full flex-col gap-2 py-3 md:flex-row md:items-center md:justify-between">
               <button
                 onClick={() => setExpanded(expanded === c.id ? null : c.id)}
-                className="min-w-0 flex-1 text-left"
+                className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left md:justify-start"
+                aria-expanded={expanded === c.id}
               >
-                <span className="font-medium">{c.name} <span className="text-slate-400">/{c.sellSlug}</span></span>
-                <span className="ml-2 text-sm text-slate-500">{c.rateCount} rates {expanded === c.id ? "▲" : "▼"}</span>
-                {!c.active && !c.forceActive ? (
-                  <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">Hidden — no active rate</span>
-                ) : null}
+                <span className="min-w-0">
+                  <span className="block break-words font-medium">{c.name}</span>
+                  <span className="block truncate text-xs text-slate-400">/{c.sellSlug}</span>
+                  {!c.active && !c.forceActive ? (
+                    <span className="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
+                      Hidden — no active rate
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 whitespace-nowrap text-sm text-slate-500 md:ml-2">
+                  {c.rateCount} rates {expanded === c.id ? "▲" : "▼"}
+                </span>
               </button>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1 md:shrink-0 md:flex-nowrap">
                 <label
-                  className="flex items-center gap-1.5 px-2 text-xs text-slate-600"
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs text-slate-600"
                   title="List this card on /cards even when it has no active rate"
                 >
                   <input type="checkbox" checked={c.forceActive === true} onChange={() => toggleForceActive(c)} />
                   Always active
                 </label>
-                <label className="flex items-center gap-1.5 px-2 text-xs text-slate-600" title="Auto-open new trades on SafeTheTrade">
+                <label className="flex items-center gap-1.5 px-2 py-1 text-xs text-slate-600" title="Auto-open new trades on SafeTheTrade">
                   <input
                     type="checkbox"
                     checked={c.noonesAutoResellEnabled !== false}
@@ -426,7 +436,7 @@ function CardsSection() {
                   type="button"
                   disabled={sync.running}
                   onClick={() => syncCardRates(c.id)}
-                  className="btn-ghost text-xs"
+                  className="btn-ghost ml-auto px-3 py-1.5 text-xs md:ml-0"
                   title="Sync this card's live rates from SafeTheTrade, then Sogo"
                 >
                   {sync.running && sync.scope === "card" && sync.cardTypeId === c.id
@@ -439,7 +449,7 @@ function CardsSection() {
                   type="button"
                   disabled={sync.running}
                   onClick={() => deleteCard(c)}
-                  className="btn-ghost text-xs text-red-600 hover:text-red-700"
+                  className="btn-ghost px-3 py-1.5 text-xs text-red-600 hover:text-red-700"
                 >
                   Delete
                 </button>
@@ -494,7 +504,7 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
         <p className="text-xs font-semibold text-slate-600">
           Deductions for this card <span className="font-normal text-slate-400">(blank = platform default)</span>
         </p>
-        <div className="mt-2 flex flex-wrap gap-3">
+        <div className="mt-2 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
           {(
             [
               ["nairaReductionPercent", "Naira %"],
@@ -502,13 +512,13 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
               ["ghsReductionPercent", "Cedi %"],
             ] as const
           ).map(([field, label]) => (
-            <label key={field} className="flex items-center gap-1.5 text-xs text-slate-600">
+            <label key={field} className="flex min-w-0 flex-col gap-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:gap-1.5">
               {label}
               <input
                 type="number"
                 min={0}
                 max={100}
-                className="w-20 rounded border border-slate-300 px-2 py-1"
+                className="w-full min-w-0 rounded border border-slate-300 px-2 py-1 sm:w-20"
                 defaultValue={card[field] ?? ""}
                 placeholder="Default"
                 onBlur={(e) => saveDeduction(field, e.target.value)}
@@ -517,7 +527,8 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
           ))}
         </div>
       </div>
-      <table className="w-full text-xs">
+      <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <table className="w-full min-w-[28rem] text-xs">
         <thead className="text-left text-slate-500">
           <tr><th className="p-1">Country</th><th className="p-1">Cur</th><th className="p-1">Denom</th><th className="p-1">Medium</th><th className="p-1">₦/unit</th><th></th></tr>
         </thead>
@@ -538,11 +549,20 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
                   }}
                 />
               </td>
-              <td className="p-1"><button onClick={() => del(r.id)} className="text-red-600">×</button></td>
+              <td className="p-1">
+                <button
+                  onClick={() => del(r.id)}
+                  className="grid h-8 w-8 place-items-center rounded text-base text-red-600 hover:bg-red-50"
+                  aria-label="Delete rate"
+                >
+                  ×
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

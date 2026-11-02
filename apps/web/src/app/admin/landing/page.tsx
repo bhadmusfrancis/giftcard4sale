@@ -64,14 +64,14 @@ export default function AdminLandingPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Landing pages (rewritten posts)</h2>
-      <p className="text-sm text-slate-500">
+    <div className="space-y-5 sm:space-y-6">
+      <h2 className="page-title">Landing pages</h2>
+      <p className="-mt-2 text-sm text-slate-500 sm:-mt-3">
         Create SEO pages like <code>sell-lowes-gift-card</code>. Each maps to a public URL{" "}
         <code>/sell-&lt;card&gt;-gift-card</code> and can embed the rate calculator when linked to a card type.
       </p>
 
-      <form onSubmit={save} className="card grid gap-3 p-6">
+      <form onSubmit={save} className="card grid min-w-0 gap-3 p-4 sm:p-6">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label">Slug (URL)</label>
@@ -114,7 +114,7 @@ export default function AdminLandingPage() {
           Published
         </label>
         <div className="flex items-center gap-3">
-          <button type="submit" className="btn-primary" disabled={saveAction.busy}>
+          <button type="submit" className="btn-primary flex-1 sm:flex-none" disabled={saveAction.busy}>
             {saveAction.busy ? "Saving…" : "Save page"}
           </button>
           {form.slug && <button type="button" onClick={() => setForm(EMPTY)} className="btn-ghost">Clear</button>}
@@ -124,26 +124,27 @@ export default function AdminLandingPage() {
 
       <div className="flex gap-2">
         <input
-          className="input max-w-md"
+          type="search"
+          className="input sm:max-w-md"
           placeholder="Search by slug, title, meta, or linked card"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
-      <div className="card divide-y divide-slate-100">
+      <div className="card divide-y divide-slate-100 overflow-hidden">
         {pages.map((p) => (
-          <div key={p.slug} className="flex items-center justify-between p-4">
-            <div>
-              <a href={`/${p.slug}`} target="_blank" rel="noreferrer" className="font-medium text-brand-700 hover:underline">/{p.slug}</a>
-              <div className="text-sm text-slate-500">{p.title}</div>
+          <div key={p.slug} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <a href={`/${p.slug}`} target="_blank" rel="noreferrer" className="break-all font-medium text-brand-700 hover:underline">/{p.slug}</a>
+              <div className="break-words text-sm text-slate-500">{p.title}</div>
               {p.cardType?.name && (
                 <div className="mt-1 text-xs text-slate-400">Card: {p.cardType.name}</div>
               )}
             </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => edit(p.slug)} className="btn-ghost text-xs">Edit</button>
-              <button type="button" onClick={() => del(p.slug)} className="btn-danger text-xs">Delete</button>
+            <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
+              <button type="button" onClick={() => edit(p.slug)} className="btn-sm bg-white py-2 text-slate-700 ring-1 ring-slate-200">Edit</button>
+              <button type="button" onClick={() => del(p.slug)} className="btn-sm bg-red-600 py-2 text-white hover:bg-red-700">Delete</button>
             </div>
           </div>
         ))}

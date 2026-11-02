@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -8,6 +9,9 @@ import { money, date, STATUS_COLORS, SELLER_STATUS_DESCRIPTIONS } from "@/lib/fo
 import { trackGoogleAdsPurchase } from "@/lib/googleAds";
 import { TradeChat } from "@/components/TradeChat";
 import { PushButton } from "@/components/PushButton";
+import { AttachmentGrid, CodeBlock, DetailRow, SegmentedTabs } from "@/components/PageUi";
+
+type Tab = "details" | "chat";
 
 export default function TradeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -16,9 +20,15 @@ export default function TradeDetailPage() {
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("details");
 
   useEffect(() => {
-    api(`/trades/${id}`).then((d) => setTrade(d.trade)).finally(() => setLoading(false));
+    api(`/trades/${id}`)
+      .then((d) => {
+        setTrade(d.trade);
+        if (d.trade?.status === "INFO_REQUESTED") setTab("chat");
+      })
+      .finally(() => setLoading(false));
   }, [id]);
 
   // Google Ads Purchase — fires once when trade is approved or paid (seller opens trade)
@@ -50,39 +60,77 @@ export default function TradeDetailPage() {
   if (loading) return <p className="text-slate-500">Loading…</p>;
   if (!trade) return <p className="text-slate-500">Trade not found.</p>;
 
-  const cancelCheck = trade.canCancel ? { ok: true as const } : { ok: false as const, error: "This trade cannot be cancelled" };
+  const country = trade.otherCountryName ? `${trade.otherCountryName} (${trade.country})` : trade.country;
+  const payout = money(trade.finalPayout ?? trade.quotedPayout, trade.payoutCurrency);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{trade.cardType?.name} trade</h1>
-          <p className="mt-1 font-mono text-sm text-slate-500">{trade.tradeNumber}</p>
+    <div className="space-y-4 sm:space-y-5">
+      <Link href="/dashboard/trades" className="inline-flex items-center gap-1 text-sm font-medium text-brand-700">
+        ← My trades
+      </Link>
+
+      <header className="card overflow-hidden">
+        <div className="flex items-start justify-between gap-3 p-4 sm:p-5">
+          <div className="min-w-0">
+            <h1 className="break-words text-lg font-bold leading-tight text-slate-900 sm:text-2xl">
+              {trade.cardType?.name}
+            </h1>
+            <p className="mt-1 break-all font-mono text-xs text-slate-500 sm:text-sm">{trade.tradeNumber}</p>
+          </div>
+          <span
+            className={`badge shrink-0 ${STATUS_COLORS[trade.status]}`}
+            title={SELLER_STATUS_DESCRIPTIONS[trade.status]}
+          >
+            {trade.status.replace("_", " ")}
+          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <PushButton hideWhenEnabled />
-          <span className={`badge ${STATUS_COLORS[trade.status]}`} title={SELLER_STATUS_DESCRIPTIONS[trade.status]}>{trade.status}</span>
+        <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100 bg-slate-50/60">
+          <div className="min-w-0 px-4 py-3 sm:px-5">
+            <div className="text-xs text-slate-500">Card value</div>
+            <div className="truncate text-base font-bold text-slate-900 sm:text-lg">
+              {trade.cardAmount} {trade.currency}
+            </div>
+          </div>
+          <div className="min-w-0 px-4 py-3 sm:px-5">
+            <div className="text-xs text-slate-500">You receive</div>
+            <div className="truncate text-base font-bold text-brand-700 sm:text-lg">{payout}</div>
+          </div>
         </div>
-      </div>
+      </header>
 
       {SELLER_STATUS_DESCRIPTIONS[trade.status] && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
           {SELLER_STATUS_DESCRIPTIONS[trade.status]}
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="card space-y-3 p-6">
-          <Row label="Trade ID" value={trade.tradeNumber} />
-          <Row label="Card" value={`${trade.cardType?.name} · ${trade.otherCountryName ? `${trade.otherCountryName} (${trade.country})` : trade.country} · ${trade.medium}`} />
-          <Row label="Amount" value={`${trade.cardAmount} ${trade.currency}`} />
-          <Row label="Payout" value={money(trade.finalPayout ?? trade.quotedPayout, trade.payoutCurrency)} />
-          <Row label="Receipt" value={trade.receiptType} />
-          <Row label="Submitted" value={date(trade.createdAt)} />
+      <SegmentedTabs<Tab>
+        tabs={[
+          { id: "details", label: "Details" },
+          { id: "chat", label: "Chat" },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+        <div className={`space-y-4 ${tab === "details" ? "" : "hidden"} lg:block`}>
+          <section className="card p-4 sm:p-5">
+            <h2 className="mb-1 text-sm font-bold text-slate-900">Trade details</h2>
+            <dl>
+              <DetailRow label="Trade ID" value={trade.tradeNumber} mono />
+              <DetailRow label="Card" value={`${trade.cardType?.name} · ${country} · ${trade.medium}`} />
+              <DetailRow label="Amount" value={`${trade.cardAmount} ${trade.currency}`} />
+              <DetailRow label="Payout" value={payout} />
+              <DetailRow label="Receipt" value={trade.receiptType} />
+              <DetailRow label="Submitted" value={date(trade.createdAt)} />
+            </dl>
+          </section>
+
           {trade.rejectionReason && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
               <div className="font-semibold">Rejection reason</div>
-              <p className="mt-1">{trade.rejectionReason}</p>
+              <p className="mt-1 break-words">{trade.rejectionReason}</p>
               {trade.status === "REJECTED" && (
                 <p className="mt-2 text-xs">
                   Submitting a previously used gift card or duplicate image affects your bad score and may lead to
@@ -92,55 +140,46 @@ export default function TradeDetailPage() {
             </div>
           )}
 
-          {cancelCheck.ok && (
-            <div className="border-t border-slate-100 pt-4">
-              <button type="button" onClick={cancel} className="btn-ghost text-red-700" disabled={cancelling}>
+          {(trade.ecodes || trade.pins || trade.attachments?.length > 0) && (
+            <section className="card space-y-4 p-4 sm:p-5">
+              <h2 className="text-sm font-bold text-slate-900">What you submitted</h2>
+              {trade.ecodes && <CodeBlock label="E-codes" text={trade.ecodes} />}
+              {trade.pins && <CodeBlock label="PINs" text={trade.pins} />}
+              {trade.attachments?.length > 0 && (
+                <div>
+                  <div className="mb-1.5 text-sm font-medium text-slate-700">Attachments</div>
+                  <AttachmentGrid items={trade.attachments} />
+                </div>
+              )}
+            </section>
+          )}
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <PushButton hideWhenEnabled />
+            {trade.canCancel && (
+              <button
+                type="button"
+                onClick={cancel}
+                className="btn-ghost w-full text-red-700 sm:w-auto"
+                disabled={cancelling}
+              >
                 {cancelling ? "Cancelling…" : "Cancel trade"}
               </button>
-              {cancelError && <p className="mt-2 text-sm text-red-600">{cancelError}</p>}
-            </div>
-          )}
-
-          {trade.ecodes && (
-            <div>
-              <div className="label">E-codes</div>
-              <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">{trade.ecodes}</pre>
-            </div>
-          )}
-
-          {trade.pins && (
-            <div>
-              <div className="label">PINs</div>
-              <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">{trade.pins}</pre>
-            </div>
-          )}
-
-          {trade.attachments?.length > 0 && (
-            <div>
-              <div className="label">Attachments</div>
-              <div className="flex flex-wrap gap-2">
-                {trade.attachments.map((a: any) => (
-                  <a key={a.id} href={a.url} target="_blank" rel="noreferrer">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={a.url} alt={a.filename} className="h-20 w-20 rounded-lg object-cover border" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
+          {cancelError && <p className="text-sm text-red-600">{cancelError}</p>}
         </div>
 
-        {user && <TradeChat tradeId={trade.id} myUserId={user.id} />}
+        {user && (
+          <div className={`${tab === "chat" ? "" : "hidden"} lg:sticky lg:top-20 lg:block`}>
+            <TradeChat
+              tradeId={trade.id}
+              myUserId={user.id}
+              className="h-[calc(100dvh-12rem)] min-h-[22rem] md:h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-6.5rem)] lg:max-h-[48rem]"
+            />
+          </div>
+        )}
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-4 border-b border-slate-100 pb-2 text-sm">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-medium text-right">{value}</span>
     </div>
   );
 }

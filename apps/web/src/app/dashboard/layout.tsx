@@ -53,7 +53,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-[200px_1fr] md:gap-6 lg:grid-cols-[220px_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[200px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
         <CollapsibleSidebar
           title="Dashboard"
           items={NAV}

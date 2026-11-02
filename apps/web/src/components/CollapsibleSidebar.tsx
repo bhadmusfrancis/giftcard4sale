@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 
 export type SidebarNavItem = { href: string; label: string };
 
@@ -33,33 +33,37 @@ export function CollapsibleSidebar({
   footer?: ReactNode;
 }) {
   const pathname = usePathname();
+  const mobileNavRef = useRef<HTMLElement>(null);
+
+  // Keep the current section's chip visible when the page changes.
+  useEffect(() => {
+    const nav = mobileNavRef.current;
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !active) return;
+    nav.scrollTo({ left: active.offsetLeft - nav.clientWidth / 2 + active.clientWidth / 2, behavior: "smooth" });
+  }, [pathname]);
 
   return (
     <>
-      {/* Mobile: horizontal scroll chips */}
-      <nav
-        className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden"
-        aria-label={title}
-        style={{ scrollbarWidth: "thin" }}
-      >
-        {items.map(({ href, label }) => {
-          const active = isNavActive(pathname, href, rootHref);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`shrink-0 rounded-full px-3.5 py-2 text-sm font-semibold transition ${
-                active
-                  ? "bg-brand-700 text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-600 hover:border-brand-300 hover:text-brand-800"
-              }`}
-            >
-              {label}
-            </Link>
-          );
-        })}
-        {footer ? <div className="shrink-0 self-center">{footer}</div> : null}
-      </nav>
+      {/* Mobile: sticky, horizontally scrolling chips under the site navbar */}
+      <div className="sticky top-16 z-30 -mx-3 min-w-0 border-b border-slate-200/80 bg-slate-50/95 px-3 py-2 backdrop-blur sm:-mx-4 sm:px-4 md:hidden">
+        <nav ref={mobileNavRef} className="scrollbar-none flex gap-2 overflow-x-auto" aria-label={title}>
+          {items.map(({ href, label }) => {
+            const active = isNavActive(pathname, href, rootHref);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className={active ? "chip-on" : "chip-off"}
+              >
+                {label}
+              </Link>
+            );
+          })}
+          {footer ? <div className="shrink-0 self-center">{footer}</div> : null}
+        </nav>
+      </div>
 
       {/* Desktop: sticky vertical sidebar */}
       <aside className="hidden md:sticky md:top-20 md:block md:self-start">
@@ -74,6 +78,7 @@ export function CollapsibleSidebar({
                 <Link
                   key={href}
                   href={href}
+                  aria-current={active ? "page" : undefined}
                   className={`mx-1 flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                     active
                       ? "bg-brand-50 text-brand-800"

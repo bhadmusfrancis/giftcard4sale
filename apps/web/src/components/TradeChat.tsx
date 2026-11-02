@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { date } from "@/lib/format";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
 
@@ -20,20 +19,44 @@ type ChatMessage = {
 
 const NEAR_BOTTOM_PX = 80;
 const MAX_FILES = 10;
+const COMPOSER_MAX_PX = 128;
+
+function timeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function dayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (dayKey(iso) === dayKey(today.toISOString())) return "Today";
+  if (dayKey(iso) === dayKey(yesterday.toISOString())) return "Yesterday";
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
 
 export function TradeChat({
   tradeId,
   myUserId,
   isAdmin = false,
-  layout = "default",
+  className = "h-[32rem]",
 }: {
   tradeId: string;
   myUserId: string;
   isAdmin?: boolean;
-  /** "panel" fills available height — use on admin trade detail. */
-  layout?: "default" | "panel";
+  /** Sizing for the panel — the chat fills this height and scrolls internally. */
+  className?: string;
 }) {
-  const isPanel = layout === "panel";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tradeStatus, setTradeStatus] = useState<string | null>(null);
   const [partnerTyping, setPartnerTyping] = useState(false);
@@ -41,10 +64,10 @@ export function TradeChat({
   const [receipts, setReceipts] = useState<{ readAt?: string | null; deliveredAt?: string | null }>({});
   const [body, setBody] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const sendAction = useAsyncAction();
+  const sendAction = useAsyncAction({ scrollOnStatus: false });
   const fileRef = useRef<HTMLInputElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const firstLoadRef = useRef(true);
   const typingSentAtRef = useRef(0);
@@ -109,10 +132,26 @@ export function TradeChat({
       return;
     }
     const last = messages[messages.length - 1];
+    // Instant, not smooth: a smooth scroll still animating when an image loads
+    // fires scroll events that look like the user scrolled up, unpinning the chat.
     if (stickToBottomRef.current || (last && last.sender.id === myUserId)) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      el.scrollTop = el.scrollHeight;
     }
   }, [messages, partnerTyping]);
+
+  // Panels hidden behind a mobile tab mount at zero height; jump to the latest
+  // message once they become visible.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let lastHeight = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      if (lastHeight === 0 && el.clientHeight > 0) el.scrollTop = el.scrollHeight;
+      lastHeight = el.clientHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   function emitTyping() {
     const now = Date.now();
@@ -128,8 +167,15 @@ export function TradeChat({
     void api(`/trades/${tradeId}/typing`, { method: "POST", body: { typing: false } }).catch(() => {});
   }
 
+  function resizeComposer() {
+    const el = textRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_PX)}px`;
+  }
+
   async function submitMessage() {
-    if (chatClosed) return;
+    if (chatClosed || sendAction.busy) return;
     if (!body.trim() && !files.length) return;
     stopTyping();
     await sendAction.run(async () => {
@@ -139,9 +185,10 @@ export function TradeChat({
       await api(`/trades/${tradeId}/messages`, { body: form, isForm: true });
       setBody("");
       setFiles([]);
+      requestAnimationFrame(resizeComposer);
       stickToBottomRef.current = true;
       await load();
-    }, "Message sent.");
+    });
   }
 
   function addFiles(list: FileList | null) {
@@ -156,214 +203,237 @@ export function TradeChat({
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
-  const filePicker = (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <input
-          ref={fileRef}
-          type="file"
-          multiple
-          accept="image/*,application/pdf"
-          className="max-w-full text-xs"
-          disabled={files.length >= MAX_FILES}
-          onChange={(e) => addFiles(e.target.files)}
-        />
-        {files.length > 0 && (
-          <span className="shrink-0 text-xs">
-            {files.length}/{MAX_FILES} files
-          </span>
-        )}
-      </div>
-      {files.length > 0 && (
-        <ul className="flex flex-wrap gap-2">
-          {files.map((f, i) => (
-            <li
-              key={`${f.name}-${f.size}-${i}`}
-              className="flex max-w-[14rem] items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
-            >
-              <span className="truncate">{f.name}</span>
-              <button
-                type="button"
-                onClick={() => removeFile(i)}
-                className="shrink-0 text-slate-400 hover:text-red-600"
-                aria-label={`Remove ${f.name}`}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    await submitMessage();
-  }
-
   function receiptLabel(m: ChatMessage): { text: string; read: boolean } {
     const read = !!m.readAt || (!!receipts.readAt && m.createdAt <= receipts.readAt);
-    if (read) return { text: "✓✓ Read", read: true };
+    if (read) return { text: "✓✓", read: true };
     const delivered = !!m.deliveredAt || (!!receipts.deliveredAt && m.createdAt <= receipts.deliveredAt);
-    if (delivered) return { text: "✓✓ Delivered", read: false };
-    return { text: "✓ Sent", read: false };
+    if (delivered) return { text: "✓✓", read: false };
+    return { text: "✓", read: false };
   }
 
-  return (
-    <div
-      className={`card flex flex-col overflow-hidden ${
-        isPanel ? "h-full min-h-0" : "p-4"
-      }`}
-    >
-      <div className={`shrink-0 ${isPanel ? "border-b border-slate-200 px-5 py-4" : "mb-3"}`}>
-        <h3 className="font-bold">Trade chat</h3>
-        {isPanel && (
-          <p className="mt-0.5 text-sm text-slate-500">
-            {isAdmin ? "Reply to the seller — messages notify them by email." : "Chat with support about this trade."}
-          </p>
-        )}
-      </div>
+  const canSend = !sendAction.busy && (!!body.trim() || files.length > 0);
 
-      {chatClosed && (
-        <p
-          className={`shrink-0 text-sm text-slate-600 ${
-            isPanel ? "mx-5 mt-4 rounded-lg bg-slate-100 px-3 py-2" : "mb-3 rounded-lg bg-slate-100 px-3 py-2"
-          }`}
-        >
-          This trade was rejected. Chat is closed — contact support if you need help.
-        </p>
-      )}
+  return (
+    <div className={`card flex min-h-0 flex-col overflow-hidden ${className}`}>
+      <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-100 text-sm font-bold text-brand-800">
+          {partnerLabel[0]}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-bold text-slate-900">{isAdmin ? "Chat with seller" : "Support chat"}</h3>
+          <p className="truncate text-xs text-slate-500">
+            {partnerTyping ? (
+              <span className="text-brand-700">{partnerLabel} is typing…</span>
+            ) : isAdmin ? (
+              "Replies notify the seller by email."
+            ) : (
+              "Ask support anything about this trade."
+            )}
+          </p>
+        </div>
+      </div>
 
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className={`space-y-3 overflow-y-auto ${
-          isPanel
-            ? "min-h-0 flex-1 px-5 py-4"
-            : "mb-3 max-h-80 flex-1 md:max-h-96"
-        }`}
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-slate-50/70 px-3 py-4 sm:px-4"
       >
         {messages.length === 0 && (
-          <p className="py-8 text-center text-sm text-slate-400">
-            {isPanel ? "No messages yet. Start the conversation below." : "No messages yet."}
-          </p>
+          <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
+            <p className="text-sm font-medium text-slate-600">No messages yet</p>
+            <p className="text-xs text-slate-400">
+              {chatClosed ? "This chat is closed." : `Send a message to ${partnerLabel.toLowerCase()} below.`}
+            </p>
+          </div>
         )}
-        {messages.map((m) => {
+        {messages.map((m, i) => {
           const mine = m.sender.id === myUserId;
           const isImage = m.attachmentMimeType?.startsWith("image/");
           const isPdf = m.attachmentMimeType === "application/pdf";
           const receipt = mine ? receiptLabel(m) : null;
+          const prev = messages[i - 1];
+          const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
+          const sameSenderAsPrev = !newDay && prev?.sender.id === m.sender.id;
+          const senderName = m.sender.role === "ADMIN" ? "Support" : m.sender.displayName || "Seller";
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[min(100%,28rem)] rounded-2xl px-4 py-2.5 text-sm ${
-                  mine ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-800"
-                }`}
-              >
-                <div className="text-[11px] opacity-70">
-                  {m.sender.role === "ADMIN" ? "Support" : m.sender.displayName || "You"} · {date(m.createdAt)}
+            <Fragment key={m.id}>
+              {newDay && (
+                <div className="flex justify-center py-1">
+                  <span className="rounded-full bg-white px-3 py-0.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200">
+                    {dayLabel(m.createdAt)}
+                  </span>
                 </div>
-                {m.body ? <div className="mt-1 whitespace-pre-wrap break-words">{m.body}</div> : null}
-                {m.attachmentUrl && isImage && (
-                  <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="mt-2 block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={m.attachmentUrl}
-                      alt={m.attachmentFilename || "Attachment"}
-                      className={`rounded-lg border border-white/20 object-contain ${
-                        isPanel ? "max-h-64 xl:max-h-80" : "max-h-48"
+              )}
+              <div className={`flex ${mine ? "justify-end" : "justify-start"} ${sameSenderAsPrev ? "!mt-0.5" : ""}`}>
+                <div
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm shadow-sm sm:max-w-[75%] ${
+                    mine
+                      ? "rounded-br-md bg-brand-700 text-white"
+                      : "rounded-bl-md bg-white text-slate-800 ring-1 ring-slate-200"
+                  }`}
+                >
+                  {!mine && !sameSenderAsPrev && (
+                    <div className="mb-0.5 text-[11px] font-semibold text-brand-700">{senderName}</div>
+                  )}
+                  {m.body ? <div className="whitespace-pre-wrap break-words">{m.body}</div> : null}
+                  {m.attachmentUrl && isImage && (
+                    <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="mt-1.5 block">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={m.attachmentUrl}
+                        alt={m.attachmentFilename || "Attachment"}
+                        onLoad={() => {
+                          const el = scrollRef.current;
+                          if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+                        }}
+                        className="max-h-60 w-auto max-w-full rounded-lg object-contain"
+                      />
+                    </a>
+                  )}
+                  {m.attachmentUrl && isPdf && (
+                    <a
+                      href={m.attachmentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`mt-1.5 flex max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium ${
+                        mine ? "bg-white/15 text-white" : "bg-slate-100 text-brand-800"
                       }`}
-                    />
-                  </a>
-                )}
-                {m.attachmentUrl && isPdf && (
-                  <a
-                    href={m.attachmentUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`mt-2 inline-flex items-center gap-1 text-sm underline ${mine ? "text-white" : "text-brand-700"}`}
+                    >
+                      <span aria-hidden>📄</span>
+                      <span className="truncate">{m.attachmentFilename || "PDF attachment"}</span>
+                    </a>
+                  )}
+                  <div
+                    className={`mt-0.5 flex items-center justify-end gap-1 text-[10px] ${
+                      mine ? "text-white/70" : "text-slate-400"
+                    }`}
                   >
-                    📄 {m.attachmentFilename || "PDF attachment"}
-                  </a>
-                )}
-                {receipt && (
-                  <div className={`mt-1 text-right text-[10px] ${receipt.read ? "text-sky-200" : "text-white/60"}`}>
-                    {receipt.text}
+                    <span>{timeLabel(m.createdAt)}</span>
+                    {receipt && (
+                      <span className={receipt.read ? "text-sky-200" : ""} title={receipt.read ? "Read" : "Sent"}>
+                        {receipt.text}
+                      </span>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            </Fragment>
           );
         })}
         {partnerTyping && (
           <div className="flex justify-start">
-            <div className="rounded-2xl bg-slate-100 px-4 py-2 text-xs italic text-slate-500">
-              {partnerLabel} is typing…
+            <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]" />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
             </div>
           </div>
         )}
-        <div ref={endRef} />
       </div>
 
-      {!chatClosed && (
+      {chatClosed ? (
+        <p className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
+          This trade was {tradeStatus === "CANCELLED" ? "cancelled" : "rejected"}, so the chat is closed. Contact
+          support if you need help.
+        </p>
+      ) : (
         <form
-          onSubmit={send}
-          className={`shrink-0 space-y-2 ${isPanel ? "border-t border-slate-200 bg-slate-50/80 px-5 py-4" : ""}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitMessage();
+          }}
+          className="shrink-0 border-t border-slate-200 bg-white px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 sm:px-3"
         >
-          {isPanel ? (
-            <>
-              <textarea
-                className="input min-h-[4.5rem] resize-y"
-                rows={2}
-                placeholder={isAdmin ? "Type a message to the seller…" : "Type a message…"}
-                value={body}
-                onChange={(e) => {
-                  setBody(e.target.value);
-                  emitTyping();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void submitMessage();
-                  }
-                }}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">{filePicker}</div>
-                <button
-                  type="submit"
-                  className="btn-primary shrink-0"
-                  disabled={sendAction.busy || (!body.trim() && !files.length)}
+          {files.length > 0 && (
+            <ul className="scrollbar-none mb-2 flex gap-2 overflow-x-auto px-1">
+              {files.map((f, i) => (
+                <li
+                  key={`${f.name}-${f.size}-${i}`}
+                  className="flex max-w-[12rem] shrink-0 items-center gap-1 rounded-full bg-slate-100 py-1 pl-3 pr-1 text-xs text-slate-700"
                 >
-                  {sendAction.busy ? "Sending…" : "Send message"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex gap-2">
-                <input
-                  className="input"
-                  placeholder="Type a message…"
-                  value={body}
-                  onChange={(e) => {
-                    setBody(e.target.value);
-                    emitTyping();
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="btn-primary shrink-0"
-                  disabled={sendAction.busy || (!body.trim() && !files.length)}
-                >
-                  {sendAction.busy ? "Sending…" : "Send"}
-                </button>
-              </div>
-              {filePicker}
-            </>
+                  <span className="truncate">{f.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-red-600"
+                    aria-label={`Remove ${f.name}`}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+              <li className="shrink-0 self-center text-[11px] text-slate-400">
+                {files.length}/{MAX_FILES}
+              </li>
+            </ul>
           )}
-          <FormFeedback status={sendAction.status} anchorRef={sendAction.statusRef} />
+          <div className="flex items-end gap-1.5 sm:gap-2">
+            <label
+              className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 ${
+                files.length >= MAX_FILES ? "pointer-events-none opacity-40" : ""
+              }`}
+              title="Attach images or PDF"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
+                />
+              </svg>
+              <span className="sr-only">Attach files</span>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept="image/*,application/pdf"
+                className="hidden"
+                disabled={files.length >= MAX_FILES}
+                onChange={(e) => addFiles(e.target.files)}
+              />
+            </label>
+            <textarea
+              ref={textRef}
+              rows={1}
+              className="max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-2 text-sm leading-6 outline-none focus:border-brand-600 focus:bg-white focus:ring-2 focus:ring-brand-100"
+              placeholder={isAdmin ? "Message the seller…" : "Type a message…"}
+              value={body}
+              onChange={(e) => {
+                setBody(e.target.value);
+                resizeComposer();
+                emitTyping();
+              }}
+              onBlur={stopTyping}
+              onKeyDown={(e) => {
+                // Enter sends on keyboards; on touch screens Enter inserts a newline.
+                const touch = window.matchMedia("(pointer: coarse)").matches;
+                if (e.key === "Enter" && !e.shiftKey && !touch) {
+                  e.preventDefault();
+                  void submitMessage();
+                }
+              }}
+            />
+            <button
+              type="submit"
+              disabled={!canSend}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-700 text-white shadow-sm transition hover:bg-brand-800 disabled:bg-slate-300 sm:w-auto sm:px-4"
+              aria-label="Send message"
+            >
+              {sendAction.busy ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 sm:hidden" fill="currentColor" aria-hidden>
+                    <path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.993.993 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z" />
+                  </svg>
+                  <span className="hidden text-sm font-semibold sm:inline">Send</span>
+                </>
+              )}
+            </button>
+          </div>
+          {sendAction.status && !sendAction.status.ok && (
+            <FormFeedback status={sendAction.status} anchorRef={sendAction.statusRef} className="mt-2" />
+          )}
         </form>
       )}
     </div>

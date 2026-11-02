@@ -7,7 +7,8 @@ import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, reductionsF
 import { api } from "@/lib/api";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
-import { money, date, STATUS_COLORS, STATUS_DESCRIPTIONS } from "@/lib/format";
+import { money, date, STATUS_DESCRIPTIONS } from "@/lib/format";
+import { TradeListItem } from "@/components/PageUi";
 
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -256,36 +257,52 @@ export default function AdminUserDetailPage() {
   const stats = data.stats;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link href="/admin/users" className="text-sm text-brand-700">← Users</Link>
-        <h2 className="text-2xl font-bold">{u.displayName || u.email}</h2>
-        <span className={`badge ${u.accountStatus === "BANNED" ? "bg-red-100 text-red-800" : u.accountStatus === "SUSPENDED" ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}`}>
-          {u.accountStatus}
-        </span>
+    <div className="space-y-5 sm:space-y-6">
+      <div className="space-y-2">
+        <Link href="/admin/users" className="inline-flex items-center gap-1 text-sm font-medium text-brand-700">
+          ← Users
+        </Link>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="break-words text-xl font-bold leading-tight sm:text-2xl">{u.displayName || u.email}</h2>
+            <p className="mt-0.5 break-all text-sm text-slate-500">{u.email}</p>
+          </div>
+          <span className={`badge shrink-0 ${u.accountStatus === "BANNED" ? "bg-red-100 text-red-800" : u.accountStatus === "SUSPENDED" ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}`}>
+            {u.accountStatus}
+          </span>
+        </div>
       </div>
 
       {msg && <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{msg}</p>}
       {err && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-900">{err}</p>}
       <FormFeedback status={tradeAction.status} anchorRef={tradeAction.statusRef} />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <Stat label="Active trades" value={`${stats.activeTrades} / ${stats.tradeLimit}`} />
         <Stat label="Recent rejections" value={`${stats.recentRejections} (${stats.autoSuspendWindowDays}d window)`} />
         <Stat label="Total trades" value={stats.totalTrades} />
         <Stat label="Auto-suspend at" value={`${stats.autoSuspendThreshold} rejections`} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="card space-y-4 p-6">
+      <div className="card p-4 text-sm sm:p-5">
+        <h3 className="mb-2 font-bold">Wallets</h3>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <span className="rounded-lg bg-slate-50 px-3 py-2 font-semibold">{money(u.balanceNgn, "NGN")}</span>
+          <span className="rounded-lg bg-slate-50 px-3 py-2 font-semibold">{money(u.balanceUsdt, "USDT")}</span>
+          <span className="rounded-lg bg-slate-50 px-3 py-2 font-semibold">{money(u.balanceGhs, "GHS")}</span>
+        </div>
+      </div>
+
+      <div className="grid gap-5 sm:gap-6 lg:grid-cols-2">
+        <div className="card space-y-4 p-4 sm:p-6">
           <h3 className="font-bold">Account moderation</h3>
-          <p className="text-sm text-slate-500">
-            {u.email} · joined {date(u.createdAt)}
+          <p className="break-words text-sm text-slate-500">
+            Joined {date(u.createdAt)}
             {" · "}
             last login {u.lastLoginAt ? date(u.lastLoginAt) : "never"}
           </p>
           {u.suspensionReason && (
-            <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{u.suspensionReason}</p>
+            <p className="break-words rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">{u.suspensionReason}</p>
           )}
           <textarea
             className="input min-h-[72px]"
@@ -293,37 +310,42 @@ export default function AdminUserDetailPage() {
             value={modReason}
             onChange={(e) => setModReason(e.target.value)}
           />
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => moderate("suspend")} className="rounded bg-amber-100 px-3 py-1.5 text-sm text-amber-900">Suspend</button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => moderate("suspend")} className="btn-sm flex-1 bg-amber-100 py-2.5 text-amber-900 sm:flex-none sm:px-4">
+              Suspend for
+            </button>
             <input
               type="number"
               min={1}
               max={365}
-              className="input w-20"
+              className="input w-20 py-2"
               value={suspendDays}
               onChange={(e) => setSuspendDays(Number(e.target.value))}
               title="Suspend days"
+              aria-label="Suspend days"
             />
-            <span className="self-center text-xs text-slate-500">days</span>
-            <button onClick={() => confirm("Permanently ban this user?") && moderate("ban")} className="rounded bg-red-100 px-3 py-1.5 text-sm text-red-800">Ban</button>
-            <button onClick={() => moderate("unsuspend")} className="rounded bg-emerald-100 px-3 py-1.5 text-sm text-emerald-800">Unsuspend</button>
-            <button onClick={() => moderate("lift_ban")} className="rounded bg-slate-100 px-3 py-1.5 text-sm">Lift ban</button>
+            <span className="text-xs text-slate-500">days</span>
           </div>
-          <div className="border-t border-slate-100 pt-4 space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={() => confirm("Permanently ban this user?") && moderate("ban")} className="btn-sm bg-red-100 py-2.5 text-red-800">Ban</button>
+            <button onClick={() => moderate("unsuspend")} className="btn-sm bg-emerald-100 py-2.5 text-emerald-800">Unsuspend</button>
+            <button onClick={() => moderate("lift_ban")} className="btn-sm bg-slate-100 py-2.5 text-slate-700">Lift ban</button>
+          </div>
+          <div className="space-y-2 border-t border-slate-100 pt-4">
             <label className="label">Max concurrent trades (blank = platform default)</label>
             <input className="input" type="number" min={1} max={50} value={tradeLimit} onChange={(e) => setTradeLimit(e.target.value)} />
             <label className="label">Admin notes (internal)</label>
             <textarea className="input min-h-[60px]" value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} />
-            <button onClick={() => moderate("set_limits")} className="btn-ghost">Save limits & notes</button>
+            <button onClick={() => moderate("set_limits")} className="btn-ghost w-full sm:w-auto">Save limits & notes</button>
           </div>
-          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-            <button onClick={adjustBalance} className="rounded bg-slate-100 px-3 py-1.5 text-sm">Adjust balance</button>
-            <button onClick={() => api(`/admin/users/${id}/score`, { body: { kind: "good" } }).then(load)} className="rounded bg-emerald-100 px-3 py-1.5 text-sm">+Good</button>
-            <button onClick={() => api(`/admin/users/${id}/score`, { body: { kind: "bad" } }).then(load)} className="rounded bg-red-100 px-3 py-1.5 text-sm">+Bad</button>
+          <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
+            <button onClick={adjustBalance} className="btn-sm bg-slate-100 py-2.5 text-slate-700">Adjust balance</button>
+            <button onClick={() => api(`/admin/users/${id}/score`, { body: { kind: "good" } }).then(load)} className="btn-sm bg-emerald-100 py-2.5 text-emerald-800">+Good</button>
+            <button onClick={() => api(`/admin/users/${id}/score`, { body: { kind: "bad" } }).then(load)} className="btn-sm bg-red-100 py-2.5 text-red-800">+Bad</button>
           </div>
         </div>
 
-        <form onSubmit={createTrade} className="card space-y-3 p-6">
+        <form onSubmit={createTrade} className="card min-w-0 space-y-3 p-4 sm:p-6">
           <h3 className="font-bold">Open trade on behalf of user</h3>
           <p className="text-sm text-slate-500">Set the naira rate manually, or pick a catalog tier as a starting point.</p>
 
@@ -396,12 +418,12 @@ export default function AdminUserDetailPage() {
                 </div>
               </div>
               {catalogTiers.length > 0 && (
-                <div className="flex flex-wrap gap-1">
+                <div className="scrollbar-none -mx-1 flex gap-1 overflow-x-auto px-1 sm:flex-wrap">
                   {catalogTiers.slice(0, 8).map((r) => (
                     <button
                       key={`${r.country}-${r.currency}-${r.medium}`}
                       type="button"
-                      className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700"
+                      className="shrink-0 rounded bg-slate-100 px-2 py-1 text-xs text-slate-700"
                       onClick={() =>
                         setTradeForm((f) => ({
                           ...f,
@@ -498,46 +520,30 @@ export default function AdminUserDetailPage() {
       </div>
 
       <div className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
           <h3 className="font-bold">Trades</h3>
           <span className="text-sm text-slate-500">
             {data.trades?.length ?? 0} total
             {stats.activeTrades > 0 ? ` · ${stats.activeTrades} active` : ""}
           </span>
         </div>
-        <div className="divide-y divide-slate-100">
+        <div className="max-h-[32rem] divide-y divide-slate-100 overflow-y-auto">
           {(data.trades ?? []).map((t: any) => (
-            <Link
+            <TradeListItem
               key={t.id}
+              trade={t}
               href={`/admin/trades/${t.id}`}
-              className="flex flex-col gap-2 px-6 py-3 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="min-w-0">
-                <div className="font-semibold">
-                  {t.cardType?.name} ·{" "}
-                  {t.otherCountryName ? `${t.otherCountryName} (${t.country})` : t.country} · {t.medium}
-                </div>
-                <div className="mt-1 text-sm text-slate-500">
-                  <span className="font-mono text-xs sm:text-sm">{t.tradeNumber}</span>
-                  <span className="mx-1.5">·</span>
-                  {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)}
-                  <span className="mx-1.5 text-slate-300">·</span>
-                  <span className="text-xs text-slate-400">{date(t.createdAt)}</span>
-                </div>
-              </div>
-              <span className={`badge w-fit shrink-0 ${STATUS_COLORS[t.status]}`} title={STATUS_DESCRIPTIONS[t.status]}>
-                {t.status}
-              </span>
-            </Link>
+              statusTitle={STATUS_DESCRIPTIONS[t.status]}
+            />
           ))}
           {(data.trades ?? []).length === 0 && (
-            <p className="px-6 py-4 text-sm text-slate-400">No trades yet.</p>
+            <p className="px-4 py-4 text-sm text-slate-400 sm:px-5">No trades yet.</p>
           )}
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="card space-y-4 p-6">
+      <div className="grid gap-5 sm:gap-6 lg:grid-cols-2">
+        <div className="card space-y-4 p-4 sm:p-6">
           <h3 className="font-bold">Bank accounts (Naira)</h3>
           <p className="text-xs text-slate-500">
             {data.bankAccounts?.length ?? 0} of {platformConfig?.maxBankAccounts ?? 5} saved — users can&apos;t remove
@@ -545,9 +551,12 @@ export default function AdminUserDetailPage() {
           </p>
           <div className="space-y-2">
             {(data.bankAccounts ?? []).map((a: any) => (
-              <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                <span>{a.bankName} — {a.accountNumber} ({a.accountName})</span>
-                <button type="button" className="text-red-600" onClick={() => removeAccount("bank-accounts", a.id)}>
+              <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <span className="min-w-0 break-words">
+                  <span className="font-medium">{a.bankName}</span> — {a.accountNumber}
+                  <span className="block text-xs text-slate-500">{a.accountName}</span>
+                </span>
+                <button type="button" className="btn-sm shrink-0 text-red-600 hover:bg-red-50" onClick={() => removeAccount("bank-accounts", a.id)}>
                   Remove
                 </button>
               </div>
@@ -565,7 +574,7 @@ export default function AdminUserDetailPage() {
           </form>
         </div>
 
-        <div className="card space-y-4 p-6">
+        <div className="card space-y-4 p-4 sm:p-6">
           <h3 className="font-bold">MoMo accounts (Cedi)</h3>
           <p className="text-xs text-slate-500">
             {data.momoAccounts?.length ?? 0} of {platformConfig?.maxMomoAccounts ?? 5} saved — users can&apos;t remove
@@ -573,9 +582,12 @@ export default function AdminUserDetailPage() {
           </p>
           <div className="space-y-2">
             {(data.momoAccounts ?? []).map((a: any) => (
-              <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                <span>{a.network} — {a.phoneNumber} ({a.accountName})</span>
-                <button type="button" className="text-red-600" onClick={() => removeAccount("momo-accounts", a.id)}>
+              <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <span className="min-w-0 break-words">
+                  <span className="font-medium">{a.network}</span> — {a.phoneNumber}
+                  <span className="block text-xs text-slate-500">{a.accountName}</span>
+                </span>
+                <button type="button" className="btn-sm shrink-0 text-red-600 hover:bg-red-50" onClick={() => removeAccount("momo-accounts", a.id)}>
                   Remove
                 </button>
               </div>
@@ -598,29 +610,20 @@ export default function AdminUserDetailPage() {
         </div>
       </div>
 
-      <div className="card p-6">
+      <div className="card p-4 sm:p-6">
         <h3 className="mb-3 font-bold">Moderation history</h3>
         <div className="divide-y divide-slate-100">
           {data.events.map((e: any) => (
-            <div key={e.id} className="flex flex-wrap justify-between gap-2 py-3 text-sm">
-              <div>
+            <div key={e.id} className="flex flex-col gap-1 py-3 text-sm sm:flex-row sm:justify-between sm:gap-3">
+              <div className="min-w-0 break-words">
                 <span className="font-medium">{e.action}</span>
                 {e.reason && <span className="text-slate-500"> — {e.reason}</span>}
-                {e.admin && <div className="text-xs text-slate-400">by {e.admin.email}</div>}
+                {e.admin && <div className="break-all text-xs text-slate-400">by {e.admin.email}</div>}
               </div>
-              <div className="text-slate-500">{date(e.createdAt)}</div>
+              <div className="shrink-0 text-xs text-slate-500 sm:text-sm">{date(e.createdAt)}</div>
             </div>
           ))}
           {data.events.length === 0 && <p className="text-sm text-slate-400">No moderation events.</p>}
-        </div>
-      </div>
-
-      <div className="card p-6 text-sm">
-        <h3 className="mb-2 font-bold">Wallets</h3>
-        <div className="flex flex-wrap gap-4">
-          <span>{money(u.balanceUsdt, "USDT")}</span>
-          <span>{money(u.balanceNgn, "NGN")}</span>
-          <span>{money(u.balanceGhs, "GHS")}</span>
         </div>
       </div>
     </div>
@@ -629,9 +632,9 @@ export default function AdminUserDetailPage() {
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="card p-4">
+    <div className="card min-w-0 p-3 sm:p-4">
       <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 text-lg font-bold">{value}</div>
+      <div className="mt-1 break-words text-base font-bold sm:text-lg">{value}</div>
     </div>
   );
 }

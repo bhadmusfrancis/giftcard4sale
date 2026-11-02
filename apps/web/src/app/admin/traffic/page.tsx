@@ -260,21 +260,21 @@ function TrafficDashboard() {
     <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold sm:text-2xl">Website traffic</h2>
+          <h2 className="page-title">Website traffic</h2>
           <p className="mt-1 text-sm text-slate-500">
             {range === "24h"
               ? "Last 24 hours of public site visitors — admin console routes are excluded"
               : "Public site visitors only — admin console routes and logged-in admin browsing are excluded"}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-4 gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:flex">
           {RANGES.map((r) => (
             <button
               key={r.id}
               type="button"
               onClick={() => setRange(r.id)}
-              className={`badge cursor-pointer px-3 py-1.5 text-sm ${
-                range === r.id ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              className={`rounded-lg px-2 py-1.5 text-xs font-semibold transition sm:px-3 sm:text-sm ${
+                range === r.id ? "bg-brand-700 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"
               }`}
             >
               {r.label}
@@ -424,7 +424,7 @@ function TrafficDashboard() {
               <tbody className="divide-y divide-slate-100">
                 {(report?.topPages || []).map((row) => (
                   <tr key={row.path} className="hover:bg-slate-50/80">
-                    <td className="max-w-[240px] truncate p-3 font-mono text-xs text-slate-800 sm:max-w-none sm:text-sm">
+                    <td className="max-w-[10rem] truncate p-3 font-mono text-xs text-slate-800 min-[420px]:max-w-[14rem] sm:max-w-none sm:text-sm" title={row.path}>
                       {row.path}
                     </td>
                     <td className="p-3 text-right tabular-nums">{row.views.toLocaleString()}</td>

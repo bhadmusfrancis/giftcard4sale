@@ -8,6 +8,25 @@
 
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
+  /* Long emails, trade IDs or tables must never widen the page on phones. */
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+/* iOS zooms the page when a focused field is under 16px — keep fields at 16px on phones. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 .btn {
@@ -34,4 +53,22 @@ body {
 }
 .badge {
   @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+}
+.chip {
+  @apply inline-flex shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-semibold transition sm:text-sm;
+}
+.chip-on {
+  @apply chip bg-brand-700 text-white shadow-sm;
+}
+.chip-off {
+  @apply chip border border-slate-200 bg-white text-slate-600 hover:border-brand-500 hover:text-brand-800;
+}
+.btn-sm {
+  @apply inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+.page-title {
+  @apply text-xl font-bold text-slate-900 sm:text-2xl;
+}
+.section-pad {
+  @apply p-4 sm:p-6;
 }

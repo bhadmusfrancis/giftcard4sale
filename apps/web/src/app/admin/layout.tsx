@@ -37,15 +37,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="mx-auto max-w-7xl px-3 py-5 sm:px-4 sm:py-8">
       <PushAutoEnable />
-      <div className="mb-4 flex flex-wrap items-center gap-2 sm:mb-6">
+      <div className="mb-3 hidden items-center gap-2 sm:mb-6 md:flex">
         <span className="badge bg-slate-900 text-white">ADMIN</span>
-        <h1 className="text-base font-bold text-slate-900 sm:text-lg">Admin console</h1>
-        <span className="hidden text-sm text-slate-400 sm:inline">·</span>
-        <p className="w-full text-xs text-slate-500 sm:w-auto sm:text-sm">
+        <h1 className="text-lg font-bold text-slate-900">Admin console</h1>
+        <span className="text-sm text-slate-400">·</span>
+        <p className="min-w-0 truncate text-sm text-slate-500">
           {pathname === "/admin" ? "Overview" : pathname.replace("/admin/", "").replace(/\//g, " / ")}
         </p>
       </div>
-      <div className="grid gap-4 md:grid-cols-[200px_1fr] md:gap-6 lg:grid-cols-[220px_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[200px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
         <CollapsibleSidebar title="Admin" items={NAV} rootHref="/admin" />
         <section className="min-w-0">{children}</section>
       </div>

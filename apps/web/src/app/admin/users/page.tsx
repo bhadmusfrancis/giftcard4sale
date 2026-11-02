@@ -81,7 +81,7 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-bold sm:text-2xl">Users</h2>
+        <h2 className="page-title">Users</h2>
         <button type="button" onClick={() => setShowCreate((s) => !s)} className="btn-primary w-full sm:w-auto">
           {showCreate ? "Cancel" : "New user"}
         </button>
@@ -120,28 +120,30 @@ export default function AdminUsersPage() {
         </form>
       )}
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth: "thin" }}>
+      <div className="scrollbar-none -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
         {STATUS_FILTERS.map((s) => (
           <button
             key={s}
             type="button"
             onClick={() => setStatusFilter(s)}
-            className={`badge shrink-0 ${statusFilter === s ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}
+            className={statusFilter === s ? "chip-on" : "chip-off"}
           >
             {s}
           </button>
         ))}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:gap-3">
         <input
           className="input w-full"
-          placeholder="Search by email, name, referral code, or ID"
+          type="search"
+          placeholder="Search email, name, code or ID"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
         <select
-          className="input shrink-0 sm:w-56"
+          aria-label="Sort users"
+          className="input w-[8.5rem] sm:w-56"
           value={sort}
           onChange={(e) => setSort(e.target.value as typeof sort)}
         >
@@ -151,46 +153,49 @@ export default function AdminUsersPage() {
         </select>
       </div>
 
-      {/* Mobile cards */}
-      <div className="space-y-3 md:hidden">
+      {/* Phones + tablets: cards */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
         {users.map((u) => (
-          <div key={u.id} className="card p-4">
+          <div key={u.id} className="card flex flex-col p-4">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate font-semibold">{u.displayName || "—"}</div>
+              <Link href={`/admin/users/${u.id}`} className="block min-w-0 flex-1">
+                <div className="truncate font-semibold text-slate-900">{u.displayName || "—"}</div>
                 <div className="truncate text-sm text-slate-500">{u.email}</div>
-              </div>
+              </Link>
               <span className={`badge shrink-0 ${statusBadge(u.accountStatus || "ACTIVE")}`}>
                 {u.accountStatus || "ACTIVE"}
               </span>
             </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {!u.emailVerified && <span className="badge bg-amber-100 text-amber-800">unverified</span>}
-              {u.role === "ADMIN" && <span className="badge bg-slate-800 text-white">admin</span>}
-            </div>
-            <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-              <div>
+            {(!u.emailVerified || u.role === "ADMIN") && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {!u.emailVerified && <span className="badge bg-amber-100 text-amber-800">unverified</span>}
+                {u.role === "ADMIN" && <span className="badge bg-slate-800 text-white">admin</span>}
+              </div>
+            )}
+            <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+              <div className="min-w-0">
                 <dt className="text-slate-400">Last login</dt>
-                <dd>{u.lastLoginAt ? date(u.lastLoginAt) : "Never"}</dd>
+                <dd className="truncate">{u.lastLoginAt ? date(u.lastLoginAt) : "Never"}</dd>
               </div>
               <div>
-                <dt className="text-slate-400">Scores</dt>
+                <dt className="text-slate-400">Trades · Scores</dt>
                 <dd>
+                  {u.activeTrades ?? 0}/{u.tradeLimit ?? "—"} ·{" "}
                   <span className="font-semibold text-emerald-600">+{u.goodScore}</span>{" "}
                   <span className="font-semibold text-red-600">-{u.badScore}</span>
                 </dd>
               </div>
               <div className="col-span-2">
                 <dt className="text-slate-400">Wallets</dt>
-                <dd className="mt-0.5 space-y-0.5">
-                  <div>{money(u.balanceUsdt, "USDT")}</div>
-                  <div>{money(u.balanceNgn, "NGN")}</div>
-                  <div>{money(u.balanceGhs, "GHS")}</div>
+                <dd className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 font-medium text-slate-700">
+                  <span>{money(u.balanceNgn, "NGN")}</span>
+                  <span>{money(u.balanceUsdt, "USDT")}</span>
+                  <span>{money(u.balanceGhs, "GHS")}</span>
                 </dd>
               </div>
             </dl>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link href={`/admin/users/${u.id}`} className="btn-ghost flex-1 text-center text-brand-700">
+            <div className="mt-3 flex gap-2 pt-0 sm:mt-auto sm:pt-3">
+              <Link href={`/admin/users/${u.id}`} className="btn-ghost flex-1 py-2 text-sm text-brand-700">
                 Manage
               </Link>
               {u.role !== "ADMIN" && (
@@ -198,7 +203,7 @@ export default function AdminUsersPage() {
                   type="button"
                   onClick={() => void deleteUser(u.id)}
                   disabled={deletingUserId === u.id}
-                  className="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-800 disabled:opacity-60"
+                  className="btn-sm bg-red-50 px-4 text-red-700 ring-1 ring-red-200"
                 >
                   {deletingUserId === u.id ? "Deleting…" : "Delete"}
                 </button>
@@ -207,14 +212,14 @@ export default function AdminUsersPage() {
           </div>
         ))}
         {users.length === 0 && (
-          <p className="card p-6 text-center text-sm text-slate-400">
+          <p className="card p-6 text-center text-sm text-slate-400 sm:col-span-2">
             {q.trim() ? "No users match your search." : "No users found."}
           </p>
         )}
       </div>
 
       {/* Desktop table */}
-      <div className="card hidden overflow-x-auto md:block">
+      <div className="card hidden overflow-x-auto lg:block">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
@@ -232,7 +237,7 @@ export default function AdminUsersPage() {
               <tr key={u.id} className="hover:bg-slate-50">
                 <td className="p-3">
                   <div className="font-medium">{u.displayName || "—"}</div>
-                  <div className="text-slate-500">{u.email}</div>
+                  <div className="break-all text-slate-500">{u.email}</div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {!u.emailVerified && <span className="badge bg-amber-100 text-amber-800">unverified</span>}
                     {u.role === "ADMIN" && <span className="badge bg-slate-800 text-white">admin</span>}

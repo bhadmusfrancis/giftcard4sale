@@ -129,16 +129,16 @@ export function RateSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void 
   const showRun = active.running || lastCompleted;
 
   return (
-    <div className="card p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <div className="card p-4 sm:p-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
           <h3 className="font-bold">Rate synchronization</h3>
           <p className="mt-1 text-sm text-slate-500">
             Pull live gift-card rates from safethetrade.com first, then sogo.africa/rates for every card and currency
             it does not price. Runs in the background — this panel updates every few seconds while a sync is active.
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="grid shrink-0 grid-cols-2 gap-2 md:flex">
           <button
             type="button"
             className="btn-primary text-sm"
@@ -164,7 +164,7 @@ export function RateSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void 
         </p>
       ) : null}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <Stat label="Cards with synced rates" value={database.cards} />
         <Stat label="Stored rate rows" value={database.rateRows} />
         <Stat label="Active rates" value={database.activeRates} />
@@ -254,7 +254,7 @@ export function RateSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void 
               : ""}
           </p>
           {lastCompleted.lastError ? (
-            <p className="mt-1 text-xs opacity-90">Last error: {lastCompleted.lastError}</p>
+            <p className="mt-1 break-words text-xs opacity-90">Last error: {lastCompleted.lastError}</p>
           ) : null}
         </div>
       ) : null}
@@ -266,7 +266,7 @@ export function RateSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void 
           </summary>
           <ul className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
             {active.recentErrors.map((err, i) => (
-              <li key={i} className="border-b border-slate-200 py-1 last:border-0">
+              <li key={i} className="break-words border-b border-slate-200 py-1 last:border-0">
                 {err}
               </li>
             ))}
@@ -283,8 +283,8 @@ export function RateSyncPanel({ onSyncFinished }: { onSyncFinished?: () => void 
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
-    <div className="rounded-lg bg-slate-50 px-3 py-2">
-      <p className="text-xs text-slate-500">{label}</p>
+    <div className="min-w-0 rounded-lg bg-slate-50 px-3 py-2">
+      <p className="text-xs leading-snug text-slate-500">{label}</p>
       <p className="text-lg font-semibold text-slate-800">
         {value}
         {hint ? <span className="ml-1 text-xs font-normal text-slate-400">{hint}</span> : null}

@@ -21,7 +21,7 @@ export default function AdminHome() {
   return (
     <div className="space-y-5 sm:space-y-6">
       <div>
-        <h2 className="text-xl font-bold sm:text-2xl">Overview</h2>
+        <h2 className="page-title">Overview</h2>
         <p className="mt-1 text-sm text-slate-500">Snapshot of platform activity</p>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">

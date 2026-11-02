@@ -1,10 +1,10 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { money, date, STATUS_COLORS, STATUS_DESCRIPTIONS, STATUS_FILTER_LABELS } from "@/lib/format";
+import { STATUS_COLORS, STATUS_DESCRIPTIONS, STATUS_FILTER_LABELS } from "@/lib/format";
+import { TradeListItem } from "@/components/PageUi";
 
 const STATUSES = ["", "PENDING", "PROCESSING", "INFO_REQUESTED", "APPROVED", "REJECTED", "PAID", "CANCELLED"];
 
@@ -48,30 +48,35 @@ function TradesInner() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <h2 className="text-xl font-bold sm:text-2xl">Trades</h2>
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth: "thin" }}>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="page-title">Trades</h2>
+        <span className="text-sm text-slate-500">{trades.length} shown</span>
+      </div>
+      <div className="scrollbar-none -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
         {STATUSES.map((s) => (
           <button
             key={s || "ALL"}
             type="button"
             onClick={() => setStatus(s)}
             title={STATUS_FILTER_LABELS[s]}
-            className={`badge shrink-0 ${status === s ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}
+            className={status === s ? "chip-on" : "chip-off"}
           >
-            {s || "ALL"}
+            {(s || "ALL").replace("_", " ")}
           </button>
         ))}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:gap-3">
         <input
           className="input w-full"
-          placeholder="Search by trade ID, card name, or seller…"
+          type="search"
+          placeholder="Search trade ID, card or seller…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
         <select
-          className="input shrink-0 sm:w-52"
+          aria-label="Sort trades"
+          className="input w-[8.5rem] sm:w-52"
           value={sort}
           onChange={(e) => setSort(e.target.value as typeof sort)}
         >
@@ -107,40 +112,25 @@ function TradesInner() {
 
       <div className="card divide-y divide-slate-100 overflow-hidden">
         {trades.map((t) => (
-          <Link
+          <TradeListItem
             key={t.id}
+            trade={t}
             href={`/admin/trades/${t.id}`}
-            className="flex flex-col gap-2 p-4 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0">
-              <div className="font-semibold">
-                {t.cardType?.name} · {t.country} · {t.medium}
-              </div>
-              <div className="mt-1 text-sm text-slate-500">
-                <span className="font-mono text-xs sm:text-sm">{t.tradeNumber}</span>
-                <span className="mx-1.5">·</span>
-                {t.user?.displayName || t.user?.email}
-              </div>
-              <div className="mt-0.5 text-sm text-slate-500">
-                {t.cardAmount} {t.currency} → {money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)}
-                <span className="mx-1.5 text-slate-300">·</span>
-                <span className="text-xs text-slate-400">{date(t.createdAt)}</span>
-              </div>
-            </div>
-            <span className="flex shrink-0 flex-col items-start gap-1 sm:items-end">
-              <span className={`badge w-fit ${STATUS_COLORS[t.status]}`} title={STATUS_DESCRIPTIONS[t.status]}>
-                {t.status}
-              </span>
-              {t.reviewFlag && (
-                <span className="badge w-fit bg-amber-100 text-amber-800" title={t.reviewFlagReason}>
-                  ⚑ Possible duplicate
+            seller={t.user?.displayName || t.user?.email}
+            statusTitle={STATUS_DESCRIPTIONS[t.status]}
+            extraBadge={
+              t.reviewFlag ? (
+                <span className="badge bg-amber-100 text-amber-800" title={t.reviewFlagReason}>
+                  ⚑ Duplicate?
                 </span>
-              )}
-            </span>
-          </Link>
+              ) : null
+            }
+          />
         ))}
         {trades.length === 0 && (
-          <p className="p-6 text-sm text-slate-400">{q.trim() ? "No trades match your search." : "No trades."}</p>
+          <p className="p-6 text-center text-sm text-slate-400">
+            {q.trim() ? "No trades match your search." : "No trades."}
+          </p>
         )}
       </div>
     </div>

@@ -11,14 +11,42 @@ export default function AdminReferralsPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Referral program</h2>
-      <p className="text-sm text-slate-500">
-        The referral percentage is configured under <strong>Rates &amp; cards → Exchange rates &amp; deductions</strong>.
-        Referrers earn that % of every successful trade their referrals make, for life.
-      </p>
+    <div className="space-y-5 sm:space-y-6">
+      <div>
+        <h2 className="page-title">Referral program</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          The referral percentage is configured under <strong>Rates &amp; cards → Exchange rates &amp; deductions</strong>.
+          Referrers earn that % of every successful trade their referrals make, for life.
+        </p>
+      </div>
 
-      <div className="card overflow-x-auto">
+      {/* Phones: cards */}
+      <div className="space-y-3 sm:hidden">
+        {data.map((r) => (
+          <div key={r.id} className="card p-4">
+            <div className="truncate font-semibold">{r.displayName || "—"}</div>
+            <div className="break-all text-sm text-slate-500">{r.email}</div>
+            <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-xs">
+              <div className="min-w-0">
+                <div className="text-slate-400">Code</div>
+                <div className="truncate font-mono font-semibold text-slate-800">{r.referralCode}</div>
+              </div>
+              <div>
+                <div className="text-slate-400">Referrals</div>
+                <div className="font-semibold text-slate-800">{r._count.referrals}</div>
+              </div>
+              <div>
+                <div className="text-slate-400">Earnings</div>
+                <div className="font-semibold text-slate-800">{r._count.referralEarnings}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+        {data.length === 0 && <p className="card p-6 text-center text-sm text-slate-400">No referrers yet.</p>}
+      </div>
+
+      {/* Tablet and up: table */}
+      <div className="card hidden overflow-x-auto sm:block">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
@@ -33,7 +61,7 @@ export default function AdminReferralsPage() {
               <tr key={r.id}>
                 <td className="p-3">
                   <div className="font-medium">{r.displayName || "—"}</div>
-                  <div className="text-slate-500">{r.email}</div>
+                  <div className="break-all text-slate-500">{r.email}</div>
                 </td>
                 <td className="p-3 font-mono">{r.referralCode}</td>
                 <td className="p-3">{r._count.referrals}</td>

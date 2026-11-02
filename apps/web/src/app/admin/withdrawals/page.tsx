@@ -95,12 +95,12 @@ function NewWithdrawalForm({ onCreated }: { onCreated: () => void }) {
       <h3 className="font-bold">Create withdrawal for a user</h3>
 
       {selectedUser ? (
-        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-          <span>
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+          <span className="min-w-0 break-words">
             {selectedUser.displayName || selectedUser.email}
-            <span className="ml-1 text-slate-400">({selectedUser.email})</span>
+            <span className="block break-all text-xs text-slate-400">{selectedUser.email}</span>
           </span>
-          <button type="button" onClick={() => setSelectedUser(null)} className="text-xs font-semibold text-red-600">
+          <button type="button" onClick={() => setSelectedUser(null)} className="shrink-0 text-xs font-semibold text-red-600">
             Change
           </button>
         </div>
@@ -119,9 +119,10 @@ function NewWithdrawalForm({ onCreated }: { onCreated: () => void }) {
                   key={u.id}
                   type="button"
                   onClick={() => selectUser(u)}
-                  className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                  className="block w-full px-3 py-2.5 text-left text-sm hover:bg-slate-50"
                 >
-                  {u.displayName || u.email} <span className="text-slate-400">({u.email})</span>
+                  {u.displayName || u.email}
+                  <span className="block break-all text-xs text-slate-400">{u.email}</span>
                 </button>
               ))}
             </div>
@@ -289,22 +290,22 @@ function WithdrawalsInner() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold sm:text-2xl">Withdrawals</h2>
-        <button type="button" onClick={() => setShowNew((v) => !v)} className="btn-ghost text-sm">
-          {showNew ? "Close" : "+ New withdrawal"}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="page-title">Withdrawals</h2>
+        <button type="button" onClick={() => setShowNew((v) => !v)} className="btn-ghost py-2 text-sm">
+          {showNew ? "Close" : "+ New"}
         </button>
       </div>
 
       {showNew && <NewWithdrawalForm onCreated={() => { setShowNew(false); load(); }} />}
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" style={{ scrollbarWidth: "thin" }}>
+      <div className="scrollbar-none -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
         {STATUSES.map((s) => (
           <button
             key={s || "ALL"}
             type="button"
             onClick={() => setStatus(s)}
-            className={`badge shrink-0 ${status === s ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"}`}
+            className={status === s ? "chip-on" : "chip-off"}
           >
             {s || "ALL"}
           </button>
@@ -313,34 +314,62 @@ function WithdrawalsInner() {
 
       <div className="card divide-y divide-slate-100 overflow-hidden">
         {items.map((w) => (
-          <div key={w.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="font-semibold">
-                {money(w.amount, w.currency)}
-                <span className="mx-1.5 font-normal text-slate-400">·</span>
-                <span className="font-medium text-slate-700">{w.user?.displayName || w.user?.email}</span>
+          <div key={w.id} className="flex flex-col gap-3 p-4 sm:p-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-base font-bold text-slate-900">{money(w.amount, w.currency)}</div>
+                  <div className="truncate text-sm font-medium text-slate-700">{w.user?.displayName || w.user?.email}</div>
+                </div>
+                <span className={`badge shrink-0 ${STATUS_COLORS[w.status]}`}>{w.status}</span>
               </div>
-              <div className="mt-1 break-all text-sm text-slate-500">{withdrawalDestination(w)}</div>
+              <div className="mt-2 break-all rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                {withdrawalDestination(w)}
+              </div>
               {w.fee > 0 && (
-                <div className="mt-0.5 text-xs text-slate-400">+{money(w.fee, w.currency)} network fee charged</div>
+                <div className="mt-1 text-xs text-slate-400">+{money(w.fee, w.currency)} network fee charged</div>
               )}
-              {w.adminNote && <div className="mt-1 break-all text-xs text-amber-700">Note: {w.adminNote}</div>}
-              <div className="mt-0.5 text-xs text-slate-400">{date(w.createdAt)}</div>
+              {w.adminNote && <div className="mt-1 break-words text-xs text-amber-700">Note: {w.adminNote}</div>}
+              <div className="mt-1 text-xs text-slate-400">{date(w.createdAt)}</div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`badge ${STATUS_COLORS[w.status]}`}>{w.status}</span>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center xl:max-w-sm xl:justify-end">
+              {["PENDING", "PROCESSING"].includes(w.status) && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => act(w.id, "PAID")}
+                    className="btn-sm col-span-2 bg-emerald-600 py-2.5 text-white hover:bg-emerald-700 sm:py-2"
+                  >
+                    Mark paid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => act(w.id, "PROCESSING")}
+                    className="btn-sm bg-blue-100 py-2.5 text-blue-700 sm:py-2"
+                  >
+                    Processing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => act(w.id, "REJECTED")}
+                    className="btn-sm bg-red-100 py-2.5 text-red-700 sm:py-2"
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
               {w.paymentEvidenceUrl && (
                 <a
                   href={w.paymentEvidenceUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700"
+                  className="btn-sm bg-slate-100 py-2.5 text-slate-700 sm:py-2"
                 >
                   View evidence
                 </a>
               )}
-              <label className="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                {w.paymentEvidenceUrl ? "Replace" : "Upload evidence"}
+              <label className="btn-sm cursor-pointer bg-slate-100 py-2.5 text-slate-700 sm:py-2">
+                {w.paymentEvidenceUrl ? "Replace evidence" : "Upload evidence"}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
@@ -356,40 +385,15 @@ function WithdrawalsInner() {
                 <button
                   type="button"
                   onClick={() => removeEvidence(w.id)}
-                  className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-red-600"
+                  className="btn-sm bg-slate-100 py-2.5 text-red-600 sm:py-2"
                 >
-                  Remove
+                  Remove evidence
                 </button>
-              )}
-              {["PENDING", "PROCESSING"].includes(w.status) && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => act(w.id, "PROCESSING")}
-                    className="rounded-lg bg-blue-100 px-2.5 py-1.5 text-xs font-semibold text-blue-700"
-                  >
-                    Processing
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => act(w.id, "PAID")}
-                    className="rounded-lg bg-green-100 px-2.5 py-1.5 text-xs font-semibold text-green-700"
-                  >
-                    Mark paid
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => act(w.id, "REJECTED")}
-                    className="rounded-lg bg-red-100 px-2.5 py-1.5 text-xs font-semibold text-red-700"
-                  >
-                    Reject
-                  </button>
-                </>
               )}
               <button
                 type="button"
                 onClick={() => editNote(w)}
-                className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700"
+                className="btn-sm bg-slate-100 py-2.5 text-slate-700 sm:py-2"
               >
                 Note
               </button>
@@ -397,7 +401,7 @@ function WithdrawalsInner() {
                 <button
                   type="button"
                   onClick={() => remove(w)}
-                  className="rounded-lg bg-red-100 px-2.5 py-1.5 text-xs font-semibold text-red-700"
+                  className="btn-sm bg-red-50 py-2.5 text-red-700 ring-1 ring-red-200 sm:py-2"
                 >
                   Delete
                 </button>
@@ -405,7 +409,7 @@ function WithdrawalsInner() {
             </div>
           </div>
         ))}
-        {items.length === 0 && <p className="p-6 text-sm text-slate-400">No withdrawals.</p>}
+        {items.length === 0 && <p className="p-6 text-center text-sm text-slate-400">No withdrawals.</p>}
       </div>
     </div>
   );
