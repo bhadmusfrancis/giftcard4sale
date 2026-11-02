@@ -25,11 +25,25 @@ export default function AdminRatesPage() {
 
 function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
   const [config, setConfig] = useState<any>(null);
+  const [fx, setFx] = useState<any>(null);
   const { busy: saving, status, run, statusRef } = useAsyncAction();
+  const fxAction = useAsyncAction({ scrollOnStatus: false });
 
   useEffect(() => {
-    api("/admin/config").then((d) => setConfig(d.config));
+    api("/admin/config").then((d) => {
+      setConfig(d.config);
+      setFx(d.fx ?? null);
+    });
   }, []);
+
+  async function refreshFx() {
+    await fxAction.run(async () => {
+      const d = await api("/admin/fx/refresh", { method: "POST" });
+      if (d.config) setConfig(d.config);
+      if (d.fx) setFx(d.fx);
+      return d;
+    }, (d: any) => `CBN rate ₦${d.fx?.ngnPerUsd} (${d.fx?.rateDate}) fetched.`);
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -57,11 +71,16 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           sttRecommendedSellers: Number(config.sttRecommendedSellers ?? 10),
           sttEcodeReductionPercent: Number(config.sttEcodeReductionPercent ?? 20),
           euroAppleOddDenomReductionPercent: Number(config.euroAppleOddDenomReductionPercent ?? 15),
+          sogoMaxGapPercent: Number(config.sogoMaxGapPercent ?? 25),
+          sttFallbackReductionPercent: Number(config.sttFallbackReductionPercent ?? 15),
+          ngnPerUsdtAutoSync: config.ngnPerUsdtAutoSync !== false,
+          ngnPerUsdtReductionPercent: Number(config.ngnPerUsdtReductionPercent ?? 8),
           maxBankAccounts: Number(config.maxBankAccounts ?? 5),
           maxMomoAccounts: Number(config.maxMomoAccounts ?? 5),
         },
       });
       if (d.config) setConfig(d.config);
+      if (d.fx) setFx(d.fx);
       if (d.autoResellOverrideApplied || d.cardDeductionsReset) onCardsChanged?.();
       return d;
     }, () => "Config saved successfully.");
@@ -79,6 +98,46 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
       </p>
       <div className="mt-4 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:gap-4 xl:grid-cols-3">
         <Field label="NGN per 1 USDT" value={config.rates.ngnPerUsdt} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerUsdt: v } })} />
+        <Field
+          label="NGN per USDT reduction % (off CBN rate)"
+          value={config.ngnPerUsdtReductionPercent ?? 8}
+          onChange={(v) => setConfig({ ...config, ngnPerUsdtReductionPercent: v })}
+        />
+        <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={config.ngnPerUsdtAutoSync !== false}
+              onChange={(e) => setConfig({ ...config, ngnPerUsdtAutoSync: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium text-slate-800">Auto-update NGN per USDT from the CBN twice daily</span>
+              <span className="mt-1 block text-slate-500">
+                Every 12 hours, NGN per USDT is set to the Central Bank of Nigeria&apos;s official USD/NGN central rate
+                less the reduction % above. You can still type a figure — it applies until the next refresh. Turn this
+                off to keep a manual figure.
+              </span>
+            </span>
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-slate-600">
+            <span>
+              {fx?.ngnPerUsd
+                ? `CBN official: ₦${Number(fx.ngnPerUsd).toLocaleString()} (${fx.rateDate}) → ₦${(
+                    Number(fx.ngnPerUsd) *
+                    (1 - Number(config.ngnPerUsdtReductionPercent ?? 8) / 100)
+                  ).toLocaleString(undefined, { maximumFractionDigits: 2 })} per USDT · fetched ${new Date(
+                    fx.fetchedAt
+                  ).toLocaleString()}`
+                : "CBN official rate not fetched yet."}
+              {fx?.lastError ? ` · last attempt failed: ${fx.lastError}` : ""}
+            </span>
+            <button type="button" onClick={refreshFx} className="btn-ghost px-3 py-1.5 text-xs" disabled={fxAction.busy}>
+              {fxAction.busy ? "Fetching…" : "Fetch CBN rate now"}
+            </button>
+          </div>
+          <FormFeedback status={fxAction.status} anchorRef={fxAction.statusRef} />
+        </div>
         <Field label="NGN per 1 GHS (Cedi)" value={config.rates.ngnPerGhs} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerGhs: v } })} />
         <Field label="Referral %" value={config.referralPercent} onChange={(v) => setConfig({ ...config, referralPercent: v })} />
         <Field label="Naira deduction %" value={config.reductions.nairaReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, nairaReductionPercent: v } })} />
@@ -103,6 +162,16 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           label="E-code deduction % (no e-code offers)"
           value={config.sttEcodeReductionPercent ?? 20}
           onChange={(v) => setConfig({ ...config, sttEcodeReductionPercent: v })}
+        />
+        <Field
+          label="Drop Sogo when this % below SafeTheTrade"
+          value={config.sogoMaxGapPercent ?? 25}
+          onChange={(v) => setConfig({ ...config, sogoMaxGapPercent: v })}
+        />
+        <Field
+          label="Never quote below SafeTheTrade less %"
+          value={config.sttFallbackReductionPercent ?? 15}
+          onChange={(v) => setConfig({ ...config, sttFallbackReductionPercent: v })}
         />
         <Field
           label="Euro Apple odd-denomination deduction %"
@@ -194,8 +263,9 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
         A SafeTheTrade rate is quoted on its own only when at least this many distinct sellers back it. When none of
         a card&apos;s SafeTheTrade offers say they accept e-codes, its e-code rate is the physical rate less the e-code
-        deduction %. The lower of SafeTheTrade and Sogo wins, except that a Sogo rate more than 25% below
-        SafeTheTrade&apos;s is dropped and the SafeTheTrade rate less 15% is quoted instead. An e-code never pays more than the physical
+        deduction %. The lower of SafeTheTrade and Sogo wins, except that a Sogo rate more than the &quot;drop
+        Sogo&quot; % below SafeTheTrade&apos;s is ignored, and no rate is ever quoted below SafeTheTrade less the
+        &quot;never quote below&quot; %. An e-code never pays more than the physical
         card. Minimum
         withdrawal amounts apply to user wallet send/withdraw requests. The odd-denomination deduction applies on
         top of the payout deduction when a Euro Apple/iTunes amount is not a multiple of 5 or 50. Changing a

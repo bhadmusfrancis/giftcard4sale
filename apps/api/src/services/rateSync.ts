@@ -31,18 +31,28 @@ const SYNCED_OFFER_COUNT = 999;
  * resells at, and SafeTheTrade's thin order book routinely prices well above
  * it; without the ceiling we would commit to payouts we cannot recover.
  *
- * Except when Sogo is far below the market: a Sogo rate more than
- * `SOGO_MAX_GAP` under SafeTheTrade's is a stale or out-of-market quote
- * (Amazon CAD at 22% of face against a book at ~70%), so it is dropped and
- * SafeTheTrade's rate quotes less `STT_FALLBACK_REDUCTION` instead.
+ * Within limits, both admin-set: a Sogo rate more than `sogoMaxGapPercent`
+ * under SafeTheTrade's is a stale or out-of-market quote (Amazon CAD at 22% of
+ * face against a book at ~70%) and is dropped, and no tier is ever quoted
+ * below SafeTheTrade's rate less `sttFallbackReductionPercent` — a Sogo cap
+ * deeper than that floor yields the floor instead.
  */
-const SOGO_MAX_GAP = 0.25;
-const STT_FALLBACK_REDUCTION = 0.15;
+const DEFAULT_SOGO_MAX_GAP_PERCENT = 25;
+const DEFAULT_STT_FALLBACK_REDUCTION_PERCENT = 15;
 
-/** SafeTheTrade's rate bounded by Sogo's, per the rule above. */
-function capAtSogo(stt: number, sogo: number | undefined): number {
+function capAtSogo(
+  stt: number,
+  sogo: number | undefined,
+  policy: Pick<PrimaryRatePolicy, "sogoMaxGapPercent" | "sttFallbackReductionPercent">
+): number {
   if (sogo == null || sogo >= stt) return stt;
-  return (stt - sogo) / stt > SOGO_MAX_GAP ? stt * (1 - STT_FALLBACK_REDUCTION) : sogo;
+  const floor = stt * (1 - clampPercent(policy.sttFallbackReductionPercent) / 100);
+  const outOfMarket = (stt - sogo) / stt > clampPercent(policy.sogoMaxGapPercent) / 100;
+  return Math.max(outOfMarket ? floor : sogo, floor);
+}
+
+function clampPercent(value: number): number {
+  return Math.min(Math.max(Number(value) || 0, 0), 100);
 }
 
 /**
@@ -401,6 +411,10 @@ interface PrimaryRatePolicy {
   minOfferOwners: number;
   /** % off the physical rate that gives the e-code rate when no offer accepts e-codes. */
   ecodeReductionPercent: number;
+  /** A Sogo rate more than this % under SafeTheTrade's is dropped. */
+  sogoMaxGapPercent: number;
+  /** No tier is quoted below SafeTheTrade's rate less this %. */
+  sttFallbackReductionPercent: number;
 }
 
 /**
@@ -408,19 +422,18 @@ interface PrimaryRatePolicy {
  *
  * The e-code rate comes from the offers whose page says they accept e-codes;
  * with none, it is the physical rate less the admin e-code deduction. Each
- * medium is capped at Sogo's rate for the same medium (`capAtSogo` — a Sogo
- * rate more than 25% under is dropped for STT less 15%), and an e-code never
- * pays more than the physical card.
+ * medium is capped at Sogo's rate for the same medium within the admin limits
+ * (`capAtSogo`), and an e-code never pays more than the physical card.
  */
 function primaryTierRates(
   rate: SyncedCardRate,
   sogo: Map<CardMedium, number>,
   policy: PrimaryRatePolicy
 ): Record<CardMedium, { source: number; final: number }> {
-  const deduction = Math.min(Math.max(policy.ecodeReductionPercent, 0), 100) / 100;
+  const deduction = clampPercent(policy.ecodeReductionPercent) / 100;
   const ecodeSource = rate.ecodeNairaPerUnit ?? rate.nairaPerUnit * (1 - deduction);
-  const physical = capAtSogo(rate.nairaPerUnit, sogo.get("PHYSICAL"));
-  const ecode = Math.min(capAtSogo(ecodeSource, sogo.get("ECODE")), physical);
+  const physical = capAtSogo(rate.nairaPerUnit, sogo.get("PHYSICAL"), policy);
+  const ecode = Math.min(capAtSogo(ecodeSource, sogo.get("ECODE"), policy), physical);
   return {
     PHYSICAL: { source: rate.nairaPerUnit, final: physical },
     ECODE: { source: ecodeSource, final: ecode },
@@ -431,9 +444,9 @@ function primaryTierRates(
  * SafeTheTrade rate for one card + currency.
  *
  * SafeTheTrade wins wherever it lists the card, but never above Sogo's rate
- * for the same card — the lesser of the two sources is what quotes, unless
- * Sogo is more than 25% under, when STT less 15% quotes instead. Sogo also
- * fills the cards and currencies SafeTheTrade does not price.
+ * for the same card — the lesser of the two sources is what quotes, within
+ * the admin gap and floor limits (`capAtSogo`). Sogo also fills the cards and
+ * currencies SafeTheTrade does not price.
  *
  * A tier is quoted only once enough distinct sellers agree on the price —
  * with or without a Sogo reference. A book that thins below the threshold
@@ -607,6 +620,8 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
   let minOfferOwners = FALLBACK_MIN_OFFER_OWNERS;
   let recommendedSellers = env.rateSync.sttRecommendedSellers;
   let ecodeReductionPercent = env.rateSync.sttEcodeReductionPercent;
+  let sogoMaxGapPercent = DEFAULT_SOGO_MAX_GAP_PERCENT;
+  let sttFallbackReductionPercent = DEFAULT_STT_FALLBACK_REDUCTION_PERCENT;
   if (!env.safeTheTrade.enabled) {
     // The primary source being switched off is not a clean sync — the rows it
     // owns cannot refresh, so the run must report it rather than complete.
@@ -618,6 +633,8 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
       minOfferOwners = Math.max(1, config.sttMinOfferOwners);
       recommendedSellers = Math.max(1, config.sttRecommendedSellers);
       ecodeReductionPercent = config.sttEcodeReductionPercent;
+      sogoMaxGapPercent = config.sogoMaxGapPercent;
+      sttFallbackReductionPercent = config.sttFallbackReductionPercent;
       ngnPerUsdt = config.rates.ngnPerUsdt;
       primaryRates = await fetchSafeTheTradeRates(ngnPerUsdt, minOfferOwners, recommendedSellers);
     } catch (err) {
@@ -691,6 +708,8 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
       await syncPrimaryRate(rate, sogoReference, sttRanges, covered, touchedCards, capped, summary, {
         minOfferOwners,
         ecodeReductionPercent,
+        sogoMaxGapPercent,
+        sttFallbackReductionPercent,
       });
     } catch (err) {
       summary.errors.push(`${rate.cardName} ${rate.currency}: ${(err as Error).message}`);

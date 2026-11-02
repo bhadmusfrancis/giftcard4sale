@@ -40,6 +40,10 @@ export async function getRateConfig(): Promise<{
   sttRecommendedSellers: number;
   sttEcodeReductionPercent: number;
   euroAppleOddDenomReductionPercent: number;
+  sogoMaxGapPercent: number;
+  sttFallbackReductionPercent: number;
+  ngnPerUsdtAutoSync: boolean;
+  ngnPerUsdtReductionPercent: number;
   maxBankAccounts: number;
   maxMomoAccounts: number;
 }> {
@@ -101,6 +105,10 @@ export async function getRateConfig(): Promise<{
     sttRecommendedSellers: cfg.sttRecommendedSellers,
     sttEcodeReductionPercent: cfg.sttEcodeReductionPercent,
     euroAppleOddDenomReductionPercent: cfg.euroAppleOddDenomReductionPercent,
+    sogoMaxGapPercent: cfg.sogoMaxGapPercent,
+    sttFallbackReductionPercent: cfg.sttFallbackReductionPercent,
+    ngnPerUsdtAutoSync: cfg.ngnPerUsdtAutoSync,
+    ngnPerUsdtReductionPercent: cfg.ngnPerUsdtReductionPercent,
     maxBankAccounts: cfg.maxBankAccounts,
     maxMomoAccounts: cfg.maxMomoAccounts,
   };

@@ -22,6 +22,7 @@ import { noonesWebhookRouter } from "./routes/noonesWebhook";
 import { startNoOnesJobs } from "./services/noones";
 import { startInsightsScheduler } from "./services/insights/scheduler";
 import { startRateSyncScheduler } from "./services/rateSyncScheduler";
+import { startFxRateScheduler } from "./services/fxRate";
 import {
   ensureCardSeoLandingPagesPublished,
   repairManualRateCatalog,
@@ -130,6 +131,7 @@ export function mountApi(app: Express): void {
     .finally(() => {
       startNoOnesJobs();
       startRateSyncScheduler();
+      startFxRateScheduler();
       startInsightsScheduler();
     });
 }

@@ -98,6 +98,12 @@ export const env = {
     ngnPerGhs: num(process.env.RATE_NGN_PER_GHS, 110),
   },
 
+  /** Twice-daily official USD/NGN (CBN) that sets NGN per USDT, less the admin reduction %. */
+  fx: {
+    enabled: (process.env.FX_SYNC_ENABLED || process.env.RATE_SYNC_ENABLED || "true") === "true",
+    cbnRatesUrl: process.env.CBN_RATES_URL || "https://www.cbn.gov.ng/api/GetAllExchangeRates",
+  },
+
   reductions: {
     nairaReductionPercent: num(process.env.NAIRA_REDUCTION_PERCENT, 20),
     usdtReductionPercent: num(

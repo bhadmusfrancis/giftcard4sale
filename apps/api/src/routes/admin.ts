@@ -14,6 +14,7 @@ import { payoutNgnToBank } from "../services/payoutProvider";
 import { notify, notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getRateConfig } from "../services/rateConfig";
+import { getFxRateState, ngnPerUsdtFromOfficial, refreshNgnPerUsdt } from "../services/fxRate";
 import {
   executeNoOnesResell,
   isNoOnesConfigured,
@@ -1274,8 +1275,22 @@ adminRouter.delete(
 adminRouter.get(
   "/config",
   asyncHandler(async (_req, res) => {
-    const config = await getRateConfig();
-    res.json({ config });
+    const [config, fx] = await Promise.all([getRateConfig(), getFxRateState()]);
+    res.json({ config, fx });
+  })
+);
+
+// Fetch the CBN rate now (the scheduler does it twice daily) and apply it when auto-sync is on.
+adminRouter.post(
+  "/fx/refresh",
+  asyncHandler(async (_req, res) => {
+    try {
+      await refreshNgnPerUsdt();
+    } catch (err) {
+      return res.status(502).json({ error: `CBN rate fetch failed: ${(err as Error).message}`, fx: await getFxRateState() });
+    }
+    const [config, fx] = await Promise.all([getRateConfig(), getFxRateState()]);
+    res.json({ config, fx });
   })
 );
 
@@ -1303,6 +1318,10 @@ adminRouter.put(
         sttRecommendedSellers: z.number().int().min(1).max(500).optional(),
         sttEcodeReductionPercent: z.number().int().min(0).max(100),
         euroAppleOddDenomReductionPercent: z.number().int().min(0).max(100),
+        sogoMaxGapPercent: z.number().int().min(0).max(100).optional(),
+        sttFallbackReductionPercent: z.number().int().min(0).max(100).optional(),
+        ngnPerUsdtAutoSync: z.boolean().optional(),
+        ngnPerUsdtReductionPercent: z.number().int().min(0).max(100).optional(),
         maxBankAccounts: z.number().int().min(1).max(50),
         maxMomoAccounts: z.number().int().min(1).max(50),
       }),
@@ -1327,9 +1346,25 @@ adminRouter.put(
       deductionReset.ghsReductionPercent = null;
     const cardDeductionsReset = Object.keys(deductionReset).length > 0;
 
+    // With auto-sync on, a changed reduction % (or turning auto-sync on)
+    // re-derives NGN per USDT from the last CBN rate right away. A figure the
+    // admin typed in this save is kept as entered; the next twice-daily
+    // refresh replaces it while auto-sync stays on.
+    const ngnPerUsdtAutoSync = data.ngnPerUsdtAutoSync ?? prevConfig.ngnPerUsdtAutoSync;
+    const ngnPerUsdtReductionPercent = data.ngnPerUsdtReductionPercent ?? prevConfig.ngnPerUsdtReductionPercent;
+    let ngnPerUsdt = data.ngnPerUsdt;
+    const figureEdited = data.ngnPerUsdt !== prevConfig.rates.ngnPerUsdt;
+    const derivationChanged =
+      ngnPerUsdtReductionPercent !== prevConfig.ngnPerUsdtReductionPercent ||
+      (ngnPerUsdtAutoSync && !prevConfig.ngnPerUsdtAutoSync);
+    if (ngnPerUsdtAutoSync && derivationChanged && !figureEdited) {
+      const fx = await getFxRateState();
+      if (fx.ngnPerUsd) ngnPerUsdt = ngnPerUsdtFromOfficial(fx.ngnPerUsd, ngnPerUsdtReductionPercent);
+    }
+
     await prisma.rateConfig.create({
       data: {
-        ngnPerUsdt: new Prisma.Decimal(data.ngnPerUsdt),
+        ngnPerUsdt: new Prisma.Decimal(ngnPerUsdt),
         ngnPerGhs: new Prisma.Decimal(data.ngnPerGhs),
         nairaReductionPercent: data.nairaReductionPercent,
         usdtReductionPercent: data.usdtReductionPercent,
@@ -1348,6 +1383,10 @@ adminRouter.put(
         sttRecommendedSellers: data.sttRecommendedSellers ?? prevConfig.sttRecommendedSellers,
         sttEcodeReductionPercent: data.sttEcodeReductionPercent,
         euroAppleOddDenomReductionPercent: data.euroAppleOddDenomReductionPercent,
+        sogoMaxGapPercent: data.sogoMaxGapPercent ?? prevConfig.sogoMaxGapPercent,
+        sttFallbackReductionPercent: data.sttFallbackReductionPercent ?? prevConfig.sttFallbackReductionPercent,
+        ngnPerUsdtAutoSync,
+        ngnPerUsdtReductionPercent,
         maxBankAccounts: data.maxBankAccounts,
         maxMomoAccounts: data.maxMomoAccounts,
       },
@@ -1359,8 +1398,8 @@ adminRouter.put(
     if (Object.keys(cardCascade).length > 0) {
       await prisma.cardType.updateMany({ data: cardCascade });
     }
-    const config = await getRateConfig();
-    res.json({ config, autoResellOverrideApplied, cardDeductionsReset });
+    const [config, fx] = await Promise.all([getRateConfig(), getFxRateState()]);
+    res.json({ config, fx, autoResellOverrideApplied, cardDeductionsReset });
   })
 );
 

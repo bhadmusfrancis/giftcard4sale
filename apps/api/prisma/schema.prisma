@@ -230,11 +230,31 @@ model RateConfig {
   sttEcodeReductionPercent  Int      @default(20)
   // Extra % off the payout for Euro Apple/iTunes amounts not divisible by 5 or 50.
   euroAppleOddDenomReductionPercent Int @default(15)
+  // A Sogo rate more than this % below SafeTheTrade's is dropped as out of market.
+  sogoMaxGapPercent         Int      @default(25)
+  // Floor under every SafeTheTrade rate: never quoted below STT less this %.
+  sttFallbackReductionPercent Int    @default(15)
+  // Twice daily, ngnPerUsdt = CBN official USD/NGN less ngnPerUsdtReductionPercent.
+  ngnPerUsdtAutoSync        Boolean  @default(true)
+  ngnPerUsdtReductionPercent Int     @default(8)
   // Saved payout-account caps per user (accounts can't be removed once added).
   maxBankAccounts         Int      @default(5)
   maxMomoAccounts         Int      @default(5)
   updatedAt             DateTime @updatedAt
   createdAt             DateTime @default(now())
+}
+
+// Last official USD/NGN fetched from the CBN. Kept out of RateConfig for the
+// same reason as RateSyncState: an admin save inserts a fresh config row.
+model FxRateState {
+  id            String    @id @default("singleton")
+  ngnPerUsd     Decimal?  @db.Decimal(20, 4) // CBN central rate
+  rateDate      String? // CBN rate date, e.g. "2026-10-30"
+  source        String?
+  fetchedAt     DateTime?
+  lastAttemptAt DateTime?
+  lastError     String?
+  updatedAt     DateTime  @updatedAt
 }
 
 // Last catalog rate sync. Kept out of RateConfig because an admin config save
