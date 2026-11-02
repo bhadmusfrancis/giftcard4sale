@@ -150,23 +150,53 @@ const COMMON_PROVIDERS = new Set([
   "yandex.ru",
 ]);
 
+// Second-level public suffixes where the registrable domain is three labels
+// (e.g. example.com.ng, example.co.uk) rather than two (workinc.top).
+const MULTI_LABEL_SUFFIXES = new Set([
+  "co.uk", "org.uk", "ac.uk", "gov.uk",
+  "com.ng", "org.ng", "net.ng", "gov.ng", "edu.ng",
+  "com.gh", "org.gh", "co.za", "co.ke", "or.ke", "co.in",
+  "com.au", "net.au", "org.au", "com.br", "com.mx", "co.nz",
+  "com.sg", "com.my", "com.pk", "com.ph", "com.tw", "com.hk",
+  "com.vn", "com.id", "com.ar", "com.co", "com.pe", "com.sa",
+  "com.eg", "com.tr", "co.jp",
+]);
+
+/** Registrable domain for an email host: last two labels, or three under a multi-label suffix. */
+function apexDomain(domain: string): string {
+  const labels = domain.split(".");
+  if (labels.length <= 2) return domain;
+  const last2 = labels.slice(-2).join(".");
+  return MULTI_LABEL_SUFFIXES.has(last2) ? labels.slice(-3).join(".") : last2;
+}
+
 /**
  * Bots rotate IPs but tend to reuse one custom domain. Caps new accounts per
  * non-consumer domain in a rolling 24h window so the next wave is stopped
- * automatically, without waiting for a manual blocklist entry.
+ * automatically, without waiting for a manual blocklist entry. Counts by apex
+ * domain so subdomain rotation (a@1.x.top, b@2.x.top) cannot bypass the cap,
+ * and ignores banned accounts so a cleaned-up wave does not block later signups.
  */
 export async function isDomainVelocityExceeded(email: string): Promise<boolean> {
   const domain = emailDomain(email);
   const max = env.registration.maxPerDomainPerDay;
-  if (!domain || max <= 0 || COMMON_PROVIDERS.has(domain)) return false;
+  if (!domain || max <= 0 || COMMON_PROVIDERS.has(domain) || MULTI_LABEL_SUFFIXES.has(domain)) {
+    return false;
+  }
+  const apex = apexDomain(domain);
+  if (COMMON_PROVIDERS.has(apex)) return false;
   const recent = await prisma.user.count({
     where: {
-      email: { endsWith: `@${domain}` },
+      accountStatus: { not: "BANNED" },
+      OR: [
+        { email: { endsWith: `@${apex}`, mode: "insensitive" } },
+        { email: { endsWith: `.${apex}`, mode: "insensitive" } },
+      ],
       createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     },
   });
   if (recent >= max) {
-    console.warn(`[botProtection] registration blocked: ${recent} signups from @${domain} in 24h`);
+    console.warn(`[botProtection] registration blocked: ${recent} signups from ${apex} in 24h`);
     return true;
   }
   return false;

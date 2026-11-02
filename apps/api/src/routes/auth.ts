@@ -230,6 +230,7 @@ authRouter.post(
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user) return res.status(404).json({ error: "User not found" });
     if (user.emailVerified) return res.json({ ok: true, alreadyVerified: true });
+    if (isDisposableEmail(user.email)) return res.json({ ok: true });
 
     const verifyToken = randomToken();
     await prisma.user.update({
@@ -276,7 +277,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { email } = validate(z.object({ email: z.string().email() }), req.body);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (user) await sendPasswordResetEmail(user);
+    if (user && !isDisposableEmail(user.email)) await sendPasswordResetEmail(user);
     res.json({ ok: true });
   })
 );

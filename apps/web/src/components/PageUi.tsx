@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ReactNode, useRef } from "react";
+import { ReactNode, useRef, useState } from "react";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 
 /** One trade in a list: title + status on top, amounts and meta below. Same layout on every screen size. */
@@ -42,7 +42,7 @@ export function TradeListItem({
             {t.cardAmount} {t.currency}
           </span>
           <span className="mx-1.5 text-slate-300">→</span>
-          <span className="font-semibold text-slate-900">{money(t.finalPayout ?? t.quotedPayout, t.payoutCurrency)}</span>
+          <span className="font-semibold text-slate-900">{money(t.finalPayout != null ? t.finalPayout : t.quotedPayout, t.payoutCurrency)}</span>
         </div>
         <div className="flex min-w-0 items-center gap-2 text-[11px] text-slate-400 sm:text-xs">
           <span className="truncate font-mono">{t.tradeNumber}</span>
@@ -70,6 +70,7 @@ export function SegmentedTabs<T extends string>({
 }) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const stickyTopRef = useRef<{ w: number; top: number } | null>(null);
 
   // Bring the newly selected panel to the top of the screen, just under the sticky tab bar.
   function select(id: T) {
@@ -77,7 +78,11 @@ export function SegmentedTabs<T extends string>({
     const anchor = anchorRef.current;
     const bar = barRef.current;
     if (!anchor || !bar) return;
-    const stickyTop = parseFloat(getComputedStyle(bar).top) || 0;
+    const w = window.innerWidth;
+    if (!stickyTopRef.current || stickyTopRef.current.w !== w) {
+      stickyTopRef.current = { w, top: parseFloat(getComputedStyle(bar).top) || 0 };
+    }
+    const stickyTop = stickyTopRef.current.top;
     const top = anchor.getBoundingClientRect().top + window.scrollY - stickyTop;
     requestAnimationFrame(() => window.scrollTo({ top: Math.max(0, top), behavior: "smooth" }));
   }
@@ -128,6 +133,26 @@ export function DetailRow({ label, value, mono = false }: { label: string; value
 
 /** Code block for e-codes / PINs with a copy button. */
 export function CodeBlock({ label, text }: { label: string; text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      if (!navigator.clipboard) throw new Error("clipboard unavailable");
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -135,9 +160,9 @@ export function CodeBlock({ label, text }: { label: string; text: string }) {
         <button
           type="button"
           className="btn-sm bg-slate-100 text-slate-700 hover:bg-slate-200"
-          onClick={() => void navigator.clipboard?.writeText(text)}
+          onClick={() => void copy()}
         >
-          Copy
+          {copied ? "Copied" : "Copy"}
         </button>
       </div>
       <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-slate-50 p-3 font-mono text-sm">{text}</pre>
@@ -158,7 +183,7 @@ export function AttachmentGrid({ items }: { items: Array<{ id: string; url: stri
           className="block aspect-square overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={a.url} alt={a.filename || "Attachment"} className="h-full w-full object-cover" />
+          <img src={a.url} alt={a.filename || "Attachment"} loading="lazy" className="h-full w-full object-cover" />
         </a>
       ))}
     </div>

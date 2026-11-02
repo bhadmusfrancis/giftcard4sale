@@ -51,7 +51,7 @@ function RegisterInner() {
         referralCode: referralCode || undefined,
         registerChallenge,
         website: "",
-        acceptTerms: true,
+        acceptTerms,
         captchaToken: captchaToken || undefined,
       });
       router.push("/dashboard?welcome=1");

@@ -72,6 +72,7 @@ export function TradeChat({
   const firstLoadRef = useRef(true);
   const typingSentAtRef = useRef(0);
   const typingActiveRef = useRef(false);
+  const coarsePointerRef = useRef<boolean | null>(null);
 
   const chatClosed = !isAdmin && (tradeStatus === "REJECTED" || tradeStatus === "CANCELLED");
   const partnerLabel = isAdmin ? "Seller" : "Support";
@@ -406,7 +407,9 @@ export function TradeChat({
               onBlur={stopTyping}
               onKeyDown={(e) => {
                 // Enter sends on keyboards; on touch screens Enter inserts a newline.
-                const touch = window.matchMedia("(pointer: coarse)").matches;
+                const touch =
+                  coarsePointerRef.current ??
+                  (coarsePointerRef.current = window.matchMedia("(pointer: coarse)").matches);
                 if (e.key === "Enter" && !e.shiftKey && !touch) {
                   e.preventDefault();
                   void submitMessage();
