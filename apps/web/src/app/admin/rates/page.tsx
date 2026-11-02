@@ -194,7 +194,8 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
         A country/currency tier is shown in the catalog only when it has at least this many live NoOnes buy offers.
         A SafeTheTrade rate is quoted on its own only when at least this many distinct sellers back it. When none of
         a card&apos;s SafeTheTrade offers say they accept e-codes, its e-code rate is the physical rate less the e-code
-        deduction %. The lowest rate across sources always wins, and an e-code never pays more than the physical
+        deduction %. The lower of SafeTheTrade and Sogo wins, except that a Sogo rate more than 25% below
+        SafeTheTrade&apos;s is dropped and the SafeTheTrade rate less 15% is quoted instead. An e-code never pays more than the physical
         card. Minimum
         withdrawal amounts apply to user wallet send/withdraw requests. The odd-denomination deduction applies on
         top of the payout deduction when a Euro Apple/iTunes amount is not a multiple of 5 or 50. Changing a

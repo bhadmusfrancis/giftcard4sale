@@ -27,10 +27,23 @@ const SYNCED_OFFER_COUNT = 999;
 
 /**
  * Where Sogo prices the same card, its rate is the ceiling for SafeTheTrade —
- * the lesser of the two sources always wins. Sogo is the price a card actually
+ * the lesser of the two sources wins. Sogo is the price a card actually
  * resells at, and SafeTheTrade's thin order book routinely prices well above
  * it; without the ceiling we would commit to payouts we cannot recover.
+ *
+ * Except when Sogo is far below the market: a Sogo rate more than
+ * `SOGO_MAX_GAP` under SafeTheTrade's is a stale or out-of-market quote
+ * (Amazon CAD at 22% of face against a book at ~70%), so it is dropped and
+ * SafeTheTrade's rate quotes less `STT_FALLBACK_REDUCTION` instead.
  */
+const SOGO_MAX_GAP = 0.25;
+const STT_FALLBACK_REDUCTION = 0.15;
+
+/** SafeTheTrade's rate bounded by Sogo's, per the rule above. */
+function capAtSogo(stt: number, sogo: number | undefined): number {
+  if (sogo == null || sogo >= stt) return stt;
+  return (stt - sogo) / stt > SOGO_MAX_GAP ? stt * (1 - STT_FALLBACK_REDUCTION) : sogo;
+}
 
 /**
  * Sellers a marketplace tier needs before it is quoted without a Sogo rate to
@@ -394,10 +407,10 @@ interface PrimaryRatePolicy {
  * Physical and e-code rates for one SafeTheTrade tier.
  *
  * The e-code rate comes from the offers whose page says they accept e-codes;
- * with none, it is the physical rate less the admin e-code deduction. The
- * lowest rate always wins whatever the source — each medium is capped at
- * Sogo's rate for the same medium — and an e-code never pays more than the
- * physical card.
+ * with none, it is the physical rate less the admin e-code deduction. Each
+ * medium is capped at Sogo's rate for the same medium (`capAtSogo` — a Sogo
+ * rate more than 25% under is dropped for STT less 15%), and an e-code never
+ * pays more than the physical card.
  */
 function primaryTierRates(
   rate: SyncedCardRate,
@@ -406,8 +419,8 @@ function primaryTierRates(
 ): Record<CardMedium, { source: number; final: number }> {
   const deduction = Math.min(Math.max(policy.ecodeReductionPercent, 0), 100) / 100;
   const ecodeSource = rate.ecodeNairaPerUnit ?? rate.nairaPerUnit * (1 - deduction);
-  const physical = Math.min(rate.nairaPerUnit, sogo.get("PHYSICAL") ?? Infinity);
-  const ecode = Math.min(ecodeSource, sogo.get("ECODE") ?? Infinity, physical);
+  const physical = capAtSogo(rate.nairaPerUnit, sogo.get("PHYSICAL"));
+  const ecode = Math.min(capAtSogo(ecodeSource, sogo.get("ECODE")), physical);
   return {
     PHYSICAL: { source: rate.nairaPerUnit, final: physical },
     ECODE: { source: ecodeSource, final: ecode },
@@ -418,7 +431,8 @@ function primaryTierRates(
  * SafeTheTrade rate for one card + currency.
  *
  * SafeTheTrade wins wherever it lists the card, but never above Sogo's rate
- * for the same card — the lesser of the two sources is what quotes. Sogo also
+ * for the same card — the lesser of the two sources is what quotes, unless
+ * Sogo is more than 25% under, when STT less 15% quotes instead. Sogo also
  * fills the cards and currencies SafeTheTrade does not price.
  *
  * A tier is quoted only once enough distinct sellers agree on the price —
@@ -699,7 +713,7 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
 
   summary.cardTypes = touchedCards.size;
   if (capped.count) {
-    console.log(`Capped ${capped.count} SafeTheTrade rate(s) at a lower Sogo or physical rate.`);
+    console.log(`Lowered ${capped.count} SafeTheTrade rate(s) to a Sogo cap, the far-below-Sogo fallback or the physical rate.`);
   }
   await ensureCardSeoLandingPagesPublished();
 
