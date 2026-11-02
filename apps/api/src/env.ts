@@ -31,8 +31,16 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || "dev-insecure-secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
 
-  /** Cloudflare Turnstile CAPTCHA — enforced on /register when the secret key is set. */
+  registration: {
+    /** Extra email domains to reject (comma-separated); subdomains are blocked too. */
+    blockedEmailDomains: list(process.env.BLOCKED_EMAIL_DOMAINS).map((d) => d.toLowerCase()),
+    /** Max new accounts per non-consumer email domain per 24h. 0 disables the cap. */
+    maxPerDomainPerDay: num(process.env.REGISTER_MAX_PER_DOMAIN_PER_DAY, 3),
+  },
+
+  /** Cloudflare Turnstile CAPTCHA — enforced on /register when both keys are set. */
   turnstile: {
+    siteKey: process.env.TURNSTILE_SITE_KEY || "",
     secretKey: process.env.TURNSTILE_SECRET_KEY || "",
   },
 
@@ -219,5 +227,10 @@ if (env.isProd) {
   }
   if (problems.length) {
     throw new Error(`Insecure/invalid production config:\n - ${problems.join("\n - ")}`);
+  }
+  if (!env.turnstile.siteKey || !env.turnstile.secretKey) {
+    console.warn(
+      "[env] TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are not both set — registration CAPTCHA is OFF."
+    );
   }
 }

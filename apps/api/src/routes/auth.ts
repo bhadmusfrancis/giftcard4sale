@@ -31,7 +31,9 @@ import {
   verifyRegisterChallenge,
   isHoneypotTripped,
   isDisposableEmail,
+  isDomainVelocityExceeded,
   verifyCaptcha,
+  captchaSiteKey,
 } from "../lib/botProtection";
 
 export const authRouter = Router();
@@ -45,7 +47,7 @@ const registerSchema = z.object({
   registerChallenge: z.string(),
   // Hidden honeypot: real users keep it empty, bots often populate it.
   website: z.string(),
-  // Optional when CAPTCHA is not configured; enforced on /register when secret is set.
+  // Optional when CAPTCHA is not configured; enforced on /register when both keys are set.
   captchaToken: z.string().optional(),
   acceptTerms: z.literal(true, {
     errorMap: () => ({ message: "You must accept the Terms of Service and Privacy Policy" }),
@@ -93,7 +95,7 @@ authRouter.get(
   "/register-challenge",
   apiLimiter,
   asyncHandler(async (_req, res) => {
-    res.json({ challenge: issueRegisterChallenge() });
+    res.json({ challenge: issueRegisterChallenge(), captchaSiteKey: captchaSiteKey() });
   })
 );
 
@@ -117,6 +119,10 @@ authRouter.post(
 
     if (!(await verifyCaptcha(data.captchaToken, req.ip))) {
       return res.status(403).json({ error: "CAPTCHA verification failed." });
+    }
+
+    if (await isDomainVelocityExceeded(email)) {
+      return res.status(429).json({ error: "Too many registrations. Please try again later." });
     }
 
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -158,6 +164,9 @@ authRouter.post(
     const user = await prisma.user.findFirst({ where: { verifyToken: token } });
     if (!user || !user.verifyTokenExp || user.verifyTokenExp < new Date()) {
       return res.status(400).json({ error: "Invalid or expired verification link" });
+    }
+    if (isDisposableEmail(user.email)) {
+      return res.status(403).json({ error: "Please use a valid email address." });
     }
 
     const referredById = user.referredById;
@@ -244,6 +253,9 @@ authRouter.post(
     const user = await prisma.user.findUnique({ where: { email: data.email.toLowerCase() } });
     if (!user || !(await verifyPassword(data.password, user.passwordHash))) {
       return res.status(401).json({ error: "Invalid email or password" });
+    }
+    if (user.role !== "ADMIN" && isDisposableEmail(user.email)) {
+      return res.status(403).json({ error: "Account restricted" });
     }
     const restriction = await getUserRestriction(user.id);
     if (restriction.blocked) {

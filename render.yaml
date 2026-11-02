@@ -24,6 +24,15 @@ services:
         generateValue: true # Render generates a strong secret
       - key: JWT_EXPIRES_IN
         value: 7d
+      # Registration CAPTCHA — enforced only when both Turnstile keys are set.
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
+      - key: BLOCKED_EMAIL_DOMAINS
+        sync: false
+      - key: REGISTER_MAX_PER_DOMAIN_PER_DAY
+        value: "3"
       # --- secrets you paste in the Render dashboard ---
       - key: DATABASE_URL
         sync: false

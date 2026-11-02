@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import rateLimit from "express-rate-limit";
 import { env } from "../env";
+import { prisma } from "../prisma";
 
 /**
  * Layered bot protection for the public registration endpoint:
@@ -8,9 +9,10 @@ import { env } from "../env";
  *  2. register challenge — signed, timestamped token the register page must fetch
  *                          first; rejects submissions faster than a human could type.
  *  3. honeypot           — hidden "website" field; only bots fill it.
- *  4. email hygiene      — disposable domains blocked, gmail dot/plus aliases
- *                          normalized so one inbox cannot mass-register.
- *  5. Turnstile CAPTCHA  — enforced when TURNSTILE_SECRET_KEY is configured.
+ *  4. email hygiene      — disposable/abusive domains (and subdomains) blocked,
+ *                          per-domain signup velocity capped, gmail dot/plus
+ *                          aliases normalized so one inbox cannot mass-register.
+ *  5. Turnstile CAPTCHA  — enforced when TURNSTILE_SITE_KEY + TURNSTILE_SECRET_KEY are set.
  */
 
 // ---- 1. Strict rate limit for account creation ----
@@ -100,9 +102,74 @@ const DISPOSABLE_DOMAINS = new Set([
   "33mail.com",
 ]);
 
+// Domains seen mass-registering bot accounts. Extend at runtime via BLOCKED_EMAIL_DOMAINS.
+const ABUSIVE_DOMAINS = ["workinc.top"];
+
+const BLOCKED_DOMAINS = new Set([
+  ...DISPOSABLE_DOMAINS,
+  ...ABUSIVE_DOMAINS,
+  ...env.registration.blockedEmailDomains,
+]);
+
+export function emailDomain(email: string): string {
+  return email.split("@")[1]?.trim().toLowerCase() ?? "";
+}
+
+/** True for blocked domains and any of their subdomains (e.g. mx.workinc.top). */
 export function isDisposableEmail(email: string): boolean {
-  const domain = email.split("@")[1]?.toLowerCase() ?? "";
-  return DISPOSABLE_DOMAINS.has(domain);
+  const labels = emailDomain(email).split(".");
+  for (let i = 0; i < labels.length - 1; i++) {
+    if (BLOCKED_DOMAINS.has(labels.slice(i).join("."))) return true;
+  }
+  return false;
+}
+
+// Large consumer providers are exempt from the per-domain velocity cap.
+const COMMON_PROVIDERS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "ymail.com",
+  "outlook.com",
+  "hotmail.com",
+  "hotmail.co.uk",
+  "live.com",
+  "msn.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "gmx.com",
+  "gmx.de",
+  "mail.com",
+  "zoho.com",
+  "yandex.com",
+  "yandex.ru",
+]);
+
+/**
+ * Bots rotate IPs but tend to reuse one custom domain. Caps new accounts per
+ * non-consumer domain in a rolling 24h window so the next wave is stopped
+ * automatically, without waiting for a manual blocklist entry.
+ */
+export async function isDomainVelocityExceeded(email: string): Promise<boolean> {
+  const domain = emailDomain(email);
+  const max = env.registration.maxPerDomainPerDay;
+  if (!domain || max <= 0 || COMMON_PROVIDERS.has(domain)) return false;
+  const recent = await prisma.user.count({
+    where: {
+      email: { endsWith: `@${domain}` },
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+  });
+  if (recent >= max) {
+    console.warn(`[botProtection] registration blocked: ${recent} signups from @${domain} in 24h`);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -116,9 +183,16 @@ export function gmailCanonicalLocalPart(email: string): string | null {
   return local.replace(/\./g, "").split("+")[0];
 }
 
-// ---- 5. Cloudflare Turnstile (optional, on when secret key is configured) ----
+// ---- 5. Cloudflare Turnstile (on when both site + secret keys are configured) ----
+export const CAPTCHA_ACTION = "register";
+
 export function isCaptchaEnabled(): boolean {
-  return Boolean(env.turnstile.secretKey);
+  return Boolean(env.turnstile.siteKey && env.turnstile.secretKey);
+}
+
+/** Public site key for the register page; null when CAPTCHA is off. */
+export function captchaSiteKey(): string | null {
+  return isCaptchaEnabled() ? env.turnstile.siteKey : null;
 }
 
 export async function verifyCaptcha(token: string | undefined, ip?: string): Promise<boolean> {
@@ -134,8 +208,12 @@ export async function verifyCaptcha(token: string | undefined, ip?: string): Pro
         ...(ip ? { remoteip: ip } : {}),
       }),
     });
-    const data = (await res.json()) as { success?: boolean };
-    return data.success === true;
+    const data = (await res.json()) as { success?: boolean; action?: string; "error-codes"?: string[] };
+    if (data.success !== true || data.action !== CAPTCHA_ACTION) {
+      console.warn("[botProtection] Turnstile rejected:", data["error-codes"]?.join(",") || data.action);
+      return false;
+    }
+    return true;
   } catch (err) {
     console.error("[botProtection] Turnstile verify failed:", (err as Error).message);
     // Fail closed: if the CAPTCHA provider is unreachable, do not let signups through.

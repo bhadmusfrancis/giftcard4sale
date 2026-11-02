@@ -1,11 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { PasswordInput } from "@/components/PasswordInput";
+import { TurnstileWidget, type TurnstileHandle } from "@/components/TurnstileWidget";
 
 function RegisterInner() {
   const { register } = useAuth();
@@ -20,10 +21,16 @@ function RegisterInner() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [registerChallenge, setRegisterChallenge] = useState<string>("");
+  const [captchaSiteKey, setCaptchaSiteKey] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const captchaRef = useRef<TurnstileHandle>(null);
 
   useEffect(() => {
-    api<{ challenge: string }>("/auth/register-challenge")
-      .then(({ challenge }) => setRegisterChallenge(challenge))
+    api<{ challenge: string; captchaSiteKey?: string | null }>("/auth/register-challenge")
+      .then(({ challenge, captchaSiteKey }) => {
+        setRegisterChallenge(challenge);
+        setCaptchaSiteKey(captchaSiteKey || null);
+      })
       .catch((e: any) => setError(e.message || "Could not load registration challenge."));
   }, []);
 
@@ -45,10 +52,13 @@ function RegisterInner() {
         registerChallenge,
         website: "",
         acceptTerms: true,
+        captchaToken: captchaToken || undefined,
       });
       router.push("/dashboard?welcome=1");
     } catch (err: any) {
       setError(err.message);
+      // Turnstile tokens are single-use; get a fresh one for the next attempt.
+      captchaRef.current?.reset();
     } finally {
       setBusy(false);
     }
@@ -96,11 +106,20 @@ function RegisterInner() {
               .
             </span>
           </label>
+          {captchaSiteKey && (
+            <TurnstileWidget
+              ref={captchaRef}
+              siteKey={captchaSiteKey}
+              action="register"
+              onToken={setCaptchaToken}
+              onError={setError}
+            />
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
             type="submit"
             className="btn-primary w-full"
-            disabled={busy || !acceptTerms || !registerChallenge}
+            disabled={busy || !acceptTerms || !registerChallenge || (!!captchaSiteKey && !captchaToken)}
           >
             {busy ? "Creating…" : "Create account"}
           </button>
