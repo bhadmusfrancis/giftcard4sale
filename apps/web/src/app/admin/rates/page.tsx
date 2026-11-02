@@ -57,6 +57,13 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           nairaReductionPercent: Number(config.reductions.nairaReductionPercent),
           usdtReductionPercent: Number(config.reductions.usdtReductionPercent),
           ghsReductionPercent: Number(config.reductions.ghsReductionPercent),
+          deductionBands: (config.deductionBands ?? []).map((b: any) => ({
+            minRateCount: Number(b.minRateCount),
+            maxRateCount: b.maxRateCount == null ? null : Number(b.maxRateCount),
+            nairaReductionPercent: Number(b.nairaReductionPercent),
+            usdtReductionPercent: Number(b.usdtReductionPercent),
+            ghsReductionPercent: Number(b.ghsReductionPercent),
+          })),
           referralPercent: Number(config.referralPercent),
           noonesRateRefreshHours: Number(config.noonesRateRefreshHours ?? 1),
           defaultMaxConcurrentTrades: Number(config.defaultMaxConcurrentTrades ?? 5),
@@ -81,7 +88,8 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
       });
       if (d.config) setConfig(d.config);
       if (d.fx) setFx(d.fx);
-      if (d.autoResellOverrideApplied || d.cardDeductionsReset) onCardsChanged?.();
+      if (d.autoResellOverrideApplied || d.cardDeductionsReset || config.deductionBands?.length)
+        onCardsChanged?.();
       return d;
     }, () => "Config saved successfully.");
   }
@@ -140,9 +148,50 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
         </div>
         <Field label="NGN per 1 GHS (Cedi)" value={config.rates.ngnPerGhs} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerGhs: v } })} />
         <Field label="Referral %" value={config.referralPercent} onChange={(v) => setConfig({ ...config, referralPercent: v })} />
-        <Field label="Naira deduction %" value={config.reductions.nairaReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, nairaReductionPercent: v } })} />
-        <Field label="USDT deduction %" value={config.reductions.usdtReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, usdtReductionPercent: v } })} />
-        <Field label="Cedi deduction %" value={config.reductions.ghsReductionPercent} onChange={(v) => setConfig({ ...config, reductions: { ...config.reductions, ghsReductionPercent: v } })} />
+        <div className="col-span-full">
+          <p className="label">Deductions by number of rates</p>
+          <p className="mb-2 text-xs text-slate-500">
+            Each card uses the band matching how many rates it has. A changed % resets every card&apos;s
+            override for that currency; individual cards can still be adjusted in the card list below.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[26rem] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500">
+                  <th className="p-1.5">Card&apos;s rates</th>
+                  <th className="p-1.5">Naira %</th>
+                  <th className="p-1.5">USDT %</th>
+                  <th className="p-1.5">Cedi %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(config.deductionBands ?? []).map((b: any, i: number) => (
+                  <tr key={i} className="border-t border-slate-100">
+                    <td className="whitespace-nowrap p-1.5 font-medium text-slate-700">
+                      {b.maxRateCount == null ? `${b.minRateCount}+` : `${b.minRateCount}–${b.maxRateCount}`}
+                    </td>
+                    {(["nairaReductionPercent", "usdtReductionPercent", "ghsReductionPercent"] as const).map((f) => (
+                      <td key={f} className="p-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="input w-20"
+                          value={b[f]}
+                          onChange={(e) => {
+                            const bands = [...config.deductionBands];
+                            bands[i] = { ...bands[i], [f]: Number(e.target.value) };
+                            setConfig({ ...config, deductionBands: bands });
+                          }}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
         <Field
           label="Rate refresh interval (hours)"
           value={config.noonesRateRefreshHours ?? 1}
@@ -483,7 +532,16 @@ function CardsSection() {
                   ) : null}
                 </span>
                 <span className="shrink-0 whitespace-nowrap text-sm text-slate-500 md:ml-2">
-                  {c.rateCount} rates {expanded === c.id ? "▲" : "▼"}
+                  {c.rateCount} rates
+                  {c.deductionBand ? (
+                    <span
+                      className="ml-1 text-xs text-slate-400"
+                      title={`${c.deductionBand.label} band — Naira ${c.deductionBand.nairaReductionPercent}% / USDT ${c.deductionBand.usdtReductionPercent}% / Cedi ${c.deductionBand.ghsReductionPercent}%`}
+                    >
+                      · {c.deductionBand.nairaReductionPercent}/{c.deductionBand.usdtReductionPercent}/{c.deductionBand.ghsReductionPercent}%
+                    </span>
+                  ) : null}{" "}
+                  {expanded === c.id ? "▲" : "▼"}
                 </span>
               </button>
               <div className="flex flex-wrap items-center gap-1 md:shrink-0 md:flex-nowrap">
@@ -573,7 +631,10 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
     <div className="pb-4">
       <div className="mb-3 rounded-lg bg-slate-50 p-3">
         <p className="text-xs font-semibold text-slate-600">
-          Deductions for this card <span className="font-normal text-slate-400">(blank = platform default)</span>
+          Deductions for this card{" "}
+          <span className="font-normal text-slate-400">
+            (blank = band default{card.deductionBand ? ` — ${card.deductionBand.label}` : ""})
+          </span>
         </p>
         <div className="mt-2 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-3">
           {(
@@ -591,7 +652,7 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
                 max={100}
                 className="w-full min-w-0 rounded border border-slate-300 px-2 py-1 sm:w-20"
                 defaultValue={card[field] ?? ""}
-                placeholder="Default"
+                placeholder={card.deductionBand?.[field] != null ? String(card.deductionBand[field]) : "Default"}
                 onBlur={(e) => saveDeduction(field, e.target.value)}
               />
             </label>

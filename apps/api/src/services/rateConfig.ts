@@ -1,4 +1,4 @@
-import { ExchangeRates, RateReductions } from "@gc4s/shared";
+import { DeductionBand, ExchangeRates, RateReductions } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import { isOpenEndedCountryTier } from "./noones/rateCatalog";
@@ -11,6 +11,16 @@ const DEFAULT_MIN_WITHDRAWAL_NGN = 5000;
 const DEFAULT_MIN_WITHDRAWAL_GHS = 50;
 const DEFAULT_MIN_WITHDRAWAL_USDT = 5;
 const DEFAULT_MAX_PAYOUT_ACCOUNTS = 5;
+
+// Rate-count buckets used when no bands are stored yet; seeded from the
+// platform-wide defaults so existing behaviour carries over unchanged.
+const DEFAULT_DEDUCTION_BANDS: Array<Pick<DeductionBand, "minRateCount" | "maxRateCount">> = [
+  { minRateCount: 0, maxRateCount: 5 },
+  { minRateCount: 6, maxRateCount: 10 },
+  { minRateCount: 11, maxRateCount: 15 },
+  { minRateCount: 16, maxRateCount: 20 },
+  { minRateCount: 21, maxRateCount: null },
+];
 
 export type WithdrawalCurrency = "USDT" | "NGN" | "GHS";
 
@@ -26,6 +36,7 @@ export const cardTypePopularityOrder = [
 export async function getRateConfig(): Promise<{
   rates: ExchangeRates;
   reductions: RateReductions;
+  deductionBands: DeductionBand[];
   referralPercent: number;
   noonesRateRefreshHours: number;
   noonesTopOffersForRate: number;
@@ -77,6 +88,21 @@ export async function getRateConfig(): Promise<{
       },
     });
   }
+
+  let bands = await prisma.rateDeductionBand.findMany({ orderBy: { minRateCount: "asc" } });
+  if (!bands.length) {
+    // First boot after deploy: seed the five bands from the platform defaults.
+    await prisma.rateDeductionBand.createMany({
+      data: DEFAULT_DEDUCTION_BANDS.map((b) => ({
+        ...b,
+        nairaReductionPercent: cfg.nairaReductionPercent,
+        usdtReductionPercent: cfg.usdtReductionPercent,
+        ghsReductionPercent: cfg.ghsReductionPercent,
+      })),
+    });
+    bands = await prisma.rateDeductionBand.findMany({ orderBy: { minRateCount: "asc" } });
+  }
+
   return {
     rates: {
       ngnPerUsdt: Number(cfg.ngnPerUsdt),
@@ -87,6 +113,13 @@ export async function getRateConfig(): Promise<{
       usdtReductionPercent: cfg.usdtReductionPercent,
       ghsReductionPercent: cfg.ghsReductionPercent,
     },
+    deductionBands: bands.map((b) => ({
+      minRateCount: b.minRateCount,
+      maxRateCount: b.maxRateCount,
+      nairaReductionPercent: b.nairaReductionPercent,
+      usdtReductionPercent: b.usdtReductionPercent,
+      ghsReductionPercent: b.ghsReductionPercent,
+    })),
     referralPercent: cfg.referralPercent,
     noonesRateRefreshHours: cfg.noonesRateRefreshHours,
     noonesTopOffersForRate: cfg.noonesTopOffersForRate,

@@ -344,6 +344,12 @@ export interface RateReductions {
   ghsReductionPercent: number; // default 30 (Cedi)
 }
 
+/** Deduction % bucket keyed to how many rate rows a card type has. */
+export interface DeductionBand extends RateReductions {
+  minRateCount: number; // inclusive
+  maxRateCount: number | null; // inclusive; null = no cap
+}
+
 export interface RateQuoteInput {
   nairaPerUnit: number; // base parsed rate (slow), naira per unit of card currency
   cardAmount: number; // face value amount of the card (in its own currency)

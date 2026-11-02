@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, needsCardCountryInput, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
+import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, needsCardCountryInput, PayoutCurrency, reductionsForCard, reductionsForRateCount } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireVerified, requireActiveAccount, AuthedRequest } from "../lib/auth";
@@ -84,7 +84,10 @@ tradesRouter.post(
       return res.status(403).json({ error: (err as Error).message });
     }
 
-    const rate = await prisma.rate.findUnique({ where: { id: data.rateId }, include: { cardType: true } });
+    const rate = await prisma.rate.findUnique({
+      where: { id: data.rateId },
+      include: { cardType: { include: { _count: { select: { rates: true } } } } },
+    });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
     if (rate.medium !== data.medium) {
@@ -162,7 +165,10 @@ tradesRouter.post(
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: rate.medium,
       rates: config.rates,
-      reductions: reductionsForCard(rate.cardType, config.reductions),
+      reductions: reductionsForCard(
+        rate.cardType,
+        reductionsForRateCount(rate.cardType._count.rates, config.deductionBands, config.reductions)
+      ),
       extraReductionPercent,
     });
 

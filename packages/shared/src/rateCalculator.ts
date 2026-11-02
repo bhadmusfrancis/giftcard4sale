@@ -1,4 +1,4 @@
-import { RateQuote, RateQuoteInput, RateReductions } from "./types";
+import { DeductionBand, RateQuote, RateQuoteInput, RateReductions } from "./types";
 
 function round(n: number, dp = 2): number {
   const f = Math.pow(10, dp);
@@ -22,6 +22,40 @@ export function reductionsForCard(
     nairaReductionPercent: card.nairaReductionPercent ?? base.nairaReductionPercent,
     usdtReductionPercent: card.usdtReductionPercent ?? base.usdtReductionPercent,
     ghsReductionPercent: card.ghsReductionPercent ?? base.ghsReductionPercent,
+  };
+}
+
+/** The deduction band a card falls into for its number of rate rows, or null. */
+export function deductionBandForRateCount(
+  rateCount: number,
+  bands: DeductionBand[]
+): DeductionBand | null {
+  return (
+    bands.find(
+      (b) => rateCount >= b.minRateCount && (b.maxRateCount == null || rateCount <= b.maxRateCount)
+    ) ?? null
+  );
+}
+
+/** Display label for a band, e.g. "0–5 rates" or "21+ rates". */
+export function deductionBandLabel(band: Pick<DeductionBand, "minRateCount" | "maxRateCount">): string {
+  return band.maxRateCount == null
+    ? `${band.minRateCount}+ rates`
+    : `${band.minRateCount}–${band.maxRateCount} rates`;
+}
+
+/** Platform deductions for a card's rate count — its band, else the global defaults. */
+export function reductionsForRateCount(
+  rateCount: number,
+  bands: DeductionBand[],
+  fallback: RateReductions
+): RateReductions {
+  const band = deductionBandForRateCount(rateCount, bands);
+  if (!band) return fallback;
+  return {
+    nairaReductionPercent: band.nairaReductionPercent,
+    usdtReductionPercent: band.usdtReductionPercent,
+    ghsReductionPercent: band.ghsReductionPercent,
   };
 }
 

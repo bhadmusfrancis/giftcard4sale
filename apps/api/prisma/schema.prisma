@@ -257,6 +257,18 @@ model FxRateState {
   updatedAt     DateTime  @updatedAt
 }
 
+// Payout deduction % bucketed by how many rate rows a card type has.
+// A card's own per-currency overrides (CardType.*ReductionPercent) still win.
+model RateDeductionBand {
+  id                    String   @id @default(cuid())
+  minRateCount          Int      // inclusive lower bound on a card's Rate rows
+  maxRateCount          Int?     // inclusive upper bound; null = no cap
+  nairaReductionPercent Int
+  usdtReductionPercent  Int
+  ghsReductionPercent   Int
+  updatedAt             DateTime @updatedAt
+}
+
 // Last catalog rate sync. Kept out of RateConfig because an admin config save
 // inserts a fresh RateConfig row, which would drop the timestamp.
 model RateSyncState {

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, PayoutCurrency, reductionsForCard } from "@gc4s/shared";
+import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, deductionBandForRateCount, deductionBandLabel, euroDenominationIsOdd, isEuroAppleRate, PayoutCurrency, reductionsForCard, reductionsForRateCount } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
@@ -710,6 +710,7 @@ adminRouter.post(
         nairaReductionPercent: true,
         usdtReductionPercent: true,
         ghsReductionPercent: true,
+        _count: { select: { rates: true } },
       },
     });
     const receiptType = receiptTypeForQuote({
@@ -733,7 +734,10 @@ adminRouter.post(
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: medium as "PHYSICAL" | "ECODE",
       rates: config.rates,
-      reductions: reductionsForCard(cardReductions, config.reductions),
+      reductions: reductionsForCard(
+        cardReductions,
+        reductionsForRateCount(cardReductions?._count.rates ?? 0, config.deductionBands, config.reductions)
+      ),
       extraReductionPercent:
         isEuroAppleRate(cardReductions, currency, country) && euroDenominationIsOdd(data.cardAmount)
           ? config.euroAppleOddDenomReductionPercent
@@ -1109,27 +1113,41 @@ adminRouter.post(
 adminRouter.get(
   "/cards",
   asyncHandler(async (_req, res) => {
-    const cards = await prisma.cardType.findMany({
-      orderBy: { name: "asc" },
-      include: { _count: { select: { rates: true } } },
-    });
+    const [cards, config] = await Promise.all([
+      prisma.cardType.findMany({
+        orderBy: { name: "asc" },
+        include: { _count: { select: { rates: true } } },
+      }),
+      getRateConfig(),
+    ]);
     res.json({
-      cards: cards.map((c) => ({
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        sellSlug: c.sellSlug,
-        active: c.active,
-        forceActive: c.forceActive,
-        imageUrl: c.imageUrl,
-        description: c.description,
-        rateCount: c._count.rates,
-        noonesPaymentMethod: c.noonesPaymentMethod,
-        noonesAutoResellEnabled: c.noonesAutoResellEnabled,
-        nairaReductionPercent: c.nairaReductionPercent,
-        usdtReductionPercent: c.usdtReductionPercent,
-        ghsReductionPercent: c.ghsReductionPercent,
-      })),
+      cards: cards.map((c) => {
+        const band = deductionBandForRateCount(c._count.rates, config.deductionBands);
+        return {
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          sellSlug: c.sellSlug,
+          active: c.active,
+          forceActive: c.forceActive,
+          imageUrl: c.imageUrl,
+          description: c.description,
+          rateCount: c._count.rates,
+          noonesPaymentMethod: c.noonesPaymentMethod,
+          noonesAutoResellEnabled: c.noonesAutoResellEnabled,
+          nairaReductionPercent: c.nairaReductionPercent,
+          usdtReductionPercent: c.usdtReductionPercent,
+          ghsReductionPercent: c.ghsReductionPercent,
+          deductionBand: band
+            ? {
+                label: deductionBandLabel(band),
+                nairaReductionPercent: band.nairaReductionPercent,
+                usdtReductionPercent: band.usdtReductionPercent,
+                ghsReductionPercent: band.ghsReductionPercent,
+              }
+            : null,
+        };
+      }),
     });
   })
 );
@@ -1301,9 +1319,22 @@ adminRouter.put(
       z.object({
         ngnPerUsdt: z.number().positive(),
         ngnPerGhs: z.number().positive(),
-        nairaReductionPercent: z.number().int().min(0).max(100),
-        usdtReductionPercent: z.number().int().min(0).max(100),
-        ghsReductionPercent: z.number().int().min(0).max(100),
+        nairaReductionPercent: z.number().int().min(0).max(100).optional(),
+        usdtReductionPercent: z.number().int().min(0).max(100).optional(),
+        ghsReductionPercent: z.number().int().min(0).max(100).optional(),
+        deductionBands: z
+          .array(
+            z.object({
+              minRateCount: z.number().int().min(0),
+              maxRateCount: z.number().int().min(0).nullable(),
+              nairaReductionPercent: z.number().int().min(0).max(100),
+              usdtReductionPercent: z.number().int().min(0).max(100),
+              ghsReductionPercent: z.number().int().min(0).max(100),
+            })
+          )
+          .min(1)
+          .max(10)
+          .optional(),
         referralPercent: z.number().int().min(0).max(100),
         noonesRateRefreshHours: z.number().int().min(1).max(168),
         defaultMaxConcurrentTrades: z.number().int().min(1).max(50),
@@ -1338,12 +1369,48 @@ adminRouter.put(
     // for that payout currency resets to the platform default; individual
     // cards are adjusted afterwards where needed.
     const deductionReset: Prisma.CardTypeUpdateManyMutationInput = {};
-    if (data.nairaReductionPercent !== prevConfig.reductions.nairaReductionPercent)
+    if (data.nairaReductionPercent != null && data.nairaReductionPercent !== prevConfig.reductions.nairaReductionPercent)
       deductionReset.nairaReductionPercent = null;
-    if (data.usdtReductionPercent !== prevConfig.reductions.usdtReductionPercent)
+    if (data.usdtReductionPercent != null && data.usdtReductionPercent !== prevConfig.reductions.usdtReductionPercent)
       deductionReset.usdtReductionPercent = null;
-    if (data.ghsReductionPercent !== prevConfig.reductions.ghsReductionPercent)
+    if (data.ghsReductionPercent != null && data.ghsReductionPercent !== prevConfig.reductions.ghsReductionPercent)
       deductionReset.ghsReductionPercent = null;
+
+    // Band edits cascade identically: a changed percentage clears that
+    // currency's per-card overrides; changed band bounds clear all three.
+    const newBands = data.deductionBands
+      ? [...data.deductionBands].sort((a, b) => a.minRateCount - b.minRateCount)
+      : null;
+    if (newBands) {
+      for (let i = 0; i < newBands.length; i++) {
+        const b = newBands[i];
+        if (b.maxRateCount != null && b.maxRateCount < b.minRateCount) {
+          return res.status(400).json({ error: "Deduction band max must be ≥ its min." });
+        }
+        const prev = newBands[i - 1];
+        if (prev && (prev.maxRateCount == null || b.minRateCount <= prev.maxRateCount)) {
+          return res.status(400).json({ error: "Deduction bands must not overlap." });
+        }
+      }
+      const prevBands = prevConfig.deductionBands;
+      const boundsChanged =
+        newBands.length !== prevBands.length ||
+        newBands.some(
+          (b, i) => b.minRateCount !== prevBands[i]?.minRateCount || b.maxRateCount !== prevBands[i]?.maxRateCount
+        );
+      if (boundsChanged) {
+        deductionReset.nairaReductionPercent = null;
+        deductionReset.usdtReductionPercent = null;
+        deductionReset.ghsReductionPercent = null;
+      } else {
+        if (newBands.some((b, i) => b.nairaReductionPercent !== prevBands[i].nairaReductionPercent))
+          deductionReset.nairaReductionPercent = null;
+        if (newBands.some((b, i) => b.usdtReductionPercent !== prevBands[i].usdtReductionPercent))
+          deductionReset.usdtReductionPercent = null;
+        if (newBands.some((b, i) => b.ghsReductionPercent !== prevBands[i].ghsReductionPercent))
+          deductionReset.ghsReductionPercent = null;
+      }
+    }
     const cardDeductionsReset = Object.keys(deductionReset).length > 0;
 
     // With auto-sync on, a changed reduction % (or turning auto-sync on)
@@ -1366,9 +1433,9 @@ adminRouter.put(
       data: {
         ngnPerUsdt: new Prisma.Decimal(ngnPerUsdt),
         ngnPerGhs: new Prisma.Decimal(data.ngnPerGhs),
-        nairaReductionPercent: data.nairaReductionPercent,
-        usdtReductionPercent: data.usdtReductionPercent,
-        ghsReductionPercent: data.ghsReductionPercent,
+        nairaReductionPercent: data.nairaReductionPercent ?? prevConfig.reductions.nairaReductionPercent,
+        usdtReductionPercent: data.usdtReductionPercent ?? prevConfig.reductions.usdtReductionPercent,
+        ghsReductionPercent: data.ghsReductionPercent ?? prevConfig.reductions.ghsReductionPercent,
         referralPercent: data.referralPercent,
         noonesRateRefreshHours: data.noonesRateRefreshHours,
         defaultMaxConcurrentTrades: data.defaultMaxConcurrentTrades,
@@ -1391,6 +1458,12 @@ adminRouter.put(
         maxMomoAccounts: data.maxMomoAccounts,
       },
     });
+    if (newBands) {
+      await prisma.$transaction([
+        prisma.rateDeductionBand.deleteMany({}),
+        prisma.rateDeductionBand.createMany({ data: newBands }),
+      ]);
+    }
     const cardCascade: Prisma.CardTypeUpdateManyMutationInput = { ...deductionReset };
     if (autoResellOverrideApplied) {
       cardCascade.noonesAutoResellEnabled = data.noonesAutoResellEnabled;
