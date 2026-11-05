@@ -52,11 +52,34 @@ export async function countActiveTrades(userId: string): Promise<number> {
   });
 }
 
-export async function countRecentRejections(userId: string, windowDays: number): Promise<number> {
+export interface RecentTradeOutcomes {
+  consecutiveRejections: number;
+  rejections: number;
+  paid: number;
+}
+
+/**
+ * Trade outcomes resolved inside the window, newest first. Only terminal
+ * statuses count (trades still in flight have no outcome yet); a paid or
+ * cancelled trade ends a run of consecutive rejections.
+ */
+export async function recentTradeOutcomes(userId: string, windowDays: number): Promise<RecentTradeOutcomes> {
   const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
-  return prisma.trade.count({
-    where: { userId, status: "REJECTED", updatedAt: { gte: since } },
+  const trades = await prisma.trade.findMany({
+    where: { userId, status: { in: ["REJECTED", "PAID", "CANCELLED"] }, updatedAt: { gte: since } },
+    orderBy: { updatedAt: "desc" },
+    select: { status: true },
   });
+  let consecutiveRejections = 0;
+  for (const trade of trades) {
+    if (trade.status !== "REJECTED") break;
+    consecutiveRejections++;
+  }
+  return {
+    consecutiveRejections,
+    rejections: trades.filter((t) => t.status === "REJECTED").length,
+    paid: trades.filter((t) => t.status === "PAID").length,
+  };
 }
 
 export async function getUserRestriction(userId: string): Promise<UserRestriction> {
@@ -183,7 +206,10 @@ export async function applyUserModeration(
   });
 }
 
-/** Auto-suspend when recent rejections exceed platform threshold. */
+/**
+ * Auto-suspend on a run of consecutive rejections inside the window.
+ * Skipped when the seller's paid trades more than double their rejections.
+ */
 export async function maybeAutoSuspendForRejections(userId: string): Promise<boolean> {
   const config = await getRateConfig();
   if (config.autoSuspendRejectThreshold <= 0) return false;
@@ -191,24 +217,30 @@ export async function maybeAutoSuspendForRejections(userId: string): Promise<boo
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || user.role === "ADMIN" || user.accountStatus !== "ACTIVE") return false;
 
-  const recent = await countRecentRejections(userId, config.autoSuspendRejectWindowDays);
-  if (recent < config.autoSuspendRejectThreshold) return false;
+  const stats = await recentTradeOutcomes(userId, config.autoSuspendRejectWindowDays);
+  if (stats.consecutiveRejections < config.autoSuspendRejectThreshold) return false;
+  if (stats.paid > stats.rejections * 2) return false;
 
   const suspendedUntil = new Date(Date.now() + config.autoSuspendDurationDays * 24 * 60 * 60 * 1000);
+  const reason = `Auto-suspended after ${stats.consecutiveRejections} consecutive rejected trades in ${config.autoSuspendRejectWindowDays} days`;
   await prisma.user.update({
     where: { id: userId },
     data: {
       accountStatus: "SUSPENDED",
       suspendedUntil,
-      suspensionReason: `Auto-suspended after ${recent} rejected trades in ${config.autoSuspendRejectWindowDays} days`,
+      suspensionReason: reason,
     },
   });
   await logModerationEvent({
     userId,
     action: "AUTO_SUSPEND",
-    reason: `Auto-suspended after ${recent} rejected trades in ${config.autoSuspendRejectWindowDays} days`,
+    reason,
     suspendedUntil,
-    metadata: { recentRejections: recent },
+    metadata: {
+      consecutiveRejections: stats.consecutiveRejections,
+      recentRejections: stats.rejections,
+      recentPaidTrades: stats.paid,
+    },
   });
   return true;
 }
@@ -219,9 +251,9 @@ export async function getUserModerationSummary(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found");
 
-  const [activeTrades, recentRejections, totalTrades, events] = await Promise.all([
+  const [activeTrades, outcomes, totalTrades, events] = await Promise.all([
     countActiveTrades(userId),
-    countRecentRejections(userId, config.autoSuspendRejectWindowDays),
+    recentTradeOutcomes(userId, config.autoSuspendRejectWindowDays),
     prisma.trade.count({ where: { userId } }),
     prisma.userModerationEvent.findMany({
       where: { userId },
@@ -237,7 +269,8 @@ export async function getUserModerationSummary(userId: string) {
     user,
     activeTrades,
     tradeLimit,
-    recentRejections,
+    recentRejections: outcomes.rejections,
+    consecutiveRejections: outcomes.consecutiveRejections,
     totalTrades,
     autoSuspendThreshold: config.autoSuspendRejectThreshold,
     autoSuspendWindowDays: config.autoSuspendRejectWindowDays,

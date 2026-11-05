@@ -40,7 +40,6 @@ import {
   ACTIVE_TRADE_STATUSES,
   applyUserModeration,
   countActiveTrades,
-  countRecentRejections,
   getUserModerationSummary,
   getUserTradeLimit,
 } from "../services/userModeration";
@@ -208,6 +207,7 @@ adminRouter.get(
         activeTrades: summary.activeTrades,
         tradeLimit,
         recentRejections: summary.recentRejections,
+        consecutiveRejections: summary.consecutiveRejections,
         totalTrades: summary.totalTrades,
         autoSuspendThreshold: summary.autoSuspendThreshold,
         autoSuspendWindowDays: summary.autoSuspendWindowDays,

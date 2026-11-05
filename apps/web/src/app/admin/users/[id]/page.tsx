@@ -279,9 +279,9 @@ export default function AdminUserDetailPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <Stat label="Active trades" value={`${stats.activeTrades} / ${stats.tradeLimit}`} />
-        <Stat label="Recent rejections" value={`${stats.recentRejections} (${stats.autoSuspendWindowDays}d window)`} />
+        <Stat label="Recent rejections" value={`${stats.recentRejections} (${stats.consecutiveRejections} consecutive, ${stats.autoSuspendWindowDays}d window)`} />
         <Stat label="Total trades" value={stats.totalTrades} />
-        <Stat label="Auto-suspend at" value={`${stats.autoSuspendThreshold} rejections`} />
+        <Stat label="Auto-suspend at" value={`${stats.autoSuspendThreshold} consecutive rejections`} />
       </div>
 
       <div className="card p-4 text-sm sm:p-5">
