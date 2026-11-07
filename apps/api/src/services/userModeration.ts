@@ -55,7 +55,6 @@ export async function countActiveTrades(userId: string): Promise<number> {
 export interface RecentTradeOutcomes {
   consecutiveRejections: number;
   rejections: number;
-  paid: number;
 }
 
 /**
@@ -78,7 +77,6 @@ export async function recentTradeOutcomes(userId: string, windowDays: number): P
   return {
     consecutiveRejections,
     rejections: trades.filter((t) => t.status === "REJECTED").length,
-    paid: trades.filter((t) => t.status === "PAID").length,
   };
 }
 
@@ -208,7 +206,8 @@ export async function applyUserModeration(
 
 /**
  * Auto-suspend on a run of consecutive rejections inside the window.
- * Skipped when the seller's paid trades more than double their rejections.
+ * Skipped when the seller's lifetime paid trades more than double their
+ * lifetime rejections.
  */
 export async function maybeAutoSuspendForRejections(userId: string): Promise<boolean> {
   const config = await getRateConfig();
@@ -217,9 +216,13 @@ export async function maybeAutoSuspendForRejections(userId: string): Promise<boo
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || user.role === "ADMIN" || user.accountStatus !== "ACTIVE") return false;
 
-  const stats = await recentTradeOutcomes(userId, config.autoSuspendRejectWindowDays);
+  const [stats, lifetimePaid, lifetimeRejected] = await Promise.all([
+    recentTradeOutcomes(userId, config.autoSuspendRejectWindowDays),
+    prisma.trade.count({ where: { userId, status: "PAID" } }),
+    prisma.trade.count({ where: { userId, status: "REJECTED" } }),
+  ]);
   if (stats.consecutiveRejections < config.autoSuspendRejectThreshold) return false;
-  if (stats.paid > stats.rejections * 2) return false;
+  if (lifetimePaid > lifetimeRejected * 2) return false;
 
   const suspendedUntil = new Date(Date.now() + config.autoSuspendDurationDays * 24 * 60 * 60 * 1000);
   const reason = `Auto-suspended after ${stats.consecutiveRejections} consecutive rejected trades in ${config.autoSuspendRejectWindowDays} days`;
@@ -239,7 +242,8 @@ export async function maybeAutoSuspendForRejections(userId: string): Promise<boo
     metadata: {
       consecutiveRejections: stats.consecutiveRejections,
       recentRejections: stats.rejections,
-      recentPaidTrades: stats.paid,
+      lifetimePaidTrades: lifetimePaid,
+      lifetimeRejectedTrades: lifetimeRejected,
     },
   });
   return true;
