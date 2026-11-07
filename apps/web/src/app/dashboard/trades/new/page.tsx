@@ -325,7 +325,7 @@ function NewTradeInner() {
 
         <div>
           <label className="label">
-            {medium === "PHYSICAL" ? "Gift card photo(s)" : "Gift card screenshot(s) (optional)"}
+            {medium === "PHYSICAL" ? "Gift card photo(s)" : "Gift card photo(s) (optional)"}
           </label>
           <input
             type="file"
