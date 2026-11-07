@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { BrandLogo } from "@/components/BrandLogo";
 import type { GiftCard } from "@/components/GiftCardCatalog";
 
 export function PopularCards({ initialCards }: { initialCards: GiftCard[] }) {
+  const t = useT();
   const [cards, setCards] = useState(initialCards);
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export function PopularCards({ initialCards }: { initialCards: GiftCard[] }) {
   if (cards.length === 0) {
     return (
       <p className="col-span-full text-slate-500">
-        Loading popular gift cards…
+        {t("Loading popular gift cards…")}
       </p>
     );
   }
@@ -30,7 +32,7 @@ export function PopularCards({ initialCards }: { initialCards: GiftCard[] }) {
         <Link key={c.id} href={`/${c.sellSlug}`} className="card p-5 transition hover:shadow-md">
           <BrandLogo name={c.name} slug={c.slug} imageUrl={c.imageUrl} className="mb-3 h-12 w-12 text-lg" />
           <div className="font-semibold">{c.name}</div>
-          <div className="text-sm text-slate-500">Check rate →</div>
+          <div className="text-sm text-slate-500">{t("Check rate →")}</div>
         </Link>
       ))}
     </>

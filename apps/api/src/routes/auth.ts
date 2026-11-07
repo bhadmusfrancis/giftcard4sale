@@ -25,6 +25,7 @@ import {
   userAgentFromRequest,
 } from "../services/metaConversions";
 import { authLimiter, apiLimiter } from "../lib/rateLimit";
+import { normalizeLocale, normalizeCountry } from "../lib/locale";
 import {
   registerLimiter,
   issueRegisterChallenge,
@@ -52,6 +53,9 @@ const registerSchema = z.object({
   acceptTerms: z.literal(true, {
     errorMap: () => ({ message: "You must accept the Terms of Service and Privacy Policy" }),
   }),
+  // Detected by the web app (geo IP / browser language) and sent at signup.
+  locale: z.string().max(10).optional(),
+  country: z.string().max(2).optional(),
 });
 
 async function uniqueReferralCode(): Promise<string> {
@@ -146,6 +150,8 @@ authRouter.post(
         referredById,
         verifyToken,
         verifyTokenExp: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        ...(data.locale ? { locale: normalizeLocale(data.locale) } : {}),
+        ...(normalizeCountry(data.country) ? { country: normalizeCountry(data.country) } : {}),
       },
     });
 
@@ -350,6 +356,8 @@ export function publicUser(u: any) {
     suspensionReason: u.suspensionReason ?? null,
     maxConcurrentTrades: u.maxConcurrentTrades ?? null,
     adminNotes: u.adminNotes ?? null,
+    locale: u.locale ?? "en",
+    country: u.country ?? null,
     createdAt: u.createdAt,
   };
 }

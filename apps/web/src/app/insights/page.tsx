@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { apiServer } from "@/lib/api";
 import { BrandLogo } from "@/components/BrandLogo";
+import { DomTranslator } from "@/components/DomTranslator";
 
 export const revalidate = 1800;
 
@@ -147,6 +148,7 @@ export default async function InsightsPage() {
   };
 
   return (
+    <DomTranslator>
     <main className="mx-auto max-w-4xl px-4 py-10">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
@@ -220,7 +222,9 @@ export default async function InsightsPage() {
       {byMonth.size > 0 && (
         <section>
           <h2 className="mb-6 text-xl font-bold text-slate-900">Archive</h2>
-          <div className="space-y-10">
+          {/* Post titles stay in English — translating ~1000 archive headlines on
+              every page view would be needlessly expensive. */}
+          <div className="space-y-10" data-i18n-skip>
             {[...byMonth.entries()].map(([month, weeks]) => (
               <div key={month}>
                 <h3 className="mb-3 border-b border-slate-200 pb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -252,5 +256,6 @@ export default async function InsightsPage() {
         </p>
       )}
     </main>
+    </DomTranslator>
   );
 }

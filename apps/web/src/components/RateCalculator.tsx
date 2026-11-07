@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { PayoutCurrency, CardMedium, ReceiptType, RateQuote, StoredQuotes, findRateTierForAmount, findBoundedRateForAmount, buildCountryOptions, formatDenomRanges, defaultAmountForTiers, collectDenomRangesFromRateRows, isAppleItunesCard, euroDenominationIsOdd } from "@gc4s/shared";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { money } from "@/lib/format";
 import { trackMeta } from "@/lib/metaPixel";
 import { IndicativeRateCaveat, isLegacyPartnerRate, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
@@ -53,6 +54,7 @@ export function RateCalculator({
 }) {
   const router = useRouter();
   const { user } = useAuth();
+  const t = useT();
 
   const countryOptions = useMemo(() => buildCountryOptions(rates, currencyMeta), [rates, currencyMeta]);
   const [country, setCountry] = useState(countryOptions[0]?.country ?? "");
@@ -260,36 +262,36 @@ export function RateCalculator({
   return (
     <div className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h3 className="text-lg font-bold">Calculate your {cardName} rate</h3>
+        <h3 className="text-lg font-bold">{t("Calculate your {card} rate", { card: cardName })}</h3>
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label">Card country</label>
+          <label className="label">{t("Card country")}</label>
           <CountryPicker options={countryOptions} value={country} onChange={setCountry} />
           {needsCardCountry ? (
             <div className="mt-3">
               <label className="label">
-                {isEuroApple && !isOtherCountry ? "Which country issued the card?" : "Your card country"}
+                {isEuroApple && !isOtherCountry ? t("Which country issued the card?") : t("Your card country")}
               </label>
               <input
                 type="text"
                 className="input"
-                placeholder={isEuroApple && !isOtherCountry ? "e.g. Germany, France, Spain" : "e.g. Austria, France, Japan"}
+                placeholder={isEuroApple && !isOtherCountry ? t("e.g. Germany, France, Spain") : t("e.g. Austria, France, Japan")}
                 value={otherCountryName}
                 onChange={(e) => setOtherCountryName(e.target.value)}
               />
               <p className="mt-1 text-xs text-amber-700">
                 {isEuroApple && !isOtherCountry
-                  ? "Euro Apple/iTunes cards are locked to the country that issued them — enter it here (e.g. a German iTunes card is \"Germany\")."
-                  : "Other-country cards may pay a different rate depending on the specific country. The amount shown is an estimate."}
+                  ? t("Euro Apple/iTunes cards are locked to the country that issued them — enter it here (e.g. a German iTunes card is \"Germany\").")
+                  : t("Other-country cards may pay a different rate depending on the specific country. The amount shown is an estimate.")}
               </p>
             </div>
           ) : null}
         </div>
 
         <div>
-          <label className="label">Card type</label>
+          <label className="label">{t("Card type")}</label>
           <div className="flex gap-2">
             {(["PHYSICAL", "ECODE"] as CardMedium[]).map((m) => (
               <button
@@ -300,14 +302,14 @@ export function RateCalculator({
                   medium === m ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-600"
                 } disabled:opacity-40`}
               >
-                {m === "PHYSICAL" ? "Physical card" : "E-code"}
+                {m === "PHYSICAL" ? t("Physical card") : t("E-code")}
               </button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="label">Card amount ({matched?.currency ?? selectedCurrency ?? "USD"})</label>
+          <label className="label">{t("Card amount")} ({matched?.currency ?? selectedCurrency ?? "USD"})</label>
           <input
             type="text"
             inputMode="decimal"
@@ -330,34 +332,34 @@ export function RateCalculator({
           {!rangesReady ? (
             <p className="mt-1 text-xs text-slate-500">
               {hasCandidates
-                ? `Loading accepted amounts for ${selectedCurrency ?? "this currency"}…`
-                : "No rates for this country."}
+                ? t("Loading accepted amounts for {currency}…", { currency: selectedCurrency ?? t("this currency") })
+                : t("No rates for this country.")}
             </p>
           ) : advertisedRanges ? (
-            <p className="mt-1 text-xs text-slate-500">Accepted amounts: {advertisedRanges}</p>
+            <p className="mt-1 text-xs text-slate-500">{t("Accepted amounts")}: {advertisedRanges}</p>
           ) : null}
           {amountOutOfRange ? (
             <p className="mt-1 text-sm text-red-600">
-              Enter an amount within the offer range{advertisedRanges ? ` (${advertisedRanges})` : ""}.
+              {t("Enter an amount within the offer range{ranges}.", { ranges: advertisedRanges ? ` (${advertisedRanges})` : "" })}
             </p>
           ) : null}
           {isEuroApple ? (
             <p className="mt-1 text-xs text-amber-700">
-              Euro Apple/iTunes cards in amounts that are not a multiple of 5 or 50 pay a lower rate.
+              {t("Euro Apple/iTunes cards in amounts that are not a multiple of 5 or 50 pay a lower rate.")}
             </p>
           ) : null}
         </div>
 
         <div>
-          <label className="label">Get paid in</label>
+          <label className="label">{t("Get paid in")}</label>
           <select
             className="input"
             value={payoutCurrency}
             onChange={(e) => setPayoutCurrency(e.target.value as PayoutCurrency)}
           >
-            <option value="NGN">Naira (NGN)</option>
+            <option value="NGN">{t("Naira (NGN)")}</option>
             <option value="USDT">USDT</option>
-            <option value="GHS">Cedi (GHS)</option>
+            <option value="GHS">{t("Cedi (GHS)")}</option>
           </select>
         </div>
       </div>
@@ -365,7 +367,7 @@ export function RateCalculator({
       {showReceiptPrompt ? (
         <div className="mt-4 space-y-3 rounded-xl border border-slate-200 p-4">
           <div>
-            <label className="label">Do you have a purchase receipt for this gift card?</label>
+            <label className="label">{t("Do you have a purchase receipt for this gift card?")}</label>
             <div className="flex gap-2">
               {([true, false] as const).map((v) => (
                 <button
@@ -379,7 +381,7 @@ export function RateCalculator({
                     hasReceipt === v ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-300 text-slate-600"
                   }`}
                 >
-                  {v ? "Yes, I have a receipt" : "No receipt"}
+                  {v ? t("Yes, I have a receipt") : t("No receipt")}
                 </button>
               ))}
             </div>
@@ -387,7 +389,7 @@ export function RateCalculator({
 
           {hasReceipt === true ? (
             <div>
-              <label className="label">How did you pay for the gift card?</label>
+              <label className="label">{t("How did you pay for the gift card?")}</label>
               <div className="flex gap-2">
                 {([true, false] as const).map((cash) => (
                   <button
@@ -400,7 +402,7 @@ export function RateCalculator({
                         : "border-slate-300 text-slate-600"
                     }`}
                   >
-                    {cash ? "Cash" : "Debit / card"}
+                    {cash ? t("Cash") : t("Debit / card")}
                   </button>
                 ))}
               </div>
@@ -409,11 +411,11 @@ export function RateCalculator({
 
           {receiptBlocked ? (
             <p className="text-sm text-red-600">
-              Marketplace buyers for this card require a purchase receipt. You cannot open this trade without one.
+              {t("Marketplace buyers for this card require a purchase receipt. You cannot open this trade without one.")}
             </p>
           ) : requiresReceipt && hasReceipt === true ? (
             <p className="text-xs text-slate-500">
-              You&apos;ll be asked to upload your receipt photo on the next step.
+              {t("You'll be asked to upload your receipt photo on the next step.")}
             </p>
           ) : null}
         </div>
@@ -423,58 +425,61 @@ export function RateCalculator({
         {!rangesReady ? (
           <div className="text-slate-300">
             {hasCandidates
-              ? `Loading accepted amounts for ${selectedCurrency ?? "this currency"}…`
-              : "No rates for this country."}
+              ? t("Loading accepted amounts for {currency}…", { currency: selectedCurrency ?? t("this currency") })
+              : t("No rates for this country.")}
           </div>
         ) : policyLoading || (pricingReady && !quoteReady) ? (
-          <div className="text-slate-300">Calculating your payout…</div>
+          <div className="text-slate-300">{t("Calculating your payout…")}</div>
         ) : quote && pricingReady ? (
           <>
-            <div className="text-sm text-slate-300">You will receive</div>
+            <div className="text-sm text-slate-300">{t("You will receive")}</div>
             <div className="text-3xl font-extrabold">{money(quote.payoutAmount, payoutCurrency)}</div>
             {isOtherCountry ? (
               <div className="mt-2 text-xs text-amber-300">
-                Estimate only — payout may change based on your card&apos;s country.
+                {t("Estimate only — payout may change based on your card's country.")}
               </div>
             ) : null}
             {euroOddDenomApplies && quote.extraReductionPercent ? (
               <div className="mt-2 text-xs text-amber-300">
-                A lower rate applies — {amount} {matched?.currency ?? "EUR"} is not a multiple of 5 or 50.
+                {t("A lower rate applies — {amount} {currency} is not a multiple of 5 or 50.", { amount, currency: matched?.currency ?? "EUR" })}
               </div>
             ) : null}
             {indicativeRate ? (
               <IndicativeRateCaveat className="mt-2 text-xs text-amber-300/90" />
             ) : null}
             <div className="mt-2 text-xs text-slate-400">
-              Rate: {quote.effectiveNairaPerUnit.toLocaleString()} ₦/unit
-              {hasReceipt === false ? " • No-receipt offer" : hasReceipt === true ? ` • ${receiptType === "CASH" ? "Cash" : "Debit"} receipt offer` : ""}
+              {t("Rate")}: {quote.effectiveNairaPerUnit.toLocaleString()} ₦/unit
+              {hasReceipt === false ? ` • ${t("No-receipt offer")}` : hasReceipt === true ? ` • ${receiptType === "CASH" ? t("Cash") : t("Debit")} ${t("receipt offer")}` : ""}
               {matched && (matched.minDenom || matched.maxDenom)
-                ? ` • Tier ${matched.minDenom ?? "any"}–${matched.maxDenom ?? "any"}`
+                ? ` • ${t("Tier")} ${matched.minDenom ?? t("any")}–${matched.maxDenom ?? t("any")}`
                 : ""}
             </div>
           </>
         ) : !hasCandidates ? (
-          <div className="text-slate-300">No rates for this country.</div>
+          <div className="text-slate-300">{t("No rates for this country.")}</div>
         ) : boundedTier && !matched ? (
           <div className="text-slate-300">
-            No offer tier matches {amount} {selectedCurrency ?? boundedTier.currency ?? "USD"} exactly.
-            {advertisedRanges ? ` Try an amount in ${advertisedRanges}.` : ""}
+            {t("No offer tier matches {amount} {currency} exactly.", { amount, currency: selectedCurrency ?? boundedTier.currency ?? "USD" })}
+            {advertisedRanges ? ` ${t("Try an amount in {ranges}.", { ranges: advertisedRanges })}` : ""}
           </div>
         ) : amountOutOfRange ? (
           <div className="text-slate-300">
-            No rate for {amount} {selectedCurrency ?? matched?.currency ?? "USD"}. Use an amount
-            {advertisedRanges ? `: ${advertisedRanges}` : ""}.
+            {t("No rate for {amount} {currency}. Use an amount{ranges}.", {
+              amount,
+              currency: selectedCurrency ?? matched?.currency ?? "USD",
+              ranges: advertisedRanges ? `: ${advertisedRanges}` : "",
+            })}
           </div>
         ) : (
-          <div className="text-slate-300">No rate available for this selection. Try another country/type.</div>
+          <div className="text-slate-300">{t("No rate available for this selection. Try another country/type.")}</div>
         )}
       </div>
 
       <button onClick={proceed} disabled={!canProceed} className="btn-primary mt-4 w-full">
-        Proceed to open a trade
+        {t("Proceed to open a trade")}
       </button>
       <p className="mt-3 text-xs text-slate-500">
-        ⚠️ Only submit valid, unused cards. Submitting used/bad/test cards will hurt your trust level.
+        ⚠️ {t("Only submit valid, unused cards. Submitting used/bad/test cards will hurt your trust level.")}
       </p>
     </div>
   );

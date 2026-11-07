@@ -11,6 +11,7 @@ In this project, when the user asks to **commit** (or "commit to git"), treat it
 
 1. Run `git status`, `git diff`, and `git log` to understand changes.
 2. Stage only relevant source files (never `.env`, credentials, or build artifacts like `*.tsbuildinfo` unless explicitly requested).
+   - Only commit files the deployed app actually uses. One-off/local scripts (e.g. broadcast or probe scripts in `apps/api/scripts/` that are run by hand) stay local and untracked.
 3. Create the commit with a clear message.
 4. **Push to GitHub** so deployments pick it up:
    - `git push origin HEAD` (or `git push -u origin <branch>` if the branch has no upstream)

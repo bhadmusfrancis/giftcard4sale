@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ReactNode, useRef, useState } from "react";
 import { money, date, STATUS_COLORS } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 
 /** One trade in a list: title + status on top, amounts and meta below. Same layout on every screen size. */
 export function TradeListItem({
@@ -18,6 +19,7 @@ export function TradeListItem({
   statusTitle?: string;
   extraBadge?: ReactNode;
 }) {
+  const tr = useT();
   const country = t.otherCountryName ? `${t.otherCountryName} (${t.country})` : t.country;
   return (
     <Link href={href} className="block px-4 py-3.5 transition hover:bg-slate-50 active:bg-slate-100 sm:px-5">
@@ -31,7 +33,7 @@ export function TradeListItem({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className={`badge ${STATUS_COLORS[t.status]}`} title={statusTitle}>
-            {t.status.replace("_", " ")}
+            {tr(t.status.replace("_", " "))}
           </span>
           {extraBadge}
         </div>
@@ -133,6 +135,7 @@ export function DetailRow({ label, value, mono = false }: { label: string; value
 
 /** Code block for e-codes / PINs with a copy button. */
 export function CodeBlock({ label, text }: { label: string; text: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -162,7 +165,7 @@ export function CodeBlock({ label, text }: { label: string; text: string }) {
           className="btn-sm bg-slate-100 text-slate-700 hover:bg-slate-200"
           onClick={() => void copy()}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("Copied") : t("Copy")}
         </button>
       </div>
       <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-slate-50 p-3 font-mono text-sm">{text}</pre>

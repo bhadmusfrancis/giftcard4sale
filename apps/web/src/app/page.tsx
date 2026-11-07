@@ -5,6 +5,8 @@ import { SITE_URL } from "@/lib/seo/site";
 import { PopularCards } from "@/components/PopularCards";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 import { AppDownloadButtons } from "@/components/AppDownloadButtons";
+import { HomeSearchForm } from "@/components/HomeSearchForm";
+import { T } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
@@ -49,28 +51,16 @@ export default async function HomePage() {
       <section className="bg-gradient-to-b from-brand-700 to-brand-900 text-white">
         <div className="mx-auto max-w-6xl px-4 py-20 text-center">
           <h1 className="mx-auto max-w-3xl text-4xl font-extrabold leading-tight sm:text-5xl">
-            Sell your gift cards for <span className="text-brand-100">USDT, Naira</span> or{" "}
-            <span className="text-brand-100">Cedi</span>
+            <T>Sell your gift cards for</T> <span className="text-brand-100">USDT, Naira</span>{" "}
+            <T>or</T> <span className="text-brand-100">Cedi</span>
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-brand-50/90">
-            GiftCard4Sale is an independent exchange. Calculate your payout, open a trade on our platform, and get paid
-            fast — physical cards and e-codes welcome.
+            <T>GiftCard4Sale is an independent exchange. Calculate your payout, open a trade on our platform, and get paid fast — physical cards and e-codes welcome.</T>
           </p>
-          <form action="/cards" method="get" className="mx-auto mt-8 flex max-w-lg gap-2">
-            <input
-              name="q"
-              type="search"
-              className="input flex-1 border-white/20 bg-white/95 text-slate-900 placeholder:text-slate-500"
-              placeholder="Search gift cards (Amazon, Steam, iTunes…)"
-              aria-label="Search gift cards"
-            />
-            <button type="submit" className="btn shrink-0 bg-white text-brand-800 hover:bg-brand-50">
-              Search
-            </button>
-          </form>
+          <HomeSearchForm />
           <div className="mt-4 flex flex-wrap justify-center gap-3">
-            <Link href="/cards" className="btn border border-white/40 text-white hover:bg-white/10">Browse all cards</Link>
-            <Link href="/register" className="btn border border-white/40 text-white hover:bg-white/10">Create account</Link>
+            <Link href="/cards" className="btn border border-white/40 text-white hover:bg-white/10"><T>Browse all cards</T></Link>
+            <Link href="/register" className="btn border border-white/40 text-white hover:bg-white/10"><T>Create account</T></Link>
           </div>
         </div>
       </section>
@@ -78,8 +68,8 @@ export default async function HomePage() {
       {/* Card grid */}
       <section className="mx-auto max-w-6xl px-4 py-14">
         <div className="mb-6 flex items-end justify-between">
-          <h2 className="text-2xl font-bold">Popular gift cards</h2>
-          <Link href="/cards" className="text-brand-700 hover:underline">View all</Link>
+          <h2 className="text-2xl font-bold"><T>Popular gift cards</T></h2>
+          <Link href="/cards" className="text-brand-700 hover:underline"><T>View all</T></Link>
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           <PopularCards initialCards={cards} />
@@ -89,21 +79,22 @@ export default async function HomePage() {
       {/* How it works */}
       <section id="how" className="bg-white border-y border-slate-200">
         <div className="mx-auto max-w-6xl px-4 py-14">
-          <h2 className="text-2xl font-bold text-center">How it works</h2>
+          <h2 className="text-2xl font-bold text-center"><T>How it works</T></h2>
           <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-slate-600">
-            Everything happens on GiftCard4Sale.com with your own account — we never ask for issuer passwords or bank
-            logins.
+            <T>Everything happens on GiftCard4Sale.com with your own account — we never ask for issuer passwords or bank logins.</T>
           </p>
           <div className="mt-10 grid gap-6 md:grid-cols-4">
-            {[
-              ["1. Pick your card", "Choose the gift card type and country, then enter the amount."],
-              ["2. Calculate rate", "See your exact payout in USDT, Naira or Cedi before committing."],
-              ["3. Open a trade", "Upload the card pictures or paste the e-code and submit."],
-              ["4. Get paid", "Once approved, your wallet is credited. Withdraw anytime."],
-            ].map(([t, d]) => (
-              <div key={t} className="card p-6">
-                <div className="text-brand-700 font-bold">{t}</div>
-                <p className="mt-2 text-sm text-slate-600">{d}</p>
+            {(
+              [
+                ["1. Pick your card", "Choose the gift card type and country, then enter the amount."],
+                ["2. Calculate rate", "See your exact payout in USDT, Naira or Cedi before committing."],
+                ["3. Open a trade", "Upload the card pictures or paste the e-code and submit."],
+                ["4. Get paid", "Once approved, your wallet is credited. Withdraw anytime."],
+              ] as const
+            ).map(([step, d]) => (
+              <div key={step} className="card p-6">
+                <div className="text-brand-700 font-bold"><T>{step}</T></div>
+                <p className="mt-2 text-sm text-slate-600"><T>{d}</T></p>
               </div>
             ))}
           </div>
@@ -112,11 +103,11 @@ export default async function HomePage() {
           </div>
           <p className="mt-4 text-center text-sm">
             <Link href="/about" className="font-semibold text-brand-700 hover:underline">
-              About GiftCard4Sale
+              <T>About GiftCard4Sale</T>
             </Link>
             {" · "}
             <Link href="/contact" className="font-semibold text-brand-700 hover:underline">
-              Contact support
+              <T>Contact support</T>
             </Link>
           </p>
         </div>
@@ -125,10 +116,9 @@ export default async function HomePage() {
       {/* App download */}
       <section className="bg-brand-700 text-white">
         <div className="mx-auto max-w-6xl px-4 py-14 text-center">
-          <h2 className="text-2xl font-bold">Get the GiftCard4Sale app</h2>
+          <h2 className="text-2xl font-bold"><T>Get the GiftCard4Sale app</T></h2>
           <p className="mx-auto mt-3 max-w-xl text-sm text-brand-50/90">
-            Install GiftCard4Sale on your phone — check live rates, trade and withdraw from your home screen. No app
-            store needed.
+            <T>Install GiftCard4Sale on your phone — check live rates, trade and withdraw from your home screen. No app store needed.</T>
           </p>
           <div className="mt-8">
             <AppDownloadButtons />
@@ -141,17 +131,17 @@ export default async function HomePage() {
         <div className="card overflow-hidden">
           <div className="grid md:grid-cols-2">
             <div className="p-8">
-              <h3 className="text-2xl font-bold">Earn 1% for life</h3>
+              <h3 className="text-2xl font-bold"><T>Earn 1% for life</T></h3>
               <p className="mt-3 text-slate-600">
-                Invite friends with your referral link and earn 1% of every successful trade they make — forever.
+                <T>Invite friends with your referral link and earn 1% of every successful trade they make — forever.</T>
               </p>
-              <Link href="/register" className="btn-primary mt-6">Start referring</Link>
+              <Link href="/register" className="btn-primary mt-6"><T>Start referring</T></Link>
             </div>
             <div className="bg-brand-700 p-8 text-white">
               <ul className="space-y-3">
-                <li>✓ Real-time referral dashboard</li>
-                <li>✓ Earnings in USDT, Naira & Cedi</li>
-                <li>✓ Withdraw to bank or crypto</li>
+                <li>✓ <T>Real-time referral dashboard</T></li>
+                <li>✓ <T>Earnings in USDT, Naira & Cedi</T></li>
+                <li>✓ <T>Withdraw to bank or crypto</T></li>
               </ul>
             </div>
           </div>

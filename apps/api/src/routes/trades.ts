@@ -29,6 +29,8 @@ import {
   clientIpFromRequest,
   userAgentFromRequest,
 } from "../services/metaConversions";
+import { normalizeLocale } from "../lib/locale";
+import { translateChatText } from "../services/translate";
 import { env } from "../env";
 
 export const tradesRouter = Router();
@@ -367,6 +369,7 @@ tradesRouter.get(
       include: {
         cardType: true,
         attachments: true,
+        user: { select: { locale: true } },
       },
     });
     if (!trade) return res.status(404).json({ error: "Trade not found" });
@@ -382,9 +385,14 @@ tradesRouter.get(
       orderBy: { createdAt: "asc" },
       include: { sender: true },
     });
+    const viewer: ChatViewer = {
+      userId: req.userId!,
+      role: req.userRole,
+      locale: trade.userId === req.userId ? trade.user.locale : "en",
+    };
     res.json({
       trade: serializeTrade(trade),
-      messages: messages.map(serializeMessage),
+      messages: messages.map((m) => serializeMessage(m, viewer)),
       partnerTyping: partnerIsTyping(trade.id, req.userRole),
     });
   })
@@ -469,7 +477,10 @@ tradesRouter.post(
       return res.status(400).json({ error: "Message text or a file attachment is required" });
     }
 
-    const trade = await prisma.trade.findUnique({ where: { id: req.params.id } });
+    const trade = await prisma.trade.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { locale: true } } },
+    });
     if (!trade) return res.status(404).json({ error: "Trade not found" });
     if (trade.userId !== req.userId && req.userRole !== "ADMIN") {
       return res.status(403).json({ error: "Forbidden" });
@@ -478,6 +489,30 @@ tradesRouter.post(
     const isOwner = trade.userId === req.userId;
     if (isOwner && (trade.status === "REJECTED" || trade.status === "CANCELLED")) {
       return res.status(403).json({ error: "This trade is closed. Chat is no longer available." });
+    }
+
+    const isAdminSender = req.userRole === "ADMIN";
+
+    // Auto-translate into the recipient's language: sellers write in their own
+    // language and admins read English; admins write English and sellers read
+    // their own language. The original text is always what the sender sees.
+    let bodyLang: string | null = null;
+    let translations: Record<string, string> | null = null;
+    let recipientBody = text;
+    if (text) {
+      const targetLang = isAdminSender ? normalizeLocale(trade.user.locale) : "en";
+      if (isAdminSender && targetLang === "en") {
+        bodyLang = "en";
+      } else {
+        const result = await translateChatText(text, targetLang);
+        if (result) {
+          bodyLang = result.detectedLang;
+          if (result.detectedLang !== targetLang && result.translated !== text) {
+            translations = { [targetLang]: result.translated };
+            recipientBody = result.translated;
+          }
+        }
+      }
     }
 
     // One message per attachment (the text rides on the first), so each file
@@ -493,6 +528,8 @@ tradesRouter.post(
             tradeId: trade.id,
             senderId: req.userId!,
             body: i === 0 ? text : "",
+            ...(i === 0 && bodyLang ? { bodyLang } : {}),
+            ...(i === 0 && translations ? { translations } : {}),
             createdAt: new Date(sentAt + i),
             ...(file
               ? {
@@ -509,14 +546,14 @@ tradesRouter.post(
     const message = messages[0];
     const messageIds = messages.map((m) => m.id);
 
+    // The recipient is emailed/pushed in their own language.
     const notifyBody =
-      text ||
+      recipientBody ||
       (files.length === 1
         ? `Sent a file: ${files[0].originalname}`
         : files.length
           ? `Sent ${files.length} files`
           : "New message");
-    const isAdminSender = req.userRole === "ADMIN";
 
     if (isAdminSender) {
       // Users must be emailed/pushed for every admin reply — not batched.
@@ -546,7 +583,15 @@ tradesRouter.post(
       }
     }
 
-    res.status(201).json({ message: serializeMessage(message), messages: messages.map(serializeMessage) });
+    const viewer: ChatViewer = {
+      userId: req.userId!,
+      role: req.userRole,
+      locale: isAdminSender ? "en" : trade.user.locale,
+    };
+    res.status(201).json({
+      message: serializeMessage(message, viewer),
+      messages: messages.map((m) => serializeMessage(m, viewer)),
+    });
   })
 );
 
@@ -622,10 +667,27 @@ export function serializeTrade(t: any) {
   };
 }
 
-export function serializeMessage(m: any) {
+type ChatViewer = { userId?: string; role?: string; locale?: string };
+
+/**
+ * Serialize a chat message for a specific viewer. Senders always see their own
+ * original text; the recipient sees the translation into their language when
+ * one was stored (admins read English, sellers read their profile language).
+ */
+export function serializeMessage(m: any, viewer?: ChatViewer) {
+  const translations = (m.translations ?? {}) as Record<string, string>;
+  const mine = !!viewer?.userId && m.senderId === viewer.userId;
+  const targetLang = viewer?.role === "ADMIN" ? "en" : normalizeLocale(viewer?.locale) || "en";
+  const body = mine ? m.body : translations[targetLang] || m.body;
+  const autoTranslated = !mine && body !== m.body;
   return {
     id: m.id,
-    body: m.body,
+    body,
+    // Let the admin know a message was machine-translated (and from which
+    // language); regular users just see text in their language.
+    ...(viewer?.role === "ADMIN" && autoTranslated
+      ? { originalBody: m.body, bodyLang: m.bodyLang ?? null }
+      : {}),
     attachmentUrl: mediaUrl(m.attachmentUrl),
     attachmentFilename: m.attachmentFilename ?? null,
     attachmentMimeType: m.attachmentMimeType ?? null,

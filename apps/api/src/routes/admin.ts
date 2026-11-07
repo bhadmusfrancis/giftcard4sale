@@ -467,7 +467,7 @@ adminRouter.get(
 
 adminRouter.get(
   "/trades/:id",
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const trade = await prisma.trade.findUnique({
       where: { id: req.params.id },
       include: {
@@ -524,7 +524,9 @@ adminRouter.get(
         noonesCryptoAmount: trade.noonesCryptoAmount != null ? Number(trade.noonesCryptoAmount) : null,
         noonesCryptoCurrency: trade.noonesCryptoCurrency,
       },
-      messages: trade.messages.map((m) => serializeMessage(m)),
+      messages: trade.messages.map((m) =>
+        serializeMessage(m, { userId: req.userId, role: "ADMIN", locale: "en" })
+      ),
     });
   })
 );

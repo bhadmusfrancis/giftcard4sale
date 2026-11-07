@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CountryOption } from "@gc4s/shared";
+import { useT } from "@/lib/i18n";
 import { CountryIcon } from "@/components/CountryIcon";
 
 interface CountryPickerProps {
@@ -11,6 +12,7 @@ interface CountryPickerProps {
 }
 
 export function CountryPicker({ options, value, onChange }: CountryPickerProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.country === value);
@@ -24,7 +26,7 @@ export function CountryPicker({ options, value, onChange }: CountryPickerProps) 
   }, []);
 
   if (options.length === 0) {
-    return <p className="text-sm text-slate-500">No countries available.</p>;
+    return <p className="text-sm text-slate-500">{t("No countries available.")}</p>;
   }
 
   return (
@@ -39,7 +41,7 @@ export function CountryPicker({ options, value, onChange }: CountryPickerProps) 
         {selected ? (
           <CountryIcon country={selected.country} currency={selected.currency} />
         ) : null}
-        <span className="min-w-0 flex-1 truncate">{selected?.label ?? "Select country"}</span>
+        <span className="min-w-0 flex-1 truncate">{selected?.label ?? t("Select country")}</span>
         <svg
           className={`h-4 w-4 shrink-0 text-slate-400 transition ${open ? "rotate-180" : ""}`}
           viewBox="0 0 20 20"

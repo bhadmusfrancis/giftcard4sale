@@ -1,15 +1,18 @@
+"use client";
+
 import Link from "next/link";
+import { useT } from "@/lib/i18n";
 
 /** Short independent-business disclaimer for footers and landing pages. */
 export function BrandAffiliationDisclaimer({ className = "" }: { className?: string }) {
+  const t = useT();
   return (
     <p className={`text-xs leading-relaxed text-slate-500 ${className}`}>
-      GiftCard4Sale is an <strong className="font-semibold text-slate-600">independent</strong> gift card exchange. We
-      are <strong className="font-semibold text-slate-600">not affiliated with, endorsed by, or partners of</strong>{" "}
-      Amazon, Apple, Google, Microsoft, Steam, Sony, or any other gift card issuer. Brand names appear only to identify
-      card types we buy.{" "}
+      {t(
+        "GiftCard4Sale is an independent gift card exchange. We are not affiliated with, endorsed by, or partners of Amazon, Apple, Google, Microsoft, Steam, Sony, or any other gift card issuer. Brand names appear only to identify card types we buy."
+      )}{" "}
       <Link href="/about" className="font-medium text-brand-700 hover:underline">
-        Learn more about us
+        {t("Learn more about us")}
       </Link>
       .
     </p>

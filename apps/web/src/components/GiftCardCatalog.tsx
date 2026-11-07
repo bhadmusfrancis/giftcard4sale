@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 export interface GiftCard {
   id: string;
@@ -40,6 +41,7 @@ export function GiftCardCatalog({
   syncUrl = false,
   stale = false,
 }: GiftCardCatalogProps) {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(initialQuery);
@@ -105,17 +107,17 @@ export function GiftCardCatalog({
         <input
           type="search"
           className="input pr-10"
-          placeholder="Search gift cards (Amazon, Steam, iTunes…)"
+          placeholder={t("Search gift cards (Amazon, Steam, iTunes…)")}
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
-          aria-label="Search gift cards"
+          aria-label={t("Search gift cards")}
         />
         {query && (
           <button
             type="button"
             onClick={() => handleQueryChange("")}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 hover:text-slate-600"
-            aria-label="Clear search"
+            aria-label={t("Clear search")}
           >
             ✕
           </button>
@@ -124,13 +126,17 @@ export function GiftCardCatalog({
 
       {showStaleNotice && catalogCards.length > 0 && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Showing our last known catalog — live rates are refreshing. Open a card to see the rate it was last traded at.
+          {t("Showing our last known catalog — live rates are refreshing. Open a card to see the rate it was last traded at.")}
         </p>
       )}
 
       {query && (
         <p className="mt-3 text-sm text-slate-500">
-          {filtered.length} {filtered.length === 1 ? "card" : "cards"} matching &ldquo;{query}&rdquo;
+          {t("{count} {noun} matching “{query}”", {
+            count: filtered.length,
+            noun: filtered.length === 1 ? t("card") : t("cards"),
+            query,
+          })}
         </p>
       )}
 
@@ -139,7 +145,7 @@ export function GiftCardCatalog({
           <Link key={card.id} href={`/${card.sellSlug}`} className="card p-5 transition hover:shadow-md">
             <BrandLogo name={card.name} slug={card.slug} imageUrl={card.imageUrl} className="mb-3 h-12 w-12" />
             <div className="font-semibold">{card.name}</div>
-            <div className="text-sm text-brand-700">Check rate →</div>
+            <div className="text-sm text-brand-700">{t("Check rate →")}</div>
           </Link>
         ))}
       </div>
@@ -148,31 +154,31 @@ export function GiftCardCatalog({
         <div className="card mt-8 p-8 text-center">
           <p className="font-medium text-slate-700">
             {catalogState === "loading" || catalogState === "idle"
-              ? "Loading gift cards…"
+              ? t("Loading gift cards…")
               : catalogState === "error"
-                ? "Couldn't load gift cards"
-                : "No gift cards found"}
+                ? t("Couldn't load gift cards")
+                : t("No gift cards found")}
           </p>
           <p className="mt-2 text-sm text-slate-500">
             {catalogState === "loading" || catalogState === "idle" ? (
-              "Loading gift cards from our catalog."
+              t("Loading gift cards from our catalog.")
             ) : catalogState === "error" ? (
               <>
-                Our catalog is temporarily unavailable.{" "}
+                {t("Our catalog is temporarily unavailable.")}{" "}
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
                   className="text-brand-700 hover:underline"
                 >
-                  Try again
+                  {t("Try again")}
                 </button>
                 .
               </>
             ) : (
               <>
-                Try a different search term, or{" "}
+                {t("Try a different search term, or")}{" "}
                 <button type="button" onClick={() => handleQueryChange("")} className="text-brand-700 hover:underline">
-                  clear the search
+                  {t("clear the search")}
                 </button>
                 .
               </>

@@ -120,6 +120,12 @@ model User {
   // Set on each successful password login.
   lastLoginAt       DateTime?
 
+  // Preferred UI/chat language (BCP-47, e.g. "en", "fr", "pt-br") and detected
+  // signup country (ISO 3166-1 alpha-2). Drives site localization and
+  // auto-translation of trade chats.
+  locale            String   @default("en")
+  country           String?
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
@@ -405,6 +411,11 @@ model TradeMessage {
   sender    User     @relation(fields: [senderId], references: [id])
   senderId  String
   body      String   @default("")
+  // Detected source language of `body` (BCP-47) and per-language translations
+  // ({ "en": "...", "fr": "..." }). Recipients see the variant for their
+  // language; senders always see their own original text.
+  bodyLang         String?
+  translations     Json?
   attachmentUrl      String?
   attachmentFilename String?
   attachmentMimeType String?
@@ -415,6 +426,22 @@ model TradeMessage {
   createdAt DateTime @default(now())
 
   @@index([tradeId])
+}
+
+// Server-side cache for machine-translated UI strings so each unique English
+// phrase is translated at most once per language (the UI sends the English
+// source text; translations persist across deploys and clients).
+model TranslationCache {
+  id         String   @id @default(cuid())
+  targetLang String
+  // sha256 hex of the normalized source text.
+  sourceHash String
+  source     String
+  translated String
+  createdAt  DateTime @default(now())
+
+  @@unique([targetLang, sourceHash])
+  @@index([targetLang])
 }
 
 model BankAccount {

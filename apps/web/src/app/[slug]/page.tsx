@@ -7,6 +7,7 @@ import { CardRatePanel } from "@/components/CardRatePanel";
 import { BrandLogo } from "@/components/BrandLogo";
 import { GiftCardSearch } from "@/components/GiftCardSearch";
 import { MetaViewContent } from "@/components/MetaViewContent";
+import { DomTranslator } from "@/components/DomTranslator";
 import { cardWarnings } from "@/lib/cardWarnings";
 
 interface LandingResp {
@@ -183,8 +184,10 @@ export default async function SlugPage({ params }: { params: { slug: string } })
       </p>
     </div>
   );
+  const ratePanelWrapped = <div data-i18n-skip>{ratePanel}</div>;
 
   return (
+    <DomTranslator>
     <div className="mx-auto max-w-6xl px-4 py-10 sm:py-12">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
@@ -242,12 +245,12 @@ export default async function SlugPage({ params }: { params: { slug: string } })
         </div>
       ))}
 
-      <div className="mt-6">
+      <div className="mt-6" data-i18n-skip>
         <GiftCardSearch cards={catalogCards} currentSellSlug={brand?.sellSlug ?? fixedSlug} />
       </div>
 
       {/* Mobile: rate calculator immediately after header for conversion */}
-      <div className="mt-6 lg:hidden">{ratePanel}</div>
+      <div className="mt-6 lg:hidden">{ratePanelWrapped}</div>
 
       <div className="mt-8 grid items-start gap-8 lg:grid-cols-[1fr_380px] lg:gap-10">
         <div className="min-w-0">
@@ -298,10 +301,11 @@ export default async function SlugPage({ params }: { params: { slug: string } })
             <p className="text-center text-xs font-semibold uppercase tracking-wide text-brand-700">
               Live rate calculator
             </p>
-            {ratePanel}
+            {ratePanelWrapped}
           </div>
         </aside>
       </div>
     </div>
+    </DomTranslator>
   );
 }

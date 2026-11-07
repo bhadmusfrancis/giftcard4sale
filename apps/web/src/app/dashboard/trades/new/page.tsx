@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money } from "@/lib/format";
@@ -23,6 +24,7 @@ function NewTradeInner() {
   const router = useRouter();
   const params = useSearchParams();
   const { user } = useAuth();
+  const t = useT();
 
   const rateId = params.get("rateId") || "";
   const amount = Number(params.get("amount") || 0);
@@ -97,41 +99,41 @@ function NewTradeInner() {
     };
   }, [rateId, amount, payout, receiptType]);
 
-  const receiptSummary = useMemo(() => RECEIPT_LABELS[receiptType] ?? RECEIPT_LABELS.NONE, [receiptType]);
+  const receiptSummary = useMemo(() => t(RECEIPT_LABELS[receiptType] ?? RECEIPT_LABELS.NONE), [receiptType, t]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!quoteReady || !quote) {
-      setError("Please wait for your payout to finish calculating.");
+      setError(t("Please wait for your payout to finish calculating."));
       return;
     }
     if (!agree) {
-      setError("Please confirm your card is valid and unused.");
+      setError(t("Please confirm your card is valid and unused."));
       return;
     }
     if (needsReceiptUpload && (!receiptFiles || receiptFiles.length === 0)) {
-      setError("You indicated a purchase receipt is available — please upload receipt photo(s).");
+      setError(t("You indicated a purchase receipt is available — please upload receipt photo(s)."));
       return;
     }
     if (needsCardCountry && !cardCountry.trim()) {
-      setError("Please specify your card country.");
+      setError(t("Please specify your card country."));
       return;
     }
     if (medium === "ECODE" && !ecodes.trim()) {
-      setError("Please paste your e-code(s).");
+      setError(t("Please paste your e-code(s)."));
       return;
     }
     if (rateInfo?.requiresPin && !pins.trim()) {
-      setError("Please enter the card PIN(s).");
+      setError(t("Please enter the card PIN(s)."));
       return;
     }
     if (medium === "PHYSICAL" && !cardDenominations.trim()) {
-      setError("Please enter card denominations (e.g. 200x1, 50x4).");
+      setError(t("Please enter card denominations (e.g. 200x1, 50x4)."));
       return;
     }
     if (medium === "PHYSICAL" && (!files || files.length === 0)) {
-      setError("Please upload at least one gift card photo.");
+      setError(t("Please upload at least one gift card photo."));
       return;
     }
 
@@ -175,33 +177,33 @@ function NewTradeInner() {
       return created;
     }, (r) =>
       r.autoRejected
-        ? r.message || "Trade rejected — this card was already used in a previous trade."
-        : "Trade submitted successfully. Redirecting…"
+        ? r.message || t("Trade rejected — this card was already used in a previous trade.")
+        : t("Trade submitted successfully. Redirecting…")
     );
 
     if (result?.trade?.id) {
       if (result.autoRejected) {
-        setError(result.message || "This gift card was already used in a previous trade.");
+        setError(result.message || t("This gift card was already used in a previous trade."));
       }
       router.push(`/dashboard/trades/${result.trade.id}`);
     }
   }
 
   if (!rateId) {
-    return <div className="card p-8 text-center text-slate-500">Start from a card page to open a trade.</div>;
+    return <div className="card p-8 text-center text-slate-500">{t("Start from a card page to open a trade.")}</div>;
   }
 
   if (user && !user.emailVerified) {
     return (
       <div className="card p-8 text-center">
-        <p className="text-slate-600">Please verify your email before opening a trade.</p>
+        <p className="text-slate-600">{t("Please verify your email before opening a trade.")}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Open a trade</h1>
+      <h1 className="text-2xl font-bold">{t("Open a trade")}</h1>
 
       <div className="card p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -211,18 +213,18 @@ function NewTradeInner() {
             ) : null}
             <div className="text-sm text-slate-500">
               {needsCardCountry && cardCountry.trim() ? cardCountry.trim() : rateInfo?.country}{" "}
-              · {medium === "ECODE" ? "E-code" : "Physical"} · {amount} {rateInfo?.currency}
+              · {medium === "ECODE" ? t("E-code") : t("Physical")} · {amount} {rateInfo?.currency}
             </div>
             {receiptType !== "NONE" ? (
-              <div className="text-sm text-slate-500">Receipt: {receiptSummary}</div>
+              <div className="text-sm text-slate-500">{t("Receipt")}: {receiptSummary}</div>
             ) : null}
-            <div className="text-sm text-slate-500">You will receive</div>
+            <div className="text-sm text-slate-500">{t("You will receive")}</div>
             <div className="text-2xl font-bold">
-              {quoteLoading || !quoteReady ? "Calculating…" : quote ? money(quote.payoutAmount, payout) : "—"}
+              {quoteLoading || !quoteReady ? t("Calculating…") : quote ? money(quote.payoutAmount, payout) : "—"}
             </div>
             {quote?.extraReductionPercent ? (
               <div className="mt-2 max-w-md text-xs text-amber-700">
-                A lower rate applies — {amount} {rateInfo?.currency} is not a multiple of 5 or 50.
+                {t("A lower rate applies — {amount} {currency} is not a multiple of 5 or 50.", { amount, currency: rateInfo?.currency ?? "" })}
               </div>
             ) : null}
             {isLegacyPartnerRate(rateInfo?.speed) ? (
@@ -236,12 +238,12 @@ function NewTradeInner() {
       <form onSubmit={submit} noValidate className="card space-y-5 p-6">
         {warnings.map((w) => (
           <div key={w.title} className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-semibold">{w.title}</p>
+            <p className="font-semibold">{t(w.title)}</p>
             <p className="mt-1">
-              {w.body}{" "}
+              {t(w.body)}{" "}
               {w.link && (
                 <a href={w.link.href} target="_blank" rel="noreferrer" className="font-medium underline">
-                  {w.link.label}
+                  {t(w.link.label)}
                 </a>
               )}
             </p>
@@ -250,58 +252,58 @@ function NewTradeInner() {
 
         {needsCardCountry ? (
           <div>
-            <label className="label">Card country</label>
+            <label className="label">{t("Card country")}</label>
             <input
               type="text"
               className="input"
-              placeholder="e.g. Germany, France, Spain"
+              placeholder={t("e.g. Germany, France, Spain")}
               value={cardCountry}
               onChange={(e) => setCardCountry(e.target.value)}
             />
             <p className="mt-1 text-xs text-slate-500">
               {rateInfo?.country === "Euro" || rateInfo?.currency === "EUR"
-                ? "Euro Apple/iTunes cards are locked to the issuing country — enter the country printed on your card."
-                : "Enter the country that issued your gift card."}
+                ? t("Euro Apple/iTunes cards are locked to the issuing country — enter the country printed on your card.")
+                : t("Enter the country that issued your gift card.")}
             </p>
           </div>
         ) : null}
 
         <div>
-          <label className="label">{medium === "ECODE" ? "E-code(s)" : "Card code(s)"}</label>
+          <label className="label">{medium === "ECODE" ? t("E-code(s)") : t("Card code(s)")}</label>
           <textarea
             className="input min-h-[120px]"
-            placeholder="Paste your gift card code(s) here, one per line"
+            placeholder={t("Paste your gift card code(s) here, one per line")}
             value={ecodes}
             onChange={(e) => setEcodes(e.target.value)}
           />
           {medium === "PHYSICAL" && (
             <p className="mt-1 text-xs text-slate-500">
-              If the code is printed on the card, type it here as well — it speeds up verification.
+              {t("If the code is printed on the card, type it here as well — it speeds up verification.")}
             </p>
           )}
         </div>
 
         {medium === "PHYSICAL" ? (
           <div>
-            <label className="label">Card denominations</label>
+            <label className="label">{t("Card denominations")}</label>
             <input
               type="text"
               className="input"
-              placeholder="e.g. 200x1, 50x4, 100x2"
+              placeholder={t("e.g. 200x1, 50x4, 100x2")}
               value={cardDenominations}
               onChange={(e) => setCardDenominations(e.target.value)}
             />
             <p className="mt-1 text-xs text-slate-500">
-              List each denomination and quantity (e.g. one $200 card = 200x1, four $50 cards = 50x4).
+              {t("List each denomination and quantity (e.g. one $200 card = 200x1, four $50 cards = 50x4).")}
             </p>
           </div>
         ) : (
           <div>
-            <label className="label">Card denominations (optional)</label>
+            <label className="label">{t("Card denominations (optional)")}</label>
             <input
               type="text"
               className="input"
-              placeholder="e.g. 100x1"
+              placeholder={t("e.g. 100x1")}
               value={cardDenominations}
               onChange={(e) => setCardDenominations(e.target.value)}
             />
@@ -310,22 +312,22 @@ function NewTradeInner() {
 
         {rateInfo?.requiresPin ? (
           <div>
-            <label className="label">Card PIN(s)</label>
+            <label className="label">{t("Card PIN(s)")}</label>
             <textarea
               className="input min-h-[120px]"
-              placeholder="Paste the card PIN(s) here, one per line, matching the card order above"
+              placeholder={t("Paste the card PIN(s) here, one per line, matching the card order above")}
               value={pins}
               onChange={(e) => setPins(e.target.value)}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Cards of this type require the PIN along with the code. Enter one PIN per card.
+              {t("Cards of this type require the PIN along with the code. Enter one PIN per card.")}
             </p>
           </div>
         ) : null}
 
         <div>
           <label className="label">
-            {medium === "PHYSICAL" ? "Gift card photo(s)" : "Gift card photo(s) (optional)"}
+            {medium === "PHYSICAL" ? t("Gift card photo(s)") : t("Gift card photo(s) (optional)")}
           </label>
           <input
             type="file"
@@ -336,14 +338,14 @@ function NewTradeInner() {
           />
           <p className="mt-1 text-xs text-slate-500">
             {medium === "PHYSICAL"
-              ? "Upload clear photos of every card (front and back). You can select multiple files at once."
-              : "Optional screenshots of the e-code email or gift card page."}
+              ? t("Upload clear photos of every card (front and back). You can select multiple files at once.")
+              : t("Optional screenshots of the e-code email or gift card page.")}
           </p>
         </div>
 
         {needsReceiptUpload ? (
           <div>
-            <label className="label">Purchase receipt (required)</label>
+            <label className="label">{t("Purchase receipt (required)")}</label>
             <input
               type="file"
               accept="image/*"
@@ -352,13 +354,14 @@ function NewTradeInner() {
               onChange={(e) => setReceiptFiles(e.target.files)}
             />
             <p className="mt-1 text-xs text-slate-500">
-              You confirmed a {receiptType === "CASH" ? "cash" : "debit/card"} receipt is available. Upload clear
-              photo(s) of the store receipt.
+              {t("You confirmed a {kind} receipt is available. Upload clear photo(s) of the store receipt.", {
+                kind: receiptType === "CASH" ? t("cash") : t("debit/card"),
+              })}
             </p>
           </div>
         ) : (
           <div>
-            <label className="label">Purchase receipt (optional)</label>
+            <label className="label">{t("Purchase receipt (optional)")}</label>
             <input
               type="file"
               accept="image/*"
@@ -367,21 +370,20 @@ function NewTradeInner() {
               onChange={(e) => setReceiptFiles(e.target.files)}
             />
             <p className="mt-1 text-xs text-slate-500">
-              Upload receipt photo(s) if you have them — this can help verification even for e-codes.
+              {t("Upload receipt photo(s) if you have them — this can help verification even for e-codes.")}
             </p>
           </div>
         )}
 
         <div>
-          <label className="label">Notes (optional)</label>
+          <label className="label">{t("Notes (optional)")}</label>
           <textarea className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
         <label className="flex items-start gap-3 rounded-lg bg-red-50 p-4 text-sm text-red-800">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1" />
           <span>
-            I confirm this is a valid, unused card. I understand that uploading used/bad/test cards will mark my trade as
-            failed and damage my trust level and reputation.
+            {t("I confirm this is a valid, unused card. I understand that uploading used/bad/test cards will mark my trade as failed and damage my trust level and reputation.")}
           </span>
         </label>
 
@@ -392,7 +394,7 @@ function NewTradeInner() {
           className="btn-primary w-full"
           disabled={busy || quoteLoading || !quoteReady}
         >
-          {busy ? "Submitting…" : quoteLoading || !quoteReady ? "Calculating payout…" : "Submit trade"}
+          {busy ? t("Submitting…") : quoteLoading || !quoteReady ? t("Calculating payout…") : t("Submit trade")}
         </button>
       </form>
     </div>

@@ -4,9 +4,11 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { newMetaEventId, trackMeta } from "@/lib/metaPixel";
 
 function VerifyInner() {
+  const t = useT();
   const params = useSearchParams();
   const token = params.get("token");
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
@@ -37,21 +39,21 @@ function VerifyInner() {
   return (
     <div className="mx-auto max-w-md px-4 py-20 text-center">
       <div className="card p-8">
-        {state === "loading" && <p>Verifying your email…</p>}
+        {state === "loading" && <p>{t("Verifying your email…")}</p>}
         {state === "ok" && (
           <>
             <div className="text-5xl">✅</div>
-            <h1 className="mt-4 text-2xl font-bold">Email verified!</h1>
-            <p className="mt-2 text-slate-600">You can now open trades and withdraw funds.</p>
-            <Link href="/dashboard" className="btn-primary mt-6">Go to dashboard</Link>
+            <h1 className="mt-4 text-2xl font-bold">{t("Email verified!")}</h1>
+            <p className="mt-2 text-slate-600">{t("You can now open trades and withdraw funds.")}</p>
+            <Link href="/dashboard" className="btn-primary mt-6">{t("Go to dashboard")}</Link>
           </>
         )}
         {state === "error" && (
           <>
             <div className="text-5xl">⚠️</div>
-            <h1 className="mt-4 text-2xl font-bold">Verification failed</h1>
+            <h1 className="mt-4 text-2xl font-bold">{t("Verification failed")}</h1>
             <p className="mt-2 text-slate-600">{message}</p>
-            <Link href="/dashboard" className="btn-ghost mt-6">Go to dashboard</Link>
+            <Link href="/dashboard" className="btn-ghost mt-6">{t("Go to dashboard")}</Link>
           </>
         )}
       </div>

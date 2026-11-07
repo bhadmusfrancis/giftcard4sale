@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { apiServer } from "@/lib/api";
 import { BrandLogo } from "@/components/BrandLogo";
+import { DomTranslator } from "@/components/DomTranslator";
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -88,6 +89,7 @@ export default async function InsightArticlePage({ params }: { params: { slug: s
   };
 
   return (
+    <DomTranslator>
     <main className="mx-auto max-w-3xl px-4 py-10">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <script
@@ -149,5 +151,6 @@ export default async function InsightArticlePage({ params }: { params: { slug: s
         </aside>
       )}
     </main>
+    </DomTranslator>
   );
 }

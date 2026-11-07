@@ -16,6 +16,7 @@ import { landingRouter } from "./routes/landing";
 import { insightsRouter } from "./routes/insights";
 import { seoRouter } from "./routes/seo";
 import { adminRouter } from "./routes/admin";
+import { i18nRouter } from "./routes/i18n";
 import { analyticsRouter } from "./routes/analytics";
 import { mediaRouter } from "./routes/media";
 import { noonesWebhookRouter } from "./routes/noonesWebhook";
@@ -75,6 +76,7 @@ export function mountApi(app: Express): void {
   app.use("/api/insights", insightsRouter);
   app.use("/api/seo", seoRouter);
   app.use("/api/analytics", analyticsRouter);
+  app.use("/api/i18n", i18nRouter);
   app.use("/api/admin", adminRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "Not found" }));

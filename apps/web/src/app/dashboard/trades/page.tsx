@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { SELLER_STATUS_DESCRIPTIONS } from "@/lib/format";
 import { TradeListItem } from "@/components/PageUi";
 
 export default function TradesPage() {
+  const t = useT();
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -17,19 +19,19 @@ export default function TradesPage() {
   return (
     <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="page-title">My trades</h1>
+        <h1 className="page-title">{t("My trades")}</h1>
         <Link href="/cards" className="btn-primary w-full sm:w-auto">
-          New trade
+          {t("New trade")}
         </Link>
       </div>
 
       {loading ? (
-        <p className="text-slate-500">Loading…</p>
+        <p className="text-slate-500">{t("Loading…")}</p>
       ) : trades.length === 0 ? (
         <div className="card p-8 text-center text-slate-500 sm:p-10">
-          No trades yet.{" "}
+          {t("No trades yet.")}{" "}
           <Link href="/cards" className="font-semibold text-brand-700 underline">
-            Sell your first card
+            {t("Sell your first card")}
           </Link>
           .
         </div>

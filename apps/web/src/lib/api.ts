@@ -1,4 +1,5 @@
 import { getMetaClickIds } from "@/lib/metaPixel";
+import { LANG_COOKIE, getCookie } from "@/lib/locale";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -49,6 +50,8 @@ export async function api<T = any>(path: string, opts: ApiOptions = {}): Promise
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const lang = getCookie(LANG_COOKIE);
+  if (lang) headers["Accept-Language"] = lang;
 
   let body: any = undefined;
   if (opts.body !== undefined) {

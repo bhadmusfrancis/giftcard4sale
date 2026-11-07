@@ -2,12 +2,17 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
 
 type ChatMessage = {
   id: string;
   body: string;
+  // Admin-only: set when the shown body was machine-translated (original +
+  // detected source language). Users never see this.
+  originalBody?: string;
+  bodyLang?: string | null;
   attachmentUrl?: string | null;
   attachmentFilename?: string | null;
   attachmentMimeType?: string | null;
@@ -30,13 +35,13 @@ function dayKey(iso: string): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-function dayLabel(iso: string): string {
+function dayLabel(iso: string, t: (s: string) => string): string {
   const d = new Date(iso);
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (dayKey(iso) === dayKey(today.toISOString())) return "Today";
-  if (dayKey(iso) === dayKey(yesterday.toISOString())) return "Yesterday";
+  if (dayKey(iso) === dayKey(today.toISOString())) return t("Today");
+  if (dayKey(iso) === dayKey(yesterday.toISOString())) return t("Yesterday");
   return d.toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
@@ -57,6 +62,7 @@ export function TradeChat({
   /** Sizing for the panel — the chat fills this height and scrolls internally. */
   className?: string;
 }) {
+  const t = useT();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tradeStatus, setTradeStatus] = useState<string | null>(null);
   const [partnerTyping, setPartnerTyping] = useState(false);
@@ -75,7 +81,7 @@ export function TradeChat({
   const coarsePointerRef = useRef<boolean | null>(null);
 
   const chatClosed = !isAdmin && (tradeStatus === "REJECTED" || tradeStatus === "CANCELLED");
-  const partnerLabel = isAdmin ? "Seller" : "Support";
+  const partnerLabel = isAdmin ? t("Seller") : t("Support");
 
   async function load() {
     const d = await api(`/trades/${tradeId}`);
@@ -221,14 +227,14 @@ export function TradeChat({
           {partnerLabel[0]}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-bold text-slate-900">{isAdmin ? "Chat with seller" : "Support chat"}</h3>
+          <h3 className="truncate text-sm font-bold text-slate-900">{isAdmin ? t("Chat with seller") : t("Support chat")}</h3>
           <p className="truncate text-xs text-slate-500">
             {partnerTyping ? (
-              <span className="text-brand-700">{partnerLabel} is typing…</span>
+              <span className="text-brand-700">{t("{who} is typing…", { who: partnerLabel })}</span>
             ) : isAdmin ? (
-              "Replies notify the seller by email."
+              t("Replies notify the seller by email.")
             ) : (
-              "Ask support anything about this trade."
+              t("Ask support anything about this trade.")
             )}
           </p>
         </div>
@@ -241,9 +247,11 @@ export function TradeChat({
       >
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center">
-            <p className="text-sm font-medium text-slate-600">No messages yet</p>
+            <p className="text-sm font-medium text-slate-600">{t("No messages yet")}</p>
             <p className="text-xs text-slate-400">
-              {chatClosed ? "This chat is closed." : `Send a message to ${partnerLabel.toLowerCase()} below.`}
+              {chatClosed
+                ? t("This chat is closed.")
+                : t("Send a message to {who} below.", { who: partnerLabel.toLowerCase() })}
             </p>
           </div>
         )}
@@ -255,13 +263,13 @@ export function TradeChat({
           const prev = messages[i - 1];
           const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt);
           const sameSenderAsPrev = !newDay && prev?.sender.id === m.sender.id;
-          const senderName = m.sender.role === "ADMIN" ? "Support" : m.sender.displayName || "Seller";
+          const senderName = m.sender.role === "ADMIN" ? t("Support") : m.sender.displayName || t("Seller");
           return (
             <Fragment key={m.id}>
               {newDay && (
                 <div className="flex justify-center py-1">
                   <span className="rounded-full bg-white px-3 py-0.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200">
-                    {dayLabel(m.createdAt)}
+                    {dayLabel(m.createdAt, t)}
                   </span>
                 </div>
               )}
@@ -277,6 +285,12 @@ export function TradeChat({
                     <div className="mb-0.5 text-[11px] font-semibold text-brand-700">{senderName}</div>
                   )}
                   {m.body ? <div className="whitespace-pre-wrap break-words">{m.body}</div> : null}
+                  {isAdmin && m.originalBody && (
+                    <div className="mt-1 text-[10px] italic text-slate-400" title={m.originalBody}>
+                      {t("auto-translated")}
+                      {m.bodyLang ? ` · ${m.bodyLang}` : ""}
+                    </div>
+                  )}
                   {m.attachmentUrl && isImage && (
                     <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="mt-1.5 block">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -301,7 +315,7 @@ export function TradeChat({
                       }`}
                     >
                       <span aria-hidden>📄</span>
-                      <span className="truncate">{m.attachmentFilename || "PDF attachment"}</span>
+                      <span className="truncate">{m.attachmentFilename || t("PDF attachment")}</span>
                     </a>
                   )}
                   <div
@@ -311,7 +325,7 @@ export function TradeChat({
                   >
                     <span>{timeLabel(m.createdAt)}</span>
                     {receipt && (
-                      <span className={receipt.read ? "text-sky-200" : ""} title={receipt.read ? "Read" : "Sent"}>
+                      <span className={receipt.read ? "text-sky-200" : ""} title={receipt.read ? t("Read") : t("Sent")}>
                         {receipt.text}
                       </span>
                     )}
@@ -334,8 +348,9 @@ export function TradeChat({
 
       {chatClosed ? (
         <p className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm text-slate-600">
-          This trade was {tradeStatus === "CANCELLED" ? "cancelled" : "rejected"}, so the chat is closed. Contact
-          support if you need help.
+          {t("This trade was {status}, so the chat is closed. Contact support if you need help.", {
+            status: tradeStatus === "CANCELLED" ? t("cancelled") : t("rejected"),
+          })}
         </p>
       ) : (
         <form
@@ -357,7 +372,7 @@ export function TradeChat({
                     type="button"
                     onClick={() => removeFile(i)}
                     className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-red-600"
-                    aria-label={`Remove ${f.name}`}
+                    aria-label={t("Remove {name}", { name: f.name })}
                   >
                     ×
                   </button>
@@ -373,7 +388,7 @@ export function TradeChat({
               className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 ${
                 files.length >= MAX_FILES ? "pointer-events-none opacity-40" : ""
               }`}
-              title="Attach images or PDF"
+              title={t("Attach images or PDF")}
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
                 <path
@@ -382,7 +397,7 @@ export function TradeChat({
                   d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"
                 />
               </svg>
-              <span className="sr-only">Attach files</span>
+              <span className="sr-only">{t("Attach files")}</span>
               <input
                 ref={fileRef}
                 type="file"
@@ -397,7 +412,7 @@ export function TradeChat({
               ref={textRef}
               rows={1}
               className="max-h-32 min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-2 text-sm leading-6 outline-none focus:border-brand-600 focus:bg-white focus:ring-2 focus:ring-brand-100"
-              placeholder={isAdmin ? "Message the seller…" : "Type a message…"}
+              placeholder={isAdmin ? t("Message the seller…") : t("Type a message…")}
               value={body}
               onChange={(e) => {
                 setBody(e.target.value);
@@ -420,7 +435,7 @@ export function TradeChat({
               type="submit"
               disabled={!canSend}
               className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-700 text-white shadow-sm transition hover:bg-brand-800 disabled:bg-slate-300 sm:w-auto sm:px-4"
-              aria-label="Send message"
+              aria-label={t("Send message")}
             >
               {sendAction.busy ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -429,7 +444,7 @@ export function TradeChat({
                   <svg viewBox="0 0 24 24" className="h-5 w-5 sm:hidden" fill="currentColor" aria-hidden>
                     <path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.993.993 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z" />
                   </svg>
-                  <span className="hidden text-sm font-semibold sm:inline">Send</span>
+                  <span className="hidden text-sm font-semibold sm:inline">{t("Send")}</span>
                 </>
               )}
             </button>

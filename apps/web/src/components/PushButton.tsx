@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 import {
   PUSH_CHANGE_EVENT,
   currentPushSubscription,
@@ -14,6 +15,7 @@ type PushState = "checking" | "unsupported" | "off" | "on" | "busy";
 
 /** On/off switch for web push on this device. Push is on by default. */
 export function PushButton({ hideWhenEnabled = false }: { hideWhenEnabled?: boolean } = {}) {
+  const t = useT();
   const [state, setState] = useState<PushState>("checking");
   const [msg, setMsg] = useState("");
 
@@ -62,12 +64,12 @@ export function PushButton({ hideWhenEnabled = false }: { hideWhenEnabled?: bool
         disabled={state === "checking" || state === "busy"}
       >
         {state === "checking"
-          ? "Checking push status…"
+          ? t("Checking push status…")
           : state === "busy"
-            ? "Updating…"
+            ? t("Updating…")
             : state === "on"
-              ? "🔔 Push on · Turn off"
-              : "🔕 Push off · Turn on"}
+              ? t("🔔 Push on · Turn off")
+              : t("🔕 Push off · Turn on")}
       </button>
       {msg && <p className="mt-1 text-xs text-red-600">{msg}</p>}
     </div>

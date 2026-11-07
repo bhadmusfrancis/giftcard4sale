@@ -1,5 +1,7 @@
 "use client";
 
+import { useT } from "@/lib/i18n";
+
 export interface ActionStatus {
   message: string;
   ok: boolean;
@@ -12,6 +14,7 @@ export function StatusAlert({
   status: ActionStatus | null;
   className?: string;
 }) {
+  const t = useT();
   if (!status) return null;
 
   return (
@@ -25,7 +28,7 @@ export function StatusAlert({
       } ${className}`}
     >
       {status.ok ? "✓ " : "✕ "}
-      {status.message}
+      {t(status.message)}
     </div>
   );
 }

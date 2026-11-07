@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from "@/lib/i18n";
 import { RateCalculator } from "@/components/RateCalculator";
 import { RateRefreshStatus, type RateFreshnessMeta } from "@/components/RateRefreshStatus";
 
@@ -23,12 +24,13 @@ export function CardRatePanel({
   initialCurrencyMeta = [],
   ratesAreStale = false,
 }: CardRatePanelProps) {
+  const t = useT();
   if (!initialRates.length) {
     return (
       <div className="card p-6">
-        <h3 className="text-lg font-bold">Rate not available yet</h3>
+        <h3 className="text-lg font-bold">{t("Rate not available yet")}</h3>
         <p className="mt-2 text-sm text-slate-600">
-          Rates for this card are not in our database yet. Browse another card or check back later.
+          {t("Rates for this card are not in our database yet. Browse another card or check back later.")}
         </p>
       </div>
     );
@@ -38,8 +40,7 @@ export function CardRatePanel({
     <div className="space-y-3">
       {ratesAreStale && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Showing the last rate we recorded for this card. We&rsquo;ll confirm the current rate before your trade is
-          paid out.
+          {t("Showing the last rate we recorded for this card. We'll confirm the current rate before your trade is paid out.")}
         </p>
       )}
       <RateCalculator

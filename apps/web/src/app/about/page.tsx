@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
+import { DomTranslator } from "@/components/DomTranslator";
 
 export const metadata: Metadata = {
   title: "About Us",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return (
+    <DomTranslator>
     <div className="mx-auto max-w-3xl px-4 py-12">
       <p className="text-sm font-medium text-brand-700">GiftCard4Sale</p>
       <h1 className="mt-2 text-3xl font-bold text-slate-900">About us</h1>
@@ -93,5 +95,6 @@ export default function AboutPage() {
         </Link>
       </div>
     </div>
+    </DomTranslator>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { USDT_WITHDRAWAL_NETWORK_FEE } from "@gc4s/shared";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
@@ -31,6 +32,7 @@ function withdrawalDestination(w: {
 
 export default function WalletPage() {
   const { user, refresh } = useAuth();
+  const tr = useT();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [momoAccounts, setMomoAccounts] = useState<any[]>([]);
   const [bankLimit, setBankLimit] = useState(5);
@@ -91,7 +93,7 @@ export default function WalletPage() {
       setAccountNumber("");
       setAccountName("");
       await loadAll();
-    }, "Bank account added.");
+    }, tr("Bank account added."));
   }
 
   async function addMomo(e: React.FormEvent) {
@@ -101,7 +103,7 @@ export default function WalletPage() {
       setMomoPhone("");
       setMomoName("");
       await loadAll();
-    }, "MoMo account added.");
+    }, tr("MoMo account added."));
   }
 
   async function submitWithdraw(e: React.FormEvent) {
@@ -115,7 +117,7 @@ export default function WalletPage() {
       setAmount(0);
       await refresh();
       await loadAll();
-    }, "Withdrawal request submitted and pending approval.");
+    }, tr("Withdrawal request submitted and pending approval."));
   }
 
   if (!user) return null;
@@ -125,18 +127,18 @@ export default function WalletPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Wallet</h1>
+      <h1 className="text-2xl font-bold">{tr("Wallet")}</h1>
 
       <div className="grid gap-4 sm:grid-cols-3">
         {(["USDT", "NGN", "GHS"] as const).map((cur) => {
           const min = minWithdrawals[cur] ?? 0;
           return (
             <div key={cur} className="card p-6">
-              <div className="text-sm text-slate-500">{CURRENCY_LABELS[cur]} balance</div>
+              <div className="text-sm text-slate-500">{tr("{cur} balance", { cur: CURRENCY_LABELS[cur] })}</div>
               <div className="mt-1 text-2xl font-bold">{money(balances[cur], cur)}</div>
               {min > 0 && (
                 <p className="mt-2 text-xs text-slate-500">
-                  Min withdrawal: {money(min, cur)}
+                  {tr("Min withdrawal")}: {money(min, cur)}
                 </p>
               )}
             </div>
@@ -147,23 +149,23 @@ export default function WalletPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Withdraw / send */}
         <form onSubmit={submitWithdraw} className="card space-y-4 p-6">
-          <h2 className="text-lg font-bold">Send / Withdraw</h2>
+          <h2 className="text-lg font-bold">{tr("Send / Withdraw")}</h2>
           <div>
-            <label className="label">Currency</label>
+            <label className="label">{tr("Currency")}</label>
             <select className="input" value={currency} onChange={(e) => setCurrency(e.target.value as any)}>
               <option value="NGN">
-                Naira → Nigerian bank{minWithdrawals.NGN ? ` (min ${money(minWithdrawals.NGN, "NGN")})` : ""}
+                {tr("Naira → Nigerian bank")}{minWithdrawals.NGN ? ` (${tr("min")} ${money(minWithdrawals.NGN, "NGN")})` : ""}
               </option>
               <option value="GHS">
-                Cedi → Mobile Money (MoMo){minWithdrawals.GHS ? ` (min ${money(minWithdrawals.GHS, "GHS")})` : ""}
+                {tr("Cedi → Mobile Money (MoMo)")}{minWithdrawals.GHS ? ` (${tr("min")} ${money(minWithdrawals.GHS, "GHS")})` : ""}
               </option>
               <option value="USDT">
-                USDT → wallet address{minWithdrawals.USDT ? ` (min ${money(minWithdrawals.USDT, "USDT")})` : ""}
+                {tr("USDT → wallet address")}{minWithdrawals.USDT ? ` (${tr("min")} ${money(minWithdrawals.USDT, "USDT")})` : ""}
               </option>
             </select>
           </div>
           <div>
-            <label className="label">Amount</label>
+            <label className="label">{tr("Amount")}</label>
             <input
               type="number"
               className="input"
@@ -173,56 +175,56 @@ export default function WalletPage() {
               onChange={(e) => setAmount(Number(e.target.value))}
             />
             {minAmount > 0 && (
-              <p className="mt-1 text-xs text-slate-500">Minimum: {money(minAmount, currency)}</p>
+              <p className="mt-1 text-xs text-slate-500">{tr("Minimum")}: {money(minAmount, currency)}</p>
             )}
             {currency === "USDT" && (
               <p className="mt-1 text-xs text-slate-500">
-                Network fee: {money(USDT_WITHDRAWAL_NETWORK_FEE, "USDT")} — charged on top of the withdrawal amount.
+                {tr("Network fee")}: {money(USDT_WITHDRAWAL_NETWORK_FEE, "USDT")} — {tr("charged on top of the withdrawal amount.")}
               </p>
             )}
           </div>
 
           {currency === "NGN" ? (
             <div>
-              <label className="label">Destination bank account</label>
+              <label className="label">{tr("Destination bank account")}</label>
               <select className="input" value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} required>
-                <option value="">Select an account…</option>
+                <option value="">{tr("Select an account…")}</option>
                 {accounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.bankName} — {a.accountNumber} ({a.accountName})</option>
                 ))}
               </select>
-              {accounts.length === 0 && <p className="mt-1 text-xs text-amber-600">Add a bank account below first.</p>}
+              {accounts.length === 0 && <p className="mt-1 text-xs text-amber-600">{tr("Add a bank account below first.")}</p>}
             </div>
           ) : currency === "GHS" ? (
             <div>
-              <label className="label">Destination MoMo account</label>
+              <label className="label">{tr("Destination MoMo account")}</label>
               <select className="input" value={momoAccountId} onChange={(e) => setMomoAccountId(e.target.value)} required>
-                <option value="">Select MoMo details…</option>
+                <option value="">{tr("Select MoMo details…")}</option>
                 {momoAccounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.network} — {a.phoneNumber} ({a.accountName})</option>
                 ))}
               </select>
-              {momoAccounts.length === 0 && <p className="mt-1 text-xs text-amber-600">Add MoMo payment details below first.</p>}
+              {momoAccounts.length === 0 && <p className="mt-1 text-xs text-amber-600">{tr("Add MoMo payment details below first.")}</p>}
             </div>
           ) : (
             <div>
-              <label className="label">USDT (TRC20) address</label>
+              <label className="label">{tr("USDT (TRC20) address")}</label>
               <input className="input" value={destinationAddress} onChange={(e) => setDestinationAddress(e.target.value)} required />
             </div>
           )}
 
           <FormFeedback status={withdrawAction.status} anchorRef={withdrawAction.statusRef} className="mt-2" />
           <button type="submit" className="btn-primary w-full" disabled={withdrawAction.busy}>
-            {withdrawAction.busy ? "Submitting…" : "Submit request"}
+            {withdrawAction.busy ? tr("Submitting…") : tr("Submit request")}
           </button>
         </form>
 
         {/* Payout destinations */}
         <div className="space-y-6">
           <div className="card space-y-4 p-6">
-            <h2 className="text-lg font-bold">Naira bank accounts</h2>
+            <h2 className="text-lg font-bold">{tr("Naira bank accounts")}</h2>
             <p className="text-xs text-slate-500">
-              {accounts.length} of {bankLimit} saved
+              {tr("{count} of {limit} saved", { count: accounts.length, limit: bankLimit })}
             </p>
             <div className="space-y-2">
               {accounts.map((a) => (
@@ -230,32 +232,32 @@ export default function WalletPage() {
                   <span>{a.bankName} — {a.accountNumber} ({a.accountName})</span>
                 </div>
               ))}
-              {accounts.length === 0 && <p className="text-sm text-slate-400">No saved accounts.</p>}
+              {accounts.length === 0 && <p className="text-sm text-slate-400">{tr("No saved accounts.")}</p>}
             </div>
             {accounts.length < bankLimit ? (
               <form onSubmit={addBank} className="space-y-2 border-t border-slate-100 pt-3">
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Saved bank accounts can&apos;t be removed once added — double-check the details before saving.
+                  {tr("Saved bank accounts can't be removed once added — double-check the details before saving.")}
                 </p>
-                <input className="input" placeholder="Bank name" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
-                <input className="input" placeholder="Account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
-                <input className="input" placeholder="Account name" value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
+                <input className="input" placeholder={tr("Bank name")} value={bankName} onChange={(e) => setBankName(e.target.value)} required />
+                <input className="input" placeholder={tr("Account number")} value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required />
+                <input className="input" placeholder={tr("Account name")} value={accountName} onChange={(e) => setAccountName(e.target.value)} required />
                 <button type="submit" className="btn-ghost w-full" disabled={bankAction.busy}>
-                  {bankAction.busy ? "Adding…" : "Add account"}
+                  {bankAction.busy ? tr("Adding…") : tr("Add account")}
                 </button>
                 <FormFeedback status={bankAction.status} anchorRef={bankAction.statusRef} />
               </form>
             ) : (
               <p className="border-t border-slate-100 pt-3 text-sm text-slate-500">
-                You&apos;ve reached the maximum of {bankLimit} bank accounts. Contact support if you need changes.
+                {tr("You've reached the maximum of {limit} bank accounts. Contact support if you need changes.", { limit: bankLimit })}
               </p>
             )}
           </div>
 
           <div className="card space-y-4 p-6">
-            <h2 className="text-lg font-bold">Cedi MoMo accounts</h2>
+            <h2 className="text-lg font-bold">{tr("Cedi MoMo accounts")}</h2>
             <p className="text-xs text-slate-500">
-              {momoAccounts.length} of {momoLimit} saved
+              {tr("{count} of {limit} saved", { count: momoAccounts.length, limit: momoLimit })}
             </p>
             <div className="space-y-2">
               {momoAccounts.map((a) => (
@@ -263,28 +265,28 @@ export default function WalletPage() {
                   <span>{a.network} — {a.phoneNumber} ({a.accountName})</span>
                 </div>
               ))}
-              {momoAccounts.length === 0 && <p className="text-sm text-slate-400">No saved MoMo details.</p>}
+              {momoAccounts.length === 0 && <p className="text-sm text-slate-400">{tr("No saved MoMo details.")}</p>}
             </div>
             {momoAccounts.length < momoLimit ? (
               <form onSubmit={addMomo} className="space-y-2 border-t border-slate-100 pt-3">
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Saved MoMo accounts can&apos;t be removed once added — double-check the details before saving.
+                  {tr("Saved MoMo accounts can't be removed once added — double-check the details before saving.")}
                 </p>
                 <select className="input" value={momoNetwork} onChange={(e) => setMomoNetwork(e.target.value as typeof momoNetwork)} required>
                   {MOMO_NETWORKS.map((n) => (
                     <option key={n} value={n}>{n}</option>
                   ))}
                 </select>
-                <input className="input" placeholder="MoMo phone number" value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} required />
-                <input className="input" placeholder="Registered name" value={momoName} onChange={(e) => setMomoName(e.target.value)} required />
+                <input className="input" placeholder={tr("MoMo phone number")} value={momoPhone} onChange={(e) => setMomoPhone(e.target.value)} required />
+                <input className="input" placeholder={tr("Registered name")} value={momoName} onChange={(e) => setMomoName(e.target.value)} required />
                 <button type="submit" className="btn-ghost w-full" disabled={momoAction.busy}>
-                  {momoAction.busy ? "Adding…" : "Add MoMo account"}
+                  {momoAction.busy ? tr("Adding…") : tr("Add MoMo account")}
                 </button>
                 <FormFeedback status={momoAction.status} anchorRef={momoAction.statusRef} />
               </form>
             ) : (
               <p className="border-t border-slate-100 pt-3 text-sm text-slate-500">
-                You&apos;ve reached the maximum of {momoLimit} MoMo accounts. Contact support if you need changes.
+                {tr("You've reached the maximum of {limit} MoMo accounts. Contact support if you need changes.", { limit: momoLimit })}
               </p>
             )}
           </div>
@@ -293,7 +295,7 @@ export default function WalletPage() {
 
       {/* Withdrawals */}
       <div className="card p-6">
-        <h2 className="mb-3 text-lg font-bold">Withdrawal history</h2>
+        <h2 className="mb-3 text-lg font-bold">{tr("Withdrawal history")}</h2>
         <div className="divide-y divide-slate-100">
           {withdrawals.map((w) => (
             <div key={w.id} className="flex items-center justify-between py-3 text-sm">
@@ -303,10 +305,10 @@ export default function WalletPage() {
                   {withdrawalDestination(w)} · {date(w.createdAt)}
                 </div>
                 {w.fee > 0 && (
-                  <div className="text-xs text-slate-400">+{money(w.fee, w.currency)} network fee</div>
+                  <div className="text-xs text-slate-400">+{money(w.fee, w.currency)} {tr("network fee")}</div>
                 )}
                 {w.adminNote && (
-                  <div className="mt-0.5 text-xs text-amber-700">Note: {w.adminNote}</div>
+                  <div className="mt-0.5 text-xs text-amber-700">{tr("Note")}: {w.adminNote}</div>
                 )}
                 {w.paymentEvidenceUrl && (
                   <a
@@ -315,25 +317,25 @@ export default function WalletPage() {
                     rel="noreferrer"
                     className="text-xs font-medium text-brand-600 hover:underline"
                   >
-                    View payment evidence
+                    {tr("View payment evidence")}
                   </a>
                 )}
               </div>
-              <span className={`badge ${STATUS_COLORS[w.status]}`}>{w.status}</span>
+              <span className={`badge ${STATUS_COLORS[w.status]}`}>{tr(w.status)}</span>
             </div>
           ))}
-          {withdrawals.length === 0 && <p className="text-sm text-slate-400">No withdrawals yet.</p>}
+          {withdrawals.length === 0 && <p className="text-sm text-slate-400">{tr("No withdrawals yet.")}</p>}
         </div>
       </div>
 
       {/* Transactions */}
       <div className="card p-6">
-        <h2 className="mb-3 text-lg font-bold">Transaction history</h2>
+        <h2 className="mb-3 text-lg font-bold">{tr("Transaction history")}</h2>
         <div className="divide-y divide-slate-100">
           {txns.map((t) => (
             <div key={t.id} className="flex items-center justify-between py-3 text-sm">
               <div>
-                <div className="font-medium">{t.type.replace(/_/g, " ")}</div>
+                <div className="font-medium">{tr(t.type.replace(/_/g, " "))}</div>
                 <div className="text-slate-500">{t.description} · {date(t.createdAt)}</div>
               </div>
               <div className={`font-semibold ${t.amount >= 0 ? "text-emerald-600" : "text-red-600"}`}>
@@ -341,7 +343,7 @@ export default function WalletPage() {
               </div>
             </div>
           ))}
-          {txns.length === 0 && <p className="text-sm text-slate-400">No transactions yet.</p>}
+          {txns.length === 0 && <p className="text-sm text-slate-400">{tr("No transactions yet.")}</p>}
         </div>
       </div>
     </div>

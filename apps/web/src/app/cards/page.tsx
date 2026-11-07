@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { loadCatalogCards } from "@/lib/catalog";
 import { GiftCardCatalog } from "@/components/GiftCardCatalog";
 import { publicPageMetadata } from "@/lib/seo/public-metadata";
+import { T } from "@/lib/i18n";
 
 export const metadata = publicPageMetadata({
   title: "Sell a Gift Card",
@@ -15,8 +16,8 @@ export default async function CardsPage({ searchParams }: { searchParams: { q?: 
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12">
-      <h1 className="text-3xl font-bold">Which gift card do you want to sell?</h1>
-      <p className="mt-2 text-slate-600">Search or browse cards to calculate your rate and open a trade.</p>
+      <h1 className="text-3xl font-bold"><T>Which gift card do you want to sell?</T></h1>
+      <p className="mt-2 text-slate-600"><T>Search or browse cards to calculate your rate and open a trade.</T></p>
 
       <Suspense fallback={<div className="mt-8 h-10 max-w-xl animate-pulse rounded-lg bg-slate-200" />}>
         <div className="mt-8">

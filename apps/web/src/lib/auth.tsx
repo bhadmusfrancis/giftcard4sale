@@ -17,6 +17,8 @@ export interface User {
   balanceUsdt: number;
   balanceNgn: number;
   balanceGhs: number;
+  locale?: string;
+  country?: string | null;
 }
 
 interface AuthCtx {
@@ -32,6 +34,8 @@ interface AuthCtx {
     registerChallenge: string;
     website?: string;
     captchaToken?: string;
+    locale?: string;
+    country?: string;
   }) => Promise<User>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -83,6 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     registerChallenge: string;
     website?: string;
     captchaToken?: string;
+    locale?: string;
+    country?: string;
   }) {
     const { token, user } = await api<{ token: string; user: User }>("/auth/register", { body: data });
     setToken(token);

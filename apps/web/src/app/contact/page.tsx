@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 import { EmailSupportButton } from "@/components/EmailSupportButton";
+import { DomTranslator } from "@/components/DomTranslator";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return (
+    <DomTranslator>
     <div className="mx-auto max-w-3xl px-4 py-12">
       <h1 className="text-3xl font-bold text-slate-900">Contact us</h1>
       <p className="mt-4 text-slate-600">
@@ -72,5 +74,6 @@ export default function ContactPage() {
         .
       </p>
     </div>
+    </DomTranslator>
   );
 }

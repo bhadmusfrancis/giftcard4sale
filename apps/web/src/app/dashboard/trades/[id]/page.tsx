@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { money, date, STATUS_COLORS, SELLER_STATUS_DESCRIPTIONS } from "@/lib/format";
 import { trackGoogleAdsPurchase } from "@/lib/googleAds";
 import { TradeChat } from "@/components/TradeChat";
@@ -16,6 +17,7 @@ type Tab = "details" | "chat";
 export default function TradeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const t = useT();
   const [trade, setTrade] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
@@ -44,7 +46,7 @@ export default function TradeDetailPage() {
   }, [trade]);
 
   async function cancel() {
-    if (!trade || !confirm("Cancel this trade? This cannot be undone.")) return;
+    if (!trade || !confirm(t("Cancel this trade? This cannot be undone."))) return;
     setCancelling(true);
     setCancelError(null);
     try {
@@ -57,8 +59,8 @@ export default function TradeDetailPage() {
     }
   }
 
-  if (loading) return <p className="text-slate-500">Loading…</p>;
-  if (!trade) return <p className="text-slate-500">Trade not found.</p>;
+  if (loading) return <p className="text-slate-500">{t("Loading…")}</p>;
+  if (!trade) return <p className="text-slate-500">{t("Trade not found.")}</p>;
 
   const country = trade.otherCountryName ? `${trade.otherCountryName} (${trade.country})` : trade.country;
   const payout = money(trade.finalPayout ?? trade.quotedPayout, trade.payoutCurrency);
@@ -66,7 +68,7 @@ export default function TradeDetailPage() {
   return (
     <div className="space-y-4 sm:space-y-5">
       <Link href="/dashboard/trades" className="inline-flex items-center gap-1 text-sm font-medium text-brand-700">
-        ← My trades
+        ← {t("My trades")}
       </Link>
 
       <header className="card overflow-hidden">
@@ -79,20 +81,20 @@ export default function TradeDetailPage() {
           </div>
           <span
             className={`badge shrink-0 ${STATUS_COLORS[trade.status]}`}
-            title={SELLER_STATUS_DESCRIPTIONS[trade.status]}
+            title={t(SELLER_STATUS_DESCRIPTIONS[trade.status] || "")}
           >
-            {trade.status.replace("_", " ")}
+            {t(trade.status.replace("_", " "))}
           </span>
         </div>
         <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100 bg-slate-50/60">
           <div className="min-w-0 px-4 py-3 sm:px-5">
-            <div className="text-xs text-slate-500">Card value</div>
+            <div className="text-xs text-slate-500">{t("Card value")}</div>
             <div className="truncate text-base font-bold text-slate-900 sm:text-lg">
               {trade.cardAmount} {trade.currency}
             </div>
           </div>
           <div className="min-w-0 px-4 py-3 sm:px-5">
-            <div className="text-xs text-slate-500">You receive</div>
+            <div className="text-xs text-slate-500">{t("You receive")}</div>
             <div className="truncate text-base font-bold text-brand-700 sm:text-lg">{payout}</div>
           </div>
         </div>
@@ -100,14 +102,14 @@ export default function TradeDetailPage() {
 
       {SELLER_STATUS_DESCRIPTIONS[trade.status] && (
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-          {SELLER_STATUS_DESCRIPTIONS[trade.status]}
+          {t(SELLER_STATUS_DESCRIPTIONS[trade.status])}
         </div>
       )}
 
       <SegmentedTabs<Tab>
         tabs={[
-          { id: "details", label: "Details" },
-          { id: "chat", label: "Chat" },
+          { id: "details", label: t("Details") },
+          { id: "chat", label: t("Chat") },
         ]}
         value={tab}
         onChange={setTab}
@@ -116,25 +118,24 @@ export default function TradeDetailPage() {
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start xl:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
         <div className={`space-y-4 ${tab === "details" ? "" : "hidden"} lg:block`}>
           <section className="card p-4 sm:p-5">
-            <h2 className="mb-1 text-sm font-bold text-slate-900">Trade details</h2>
+            <h2 className="mb-1 text-sm font-bold text-slate-900">{t("Trade details")}</h2>
             <dl>
-              <DetailRow label="Trade ID" value={trade.tradeNumber} mono />
-              <DetailRow label="Card" value={`${trade.cardType?.name} · ${country} · ${trade.medium}`} />
-              <DetailRow label="Amount" value={`${trade.cardAmount} ${trade.currency}`} />
-              <DetailRow label="Payout" value={payout} />
-              <DetailRow label="Receipt" value={trade.receiptType} />
-              <DetailRow label="Submitted" value={date(trade.createdAt)} />
+              <DetailRow label={t("Trade ID")} value={trade.tradeNumber} mono />
+              <DetailRow label={t("Card")} value={`${trade.cardType?.name} · ${country} · ${trade.medium}`} />
+              <DetailRow label={t("Amount")} value={`${trade.cardAmount} ${trade.currency}`} />
+              <DetailRow label={t("Payout")} value={payout} />
+              <DetailRow label={t("Receipt")} value={trade.receiptType} />
+              <DetailRow label={t("Submitted")} value={date(trade.createdAt)} />
             </dl>
           </section>
 
           {trade.rejectionReason && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-              <div className="font-semibold">Rejection reason</div>
+              <div className="font-semibold">{t("Rejection reason")}</div>
               <p className="mt-1 break-words">{trade.rejectionReason}</p>
               {trade.status === "REJECTED" && (
                 <p className="mt-2 text-xs">
-                  Submitting a previously used gift card or duplicate image affects your bad score and may lead to
-                  account suspension.
+                  {t("Submitting a previously used gift card or duplicate image affects your bad score and may lead to account suspension.")}
                 </p>
               )}
             </div>
@@ -142,12 +143,12 @@ export default function TradeDetailPage() {
 
           {(trade.ecodes || trade.pins || trade.attachments?.length > 0) && (
             <section className="card space-y-4 p-4 sm:p-5">
-              <h2 className="text-sm font-bold text-slate-900">What you submitted</h2>
-              {trade.ecodes && <CodeBlock label="E-codes" text={trade.ecodes} />}
-              {trade.pins && <CodeBlock label="PINs" text={trade.pins} />}
+              <h2 className="text-sm font-bold text-slate-900">{t("What you submitted")}</h2>
+              {trade.ecodes && <CodeBlock label={t("E-codes")} text={trade.ecodes} />}
+              {trade.pins && <CodeBlock label={t("PINs")} text={trade.pins} />}
               {trade.attachments?.length > 0 && (
                 <div>
-                  <div className="mb-1.5 text-sm font-medium text-slate-700">Attachments</div>
+                  <div className="mb-1.5 text-sm font-medium text-slate-700">{t("Attachments")}</div>
                   <AttachmentGrid items={trade.attachments} />
                 </div>
               )}
@@ -163,7 +164,7 @@ export default function TradeDetailPage() {
                 className="btn-ghost w-full text-red-700 sm:w-auto"
                 disabled={cancelling}
               >
-                {cancelling ? "Cancelling…" : "Cancel trade"}
+                {cancelling ? t("Cancelling…") : t("Cancel trade")}
               </button>
             )}
           </div>

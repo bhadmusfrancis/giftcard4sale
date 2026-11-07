@@ -11,6 +11,7 @@ import {
   NOTIFICATION_CATEGORIES,
 } from "../services/notificationPreferences";
 import { getRateConfig } from "../services/rateConfig";
+import { normalizeLocale, normalizeCountry } from "../lib/locale";
 
 export const meRouter = Router();
 
@@ -73,12 +74,20 @@ meRouter.patch(
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = validate(
-      z.object({ displayName: z.string().min(2).max(40).optional() }),
+      z.object({
+        displayName: z.string().min(2).max(40).optional(),
+        locale: z.string().max(10).optional(),
+        country: z.string().max(2).optional(),
+      }),
       req.body
     );
     const user = await prisma.user.update({
       where: { id: req.userId },
-      data: { displayName: data.displayName },
+      data: {
+        displayName: data.displayName,
+        ...(data.locale ? { locale: normalizeLocale(data.locale) } : {}),
+        ...(normalizeCountry(data.country) ? { country: normalizeCountry(data.country) } : {}),
+      },
     });
     res.json({ user: publicUser(user) });
   })

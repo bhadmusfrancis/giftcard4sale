@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { date } from "@/lib/format";
 
 export default function NotificationsPage() {
+  const t = useT();
   const [items, setItems] = useState<any[]>([]);
 
   async function load() {
@@ -25,8 +27,8 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Notifications</h1>
-        <button onClick={markAll} className="btn-ghost">Mark all read</button>
+        <h1 className="text-2xl font-bold">{t("Notifications")}</h1>
+        <button onClick={markAll} className="btn-ghost">{t("Mark all read")}</button>
       </div>
 
       <div className="card divide-y divide-slate-100">
@@ -37,10 +39,10 @@ export default function NotificationsPage() {
               <span className="text-xs text-slate-400">{date(n.createdAt)}</span>
             </div>
             <p className="mt-1 text-sm text-slate-600">{n.body}</p>
-            {n.link && <Link href={n.link} className="mt-1 inline-block text-sm text-brand-700 hover:underline">View →</Link>}
+            {n.link && <Link href={n.link} className="mt-1 inline-block text-sm text-brand-700 hover:underline">{t("View →")}</Link>}
           </div>
         ))}
-        {items.length === 0 && <p className="p-6 text-sm text-slate-400">No notifications yet.</p>}
+        {items.length === 0 && <p className="p-6 text-sm text-slate-400">{t("No notifications yet.")}</p>}
       </div>
     </div>
   );

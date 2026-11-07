@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/lib/i18n";
 
 interface PasswordInputProps {
   value: string;
@@ -13,6 +14,7 @@ interface PasswordInputProps {
 
 /** Password field with an inline show/hide toggle. */
 export function PasswordInput({ value, onChange, required, minLength, placeholder, autoComplete }: PasswordInputProps) {
+  const t = useT();
   const [visible, setVisible] = useState(false);
 
   return (
@@ -30,7 +32,7 @@ export function PasswordInput({ value, onChange, required, minLength, placeholde
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? "Hide password" : "Show password"}
+        aria-label={visible ? t("Hide password") : t("Show password")}
         aria-pressed={visible}
         className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 hover:text-slate-600"
       >
