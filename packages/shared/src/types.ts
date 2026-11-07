@@ -348,6 +348,21 @@ export interface RateReductions {
 export interface DeductionBand extends RateReductions {
   minRateCount: number; // inclusive
   maxRateCount: number | null; // inclusive; null = no cap
+  /** Band opted into the lower-denomination deductions. */
+  lowDenomEnabled?: boolean;
+}
+
+/**
+ * Lower-denomination deductions: trades whose face amount is at most
+ * maxDenom (in the card's own currency) on a card in an opted-in band pay
+ * these instead of the band's. A null percent keeps the band's for that
+ * payout currency; a null maxDenom turns the feature off.
+ */
+export interface LowDenomReductions {
+  maxDenom: number | null;
+  nairaReductionPercent?: number | null;
+  usdtReductionPercent?: number | null;
+  ghsReductionPercent?: number | null;
 }
 
 export interface RateQuoteInput {

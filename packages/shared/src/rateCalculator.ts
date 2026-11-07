@@ -1,4 +1,4 @@
-import { DeductionBand, RateQuote, RateQuoteInput, RateReductions } from "./types";
+import { DeductionBand, LowDenomReductions, RateQuote, RateQuoteInput, RateReductions } from "./types";
 
 function round(n: number, dp = 2): number {
   const f = Math.pow(10, dp);
@@ -44,18 +44,30 @@ export function deductionBandLabel(band: Pick<DeductionBand, "minRateCount" | "m
     : `${band.minRateCount}–${band.maxRateCount} rates`;
 }
 
-/** Platform deductions for a card's rate count — its band, else the global defaults. */
+/**
+ * Platform deductions for a card's rate count — its band, else the global
+ * defaults. When the traded face amount is within the configured
+ * lower-denomination threshold and the card's band opted in, the
+ * lower-denomination percents apply instead (each null keeps the band's).
+ */
 export function reductionsForRateCount(
   rateCount: number,
   bands: DeductionBand[],
-  fallback: RateReductions
+  fallback: RateReductions,
+  cardAmount?: number | null,
+  lowDenom?: LowDenomReductions | null
 ): RateReductions {
   const band = deductionBandForRateCount(rateCount, bands);
   if (!band) return fallback;
+  const low =
+    band.lowDenomEnabled === true &&
+    cardAmount != null &&
+    lowDenom?.maxDenom != null &&
+    cardAmount <= lowDenom.maxDenom;
   return {
-    nairaReductionPercent: band.nairaReductionPercent,
-    usdtReductionPercent: band.usdtReductionPercent,
-    ghsReductionPercent: band.ghsReductionPercent,
+    nairaReductionPercent: (low ? lowDenom?.nairaReductionPercent : null) ?? band.nairaReductionPercent,
+    usdtReductionPercent: (low ? lowDenom?.usdtReductionPercent : null) ?? band.usdtReductionPercent,
+    ghsReductionPercent: (low ? lowDenom?.ghsReductionPercent : null) ?? band.ghsReductionPercent,
   };
 }
 

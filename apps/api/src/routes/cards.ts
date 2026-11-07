@@ -160,7 +160,13 @@ cardsRouter.post(
       rates: config.rates,
       reductions: reductionsForCard(
         rate.cardType,
-        reductionsForRateCount(rate.cardType._count.rates, config.deductionBands, config.reductions)
+        reductionsForRateCount(
+          rate.cardType._count.rates,
+          config.deductionBands,
+          config.reductions,
+          data.cardAmount,
+          config.lowDenom
+        )
       ),
       extraReductionPercent,
     });

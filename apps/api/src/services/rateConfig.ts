@@ -1,4 +1,4 @@
-import { DeductionBand, ExchangeRates, RateReductions } from "@gc4s/shared";
+import { DeductionBand, ExchangeRates, LowDenomReductions, RateReductions } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import { isOpenEndedCountryTier } from "./noones/rateCatalog";
@@ -57,6 +57,7 @@ export async function getRateConfig(): Promise<{
   ngnPerUsdtReductionPercent: number;
   maxBankAccounts: number;
   maxMomoAccounts: number;
+  lowDenom: LowDenomReductions;
 }> {
   let cfg = await prisma.rateConfig.findFirst({ orderBy: { updatedAt: "desc" } });
   if (!cfg) {
@@ -119,6 +120,7 @@ export async function getRateConfig(): Promise<{
       nairaReductionPercent: b.nairaReductionPercent,
       usdtReductionPercent: b.usdtReductionPercent,
       ghsReductionPercent: b.ghsReductionPercent,
+      lowDenomEnabled: b.lowDenomEnabled,
     })),
     referralPercent: cfg.referralPercent,
     noonesRateRefreshHours: cfg.noonesRateRefreshHours,
@@ -144,6 +146,12 @@ export async function getRateConfig(): Promise<{
     ngnPerUsdtReductionPercent: cfg.ngnPerUsdtReductionPercent,
     maxBankAccounts: cfg.maxBankAccounts,
     maxMomoAccounts: cfg.maxMomoAccounts,
+    lowDenom: {
+      maxDenom: cfg.lowDenomMax,
+      nairaReductionPercent: cfg.lowNairaReductionPercent,
+      usdtReductionPercent: cfg.lowUsdtReductionPercent,
+      ghsReductionPercent: cfg.lowGhsReductionPercent,
+    },
   };
 }
 

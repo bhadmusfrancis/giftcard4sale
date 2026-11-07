@@ -237,6 +237,14 @@ model RateConfig {
   // Twice daily, ngnPerUsdt = CBN official USD/NGN less ngnPerUsdtReductionPercent.
   ngnPerUsdtAutoSync        Boolean  @default(true)
   ngnPerUsdtReductionPercent Int     @default(8)
+  // Lower-denomination deductions for cards in opted-in rate-count bands
+  // (RateDeductionBand.lowDenomEnabled): a trade whose face amount is at most
+  // lowDenomMax pays these instead; a null % keeps the band's own for that
+  // payout currency. Null lowDenomMax turns the feature off.
+  lowDenomMax             Int?
+  lowNairaReductionPercent Int?
+  lowUsdtReductionPercent  Int?
+  lowGhsReductionPercent   Int?
   // Saved payout-account caps per user (accounts can't be removed once added).
   maxBankAccounts         Int      @default(5)
   maxMomoAccounts         Int      @default(5)
@@ -266,6 +274,9 @@ model RateDeductionBand {
   nairaReductionPercent Int
   usdtReductionPercent  Int
   ghsReductionPercent   Int
+  // Cards in this band pay the RateConfig lower-denomination deductions when
+  // the traded face amount is within lowDenomMax.
+  lowDenomEnabled       Boolean  @default(false)
   updatedAt             DateTime @updatedAt
 }
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, reductionsForCard } from "@gc4s/shared";
+import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, reductionsForCard, reductionsForRateCount } from "@gc4s/shared";
 import { api } from "@/lib/api";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
@@ -120,7 +120,16 @@ export default function AdminUserDetailPage() {
         payoutCurrency: tradeForm.payoutCurrency,
         medium: tradeForm.medium,
         rates: platformConfig.rates,
-        reductions: reductionsForCard(card, platformConfig.reductions),
+        reductions: reductionsForCard(
+          card,
+          reductionsForRateCount(
+            card?.rateCount ?? 0,
+            platformConfig.deductionBands ?? [],
+            platformConfig.reductions,
+            tradeForm.cardAmount,
+            platformConfig.lowDenom
+          )
+        ),
         extraReductionPercent:
           isEuroAppleRate(card, tradeForm.currency, tradeForm.country) &&
           euroDenominationIsOdd(tradeForm.cardAmount)

@@ -736,7 +736,13 @@ adminRouter.post(
       rates: config.rates,
       reductions: reductionsForCard(
         cardReductions,
-        reductionsForRateCount(cardReductions?._count.rates ?? 0, config.deductionBands, config.reductions)
+        reductionsForRateCount(
+          cardReductions?._count.rates ?? 0,
+          config.deductionBands,
+          config.reductions,
+          data.cardAmount,
+          config.lowDenom
+        )
       ),
       extraReductionPercent:
         isEuroAppleRate(cardReductions, currency, country) && euroDenominationIsOdd(data.cardAmount)
@@ -1144,6 +1150,7 @@ adminRouter.get(
                 nairaReductionPercent: band.nairaReductionPercent,
                 usdtReductionPercent: band.usdtReductionPercent,
                 ghsReductionPercent: band.ghsReductionPercent,
+                lowDenomEnabled: band.lowDenomEnabled === true,
               }
             : null,
         };
@@ -1330,11 +1337,16 @@ adminRouter.put(
               nairaReductionPercent: z.number().int().min(0).max(100),
               usdtReductionPercent: z.number().int().min(0).max(100),
               ghsReductionPercent: z.number().int().min(0).max(100),
+              lowDenomEnabled: z.boolean().optional(),
             })
           )
           .min(1)
           .max(10)
           .optional(),
+        lowDenomMax: z.number().int().min(0).nullable().optional(),
+        lowNairaReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+        lowUsdtReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+        lowGhsReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
         referralPercent: z.number().int().min(0).max(100),
         noonesRateRefreshHours: z.number().int().min(1).max(168),
         defaultMaxConcurrentTrades: z.number().int().min(1).max(50),
@@ -1411,6 +1423,37 @@ adminRouter.put(
           deductionReset.ghsReductionPercent = null;
       }
     }
+
+    // Lower-denomination edits cascade the same way: a changed threshold or a
+    // toggled band opt-in clears all three per-card overrides; a changed
+    // low-denom % clears that currency's.
+    const lowDenomMax = data.lowDenomMax !== undefined ? data.lowDenomMax : prevConfig.lowDenom.maxDenom;
+    const lowScopeChanged =
+      lowDenomMax !== prevConfig.lowDenom.maxDenom ||
+      (newBands != null &&
+        newBands.some(
+          (b, i) => (b.lowDenomEnabled ?? false) !== (prevConfig.deductionBands[i]?.lowDenomEnabled ?? false)
+        ));
+    if (lowScopeChanged) {
+      deductionReset.nairaReductionPercent = null;
+      deductionReset.usdtReductionPercent = null;
+      deductionReset.ghsReductionPercent = null;
+    }
+    if (
+      data.lowNairaReductionPercent !== undefined &&
+      data.lowNairaReductionPercent !== prevConfig.lowDenom.nairaReductionPercent
+    )
+      deductionReset.nairaReductionPercent = null;
+    if (
+      data.lowUsdtReductionPercent !== undefined &&
+      data.lowUsdtReductionPercent !== prevConfig.lowDenom.usdtReductionPercent
+    )
+      deductionReset.usdtReductionPercent = null;
+    if (
+      data.lowGhsReductionPercent !== undefined &&
+      data.lowGhsReductionPercent !== prevConfig.lowDenom.ghsReductionPercent
+    )
+      deductionReset.ghsReductionPercent = null;
     const cardDeductionsReset = Object.keys(deductionReset).length > 0;
 
     // With auto-sync on, a changed reduction % (or turning auto-sync on)
@@ -1456,12 +1499,27 @@ adminRouter.put(
         ngnPerUsdtReductionPercent,
         maxBankAccounts: data.maxBankAccounts,
         maxMomoAccounts: data.maxMomoAccounts,
+        lowDenomMax,
+        lowNairaReductionPercent:
+          data.lowNairaReductionPercent !== undefined
+            ? data.lowNairaReductionPercent
+            : prevConfig.lowDenom.nairaReductionPercent,
+        lowUsdtReductionPercent:
+          data.lowUsdtReductionPercent !== undefined
+            ? data.lowUsdtReductionPercent
+            : prevConfig.lowDenom.usdtReductionPercent,
+        lowGhsReductionPercent:
+          data.lowGhsReductionPercent !== undefined
+            ? data.lowGhsReductionPercent
+            : prevConfig.lowDenom.ghsReductionPercent,
       },
     });
     if (newBands) {
       await prisma.$transaction([
         prisma.rateDeductionBand.deleteMany({}),
-        prisma.rateDeductionBand.createMany({ data: newBands }),
+        prisma.rateDeductionBand.createMany({
+          data: newBands.map((b) => ({ ...b, lowDenomEnabled: b.lowDenomEnabled ?? false })),
+        }),
       ]);
     }
     const cardCascade: Prisma.CardTypeUpdateManyMutationInput = { ...deductionReset };

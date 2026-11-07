@@ -63,7 +63,21 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
             nairaReductionPercent: Number(b.nairaReductionPercent),
             usdtReductionPercent: Number(b.usdtReductionPercent),
             ghsReductionPercent: Number(b.ghsReductionPercent),
+            lowDenomEnabled: b.lowDenomEnabled === true,
           })),
+          lowDenomMax: config.lowDenom?.maxDenom == null || config.lowDenom.maxDenom === "" ? null : Number(config.lowDenom.maxDenom),
+          lowNairaReductionPercent:
+            config.lowDenom?.nairaReductionPercent == null || config.lowDenom.nairaReductionPercent === ""
+              ? null
+              : Number(config.lowDenom.nairaReductionPercent),
+          lowUsdtReductionPercent:
+            config.lowDenom?.usdtReductionPercent == null || config.lowDenom.usdtReductionPercent === ""
+              ? null
+              : Number(config.lowDenom.usdtReductionPercent),
+          lowGhsReductionPercent:
+            config.lowDenom?.ghsReductionPercent == null || config.lowDenom.ghsReductionPercent === ""
+              ? null
+              : Number(config.lowDenom.ghsReductionPercent),
           referralPercent: Number(config.referralPercent),
           noonesRateRefreshHours: Number(config.noonesRateRefreshHours ?? 1),
           defaultMaxConcurrentTrades: Number(config.defaultMaxConcurrentTrades ?? 5),
@@ -162,6 +176,9 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
                   <th className="p-1.5">Naira %</th>
                   <th className="p-1.5">USDT %</th>
                   <th className="p-1.5">Cedi %</th>
+                  <th className="p-1.5" title="Apply the lower-denomination deductions below to cards in this band">
+                    Low denom
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -186,10 +203,76 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
                         />
                       </td>
                     ))}
+                    <td className="p-1.5">
+                      <input
+                        type="checkbox"
+                        checked={b.lowDenomEnabled === true}
+                        onChange={(e) => {
+                          const bands = [...config.deductionBands];
+                          bands[i] = { ...bands[i], lowDenomEnabled: e.target.checked };
+                          setConfig({ ...config, deductionBands: bands });
+                        }}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold text-slate-600">Lower denomination deductions</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Applies to cards in the bands ticked above: a trade whose face amount is at most the threshold pays
+              these instead of the band&apos;s rates. A blank % keeps the band&apos;s rate for that payout currency; a
+              blank threshold turns this off.
+            </p>
+            <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
+              <label className="flex flex-col gap-1 text-xs text-slate-600">
+                Face amount up to
+                <input
+                  type="number"
+                  min={0}
+                  className="input w-24"
+                  value={config.lowDenom?.maxDenom ?? ""}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      lowDenom: {
+                        ...(config.lowDenom ?? {}),
+                        maxDenom: e.target.value === "" ? null : Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+              </label>
+              {(
+                [
+                  ["nairaReductionPercent", "Naira %"],
+                  ["usdtReductionPercent", "USDT %"],
+                  ["ghsReductionPercent", "Cedi %"],
+                ] as const
+              ).map(([f, label]) => (
+                <label key={f} className="flex flex-col gap-1 text-xs text-slate-600">
+                  {label}
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="input w-20"
+                    value={config.lowDenom?.[f] ?? ""}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        lowDenom: {
+                          ...(config.lowDenom ?? {}),
+                          [f]: e.target.value === "" ? null : Number(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
           </div>
         </div>
         <Field
@@ -317,7 +400,9 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
         &quot;never quote below&quot; %. An e-code never pays more than the physical
         card. Minimum
         withdrawal amounts apply to user wallet send/withdraw requests. The odd-denomination deduction applies on
-        top of the payout deduction when a Euro Apple/iTunes amount is not a multiple of 5 or 50. Changing a
+        top of the payout deduction when a Euro Apple/iTunes amount is not a multiple of 5 or 50. On cards in a
+        band ticked &quot;Low denom&quot;, face amounts up to the lower-denomination threshold pay the lower-denomination
+        deductions instead of the band&apos;s. Changing a
         deduction % resets every card&apos;s per-card override back to the platform default — adjust individual
         cards afterwards.
       </p>
@@ -536,7 +621,7 @@ function CardsSection() {
                   {c.deductionBand ? (
                     <span
                       className="ml-1 text-xs text-slate-400"
-                      title={`${c.deductionBand.label} band — Naira ${c.deductionBand.nairaReductionPercent}% / USDT ${c.deductionBand.usdtReductionPercent}% / Cedi ${c.deductionBand.ghsReductionPercent}%`}
+                      title={`${c.deductionBand.label} band — Naira ${c.deductionBand.nairaReductionPercent}% / USDT ${c.deductionBand.usdtReductionPercent}% / Cedi ${c.deductionBand.ghsReductionPercent}%${c.deductionBand.lowDenomEnabled ? " · lower-denomination rates apply" : ""}`}
                     >
                       · {c.deductionBand.nairaReductionPercent}/{c.deductionBand.usdtReductionPercent}/{c.deductionBand.ghsReductionPercent}%
                     </span>

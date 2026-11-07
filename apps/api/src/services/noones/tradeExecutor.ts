@@ -114,13 +114,14 @@ async function grossUpNairaPerUnit(
   effectiveRate: number,
   payoutCurrency: string,
   card?: CardReductionOverrides | null,
-  cardTypeId?: string
+  cardTypeId?: string,
+  cardAmount?: number | null
 ): Promise<number> {
   const config = await getRateConfig();
   const rateCount = cardTypeId ? await prisma.rate.count({ where: { cardTypeId } }) : 0;
   const reductions = reductionsForCard(
     card,
-    reductionsForRateCount(rateCount, config.deductionBands, config.reductions)
+    reductionsForRateCount(rateCount, config.deductionBands, config.reductions, cardAmount, config.lowDenom)
   );
   const reduction =
     payoutCurrency === "NGN"
@@ -274,7 +275,8 @@ export async function executeNoOnesResell(
       Number(trade.effectiveRate),
       trade.payoutCurrency,
       trade.cardType,
-      trade.cardTypeId
+      trade.cardTypeId,
+      cardAmount
     );
 
     const market = await resolveOfferForCard({
