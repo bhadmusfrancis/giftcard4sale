@@ -38,6 +38,12 @@ services:
         sync: false
       - key: DIRECT_URL
         sync: false
+      # Required on the API service for UI and trade-chat translation.
+      # The insights cron job has a separate environment.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

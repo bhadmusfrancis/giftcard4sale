@@ -33,6 +33,8 @@ interface I18nCtx {
   t: (text: string, vars?: Record<string, string | number>) => string;
   /** Persist a language choice (cookie + profile when logged in). */
   setLang: (lang: string) => void;
+  translationError: boolean;
+  retryTranslations: () => void;
   /** Batch-translate English strings to the active language. For DOM-level
    *  translation of long prose pages; shares the t() dictionary + cache. */
   translateAll: (texts: string[]) => Promise<Dict>;
@@ -68,7 +70,7 @@ function interpolate(text: string, vars?: Record<string, string | number>): stri
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [lang, setLangState] = useState("en");
   const [country, setCountry] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -77,32 +79,81 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef<Set<string>>(new Set());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const langRef = useRef("en");
+  const generationRef = useRef(0);
+  const failedRef = useRef(new Set<string>());
+  const inFlightRef = useRef(new Map<string, Promise<Dict>>());
+  const [translationError, setTranslationError] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const userRef = useRef(user);
+  userRef.current = user;
+  const savePreferenceRef = useRef(Promise.resolve());
+
+  // Share requests between React strings and prose. An empty/partial provider
+  // response is a failure, not a new dictionary that should trigger retries on
+  // every render. Retry explicitly, or when the language changes.
+  const translateAll = useCallback(async (texts: string[]): Promise<Dict> => {
+    const target = langRef.current;
+    const generation = generationRef.current;
+    const out: Dict = {};
+    if (target === "en") return out;
+    const sources = Array.from(new Set(texts.filter(Boolean)));
+    const missing = sources.filter(
+      (s) => dictRef.current[s] == null && !failedRef.current.has(s) && !inFlightRef.current.has(s)
+    );
+    for (let i = 0; i < missing.length; i += 50) {
+      const batch = missing.slice(i, i + 50);
+      const request = (async (): Promise<Dict> => {
+        try {
+          const { translations } = await api<{ translations: Dict }>("/i18n/translate", {
+            body: { lang: target, texts: batch },
+          });
+          if (generation !== generationRef.current) return {};
+          const accepted: Dict = {};
+          for (const source of batch) {
+            const value = translations?.[source];
+            if (typeof value === "string" && value.trim()) accepted[source] = value;
+            else failedRef.current.add(source);
+          }
+          if (Object.keys(accepted).length) {
+            dictRef.current = { ...dictRef.current, ...accepted };
+            saveDict(target, dictRef.current);
+            setDict(dictRef.current);
+          }
+          setTranslationError(failedRef.current.size > 0);
+          return accepted;
+        } catch {
+          if (generation === generationRef.current) {
+            batch.forEach((s) => failedRef.current.add(s));
+            setTranslationError(true);
+          }
+          return {};
+        } finally {
+          if (generation === generationRef.current) batch.forEach((s) => inFlightRef.current.delete(s));
+        }
+      })();
+      batch.forEach((s) => inFlightRef.current.set(s, request));
+    }
+    await Promise.all(sources.map((s) => inFlightRef.current.get(s)));
+    if (generation !== generationRef.current) return {};
+    for (const source of sources) {
+      if (dictRef.current[source] != null) out[source] = dictRef.current[source];
+    }
+    return out;
+  }, [revision]);
 
   // Batch-fetch translations for strings seen on screen but not yet known.
   const flush = useCallback(async () => {
     flushTimerRef.current = null;
     const texts = Array.from(pendingRef.current).filter((s) => dictRef.current[s] == null);
     pendingRef.current.clear();
-    const target = langRef.current;
-    if (!texts.length || target === "en") return;
-    try {
-      const { translations } = await api<{ translations: Dict }>("/i18n/translate", {
-        body: { lang: target, texts: texts.slice(0, 100) },
-      });
-      if (langRef.current !== target) return; // user switched mid-flight
-      const merged = { ...dictRef.current, ...translations };
-      dictRef.current = merged;
-      saveDict(target, merged);
-      setDict(merged);
-    } catch {
-      // keep English; next render re-queues the misses
-    }
-  }, []);
+    await translateAll(texts);
+  }, [translateAll]);
 
   const requestString = useCallback(
     (source: string) => {
       if (langRef.current === "en") return;
-      if (dictRef.current[source] != null || pendingRef.current.has(source)) return;
+      if (dictRef.current[source] != null || pendingRef.current.has(source) ||
+          failedRef.current.has(source) || inFlightRef.current.has(source)) return;
       pendingRef.current.add(source);
       if (!flushTimerRef.current) flushTimerRef.current = setTimeout(flush, 80);
     },
@@ -118,69 +169,64 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       requestString(text);
       return interpolate(text, vars);
     },
-    [ready, requestString]
+    [ready, requestString, lang, dict]
   );
 
-  const setLang = useCallback((next: string) => {
+  const applyLang = useCallback((next: string) => {
     const normalized = normalizeLang(next);
+    generationRef.current++;
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = null;
+    pendingRef.current.clear();
+    failedRef.current.clear();
+    inFlightRef.current.clear();
+    setTranslationError(false);
     setCookie(LANG_COOKIE, normalized);
     langRef.current = normalized;
     dictRef.current = loadDict(normalized);
     setDict(dictRef.current);
     setLangState(normalized);
-    if (getToken()) {
-      api("/me/profile", { method: "PATCH", body: { locale: normalized } }).catch(() => {});
-    }
+    setRevision((v) => v + 1);
   }, []);
+
+  const setLang = useCallback((next: string) => {
+    const normalized = normalizeLang(next);
+    applyLang(normalized);
+    const currentUser = userRef.current;
+    if (currentUser && getToken()) {
+      // Keep auth state in sync, including an explicit choice of English.
+      setUser({ ...currentUser, locale: normalized });
+      const token = getToken();
+      // Rapid selections must reach the profile in the same order.
+      savePreferenceRef.current = savePreferenceRef.current.then(async () => {
+        if (getToken() === token) {
+          await api("/me/profile", { method: "PATCH", body: { locale: normalized } });
+        }
+      }).catch(() => {});
+    }
+  }, [applyLang, setUser]);
+
+  const retryTranslations = useCallback(() => applyLang(langRef.current), [applyLang]);
 
   // Initial locale: cookie (set by middleware from geo/browser data), else the
   // browser language, else English.
   useEffect(() => {
     const cookieLang = getCookie(LANG_COOKIE);
     const detected = normalizeLang(cookieLang || navigator.language || "en");
-    langRef.current = detected;
-    dictRef.current = loadDict(detected);
-    setDict(dictRef.current);
-    setLangState(detected);
+    applyLang(detected);
     setCountry(getCookie(COUNTRY_COOKIE));
     setReady(true);
-  }, []);
+    return () => {
+      generationRef.current++;
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    };
+  }, [applyLang]);
 
-  // Synchronous batch translate: returns known translations immediately and
-  // fetches the rest (chunked at the API's 100-string limit).
-  const translateAll = useCallback(async (texts: string[]): Promise<Dict> => {
-    const target = langRef.current;
-    const out: Dict = {};
-    if (target === "en") return out;
-    const missing: string[] = [];
-    for (const s of texts) {
-      const hit = dictRef.current[s];
-      if (hit != null) out[s] = hit;
-      else missing.push(s);
-    }
-    for (let i = 0; i < missing.length; i += 100) {
-      try {
-        const { translations } = await api<{ translations: Dict }>("/i18n/translate", {
-          body: { lang: target, texts: missing.slice(i, i + 100) },
-        });
-        Object.assign(out, translations);
-        dictRef.current = { ...dictRef.current, ...translations };
-      } catch {
-        // keep English for the failed chunk
-      }
-    }
-    saveDict(target, dictRef.current);
-    setDict(dictRef.current);
-    return out;
-  }, []);
-
-  // A saved non-English profile language wins over geo/browser detection so
-  // the site follows the user across devices. (Legacy profiles are all "en",
-  // so "en" never overrides a detected cookie language.)
+  // A saved preference (including English) wins over initial detection.
   useEffect(() => {
     if (!ready || !user?.locale) return;
-    if (user.locale !== "en" && user.locale !== langRef.current) setLang(user.locale);
-  }, [user?.locale, ready, setLang]);
+    if (user.locale !== langRef.current) applyLang(user.locale);
+  }, [user?.locale, ready, applyLang]);
 
   // Keep <html lang> and text direction in sync.
   useEffect(() => {
@@ -189,7 +235,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     document.documentElement.dir = isRtl(lang) ? "rtl" : "ltr";
   }, [lang, ready]);
 
-  return <Ctx.Provider value={{ lang, country, ready, t, setLang, translateAll }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ lang, country, ready, t, setLang, translateAll, translationError, retryTranslations }}>{children}</Ctx.Provider>;
 }
 
 export function useI18n(): I18nCtx {

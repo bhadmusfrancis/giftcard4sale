@@ -20,9 +20,9 @@ function hashSource(text: string): string {
 
 async function openAiJson(system: string, user: string): Promise<any | null> {
   if (!env.openai.apiKey) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       signal: controller.signal,
@@ -40,7 +40,6 @@ async function openAiJson(system: string, user: string): Promise<any | null> {
         ],
       }),
     });
-    clearTimeout(timer);
     if (!res.ok) {
       console.warn("[translate] OpenAI", res.status, await res.text().catch(() => ""));
       return null;
@@ -52,6 +51,8 @@ async function openAiJson(system: string, user: string): Promise<any | null> {
   } catch (err) {
     console.warn("[translate] OpenAI call failed:", (err as Error).message);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { asyncHandler, validate } from "../lib/http";
-import { isValidLocale } from "../lib/locale";
+import { isValidLocale, normalizeLocale } from "../lib/locale";
 import { translateUiStrings } from "../services/translate";
 
 export const i18nRouter = Router();
@@ -21,6 +21,9 @@ i18nRouter.post(
     );
     if (!isValidLocale(data.lang)) return res.status(400).json({ error: "Invalid language" });
     const translations = await translateUiStrings(data.texts, data.lang);
+    if (normalizeLocale(data.lang) !== "en" && Object.keys(translations).length === 0) {
+      return res.status(503).json({ error: "Translation is temporarily unavailable. Please try again later." });
+    }
     res.json({ translations });
   })
 );

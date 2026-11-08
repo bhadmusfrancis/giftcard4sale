@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n";
 export function EmailSupportButton({ className = "btn-primary mt-4 inline-flex" }: { className?: string }) {
   const t = useT();
   return (
-    <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("GiftCard4Sale support")}`} className={className}>
+    <a data-i18n-skip href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("GiftCard4Sale support")}`} className={className}>
       {t("Email support")}
     </a>
   );

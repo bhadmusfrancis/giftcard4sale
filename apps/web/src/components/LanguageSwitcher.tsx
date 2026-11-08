@@ -19,7 +19,7 @@ function labelFor(tag: string): string {
 }
 
 export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
-  const { lang, setLang, ready, t } = useI18n();
+  const { lang, setLang, ready, t, translationError, retryTranslations } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -48,9 +48,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
           <circle cx="12" cy="12" r="9" />
           <path d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 010 18M12 3a15.3 15.3 0 000 18" strokeLinecap="round" />
         </svg>
-        {!compact && (
-          <span className="max-w-[7rem] truncate text-xs font-semibold uppercase">{shown}</span>
-        )}
+        <span className={`${compact ? "max-w-[3.5rem]" : "max-w-[7rem]"} truncate text-xs font-semibold uppercase`}>{shown}</span>
       </button>
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 max-h-80 w-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
@@ -58,6 +56,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
             <button
               key={opt.tag}
               type="button"
+              aria-pressed={shown === opt.tag}
               onClick={() => {
                 setLang(opt.tag);
                 setOpen(false);
@@ -75,6 +74,14 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
               {t("Detected")}: {labelFor(shown)}
             </div>
           )}
+        </div>
+      )}
+      {translationError && !open && (
+        <div role="status" className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-amber-200 bg-white p-3 text-sm text-slate-700 shadow-lg">
+          <p>{t("Some content could not be loaded in your selected language.")}</p>
+          <button type="button" className="mt-2 font-semibold text-brand-700 underline" onClick={retryTranslations}>
+            {t("Retry")}
+          </button>
         </div>
       )}
     </div>
