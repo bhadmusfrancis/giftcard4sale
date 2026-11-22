@@ -464,7 +464,7 @@ export async function fetchSafeTheTradeRates(
       storedQuotes: { NONE: nairaPerUnit, CASH: nairaPerUnit, DEBIT: nairaPerUnit },
       ecodeNairaPerUnit,
       ecodeOfferCount: ecodeSamples.length,
-      offerCount: samples.length,
+      offerCount: book.length,
       ownerCount: new Set(samples.map((s) => s.owner)).size,
       catalogCandidate,
     });

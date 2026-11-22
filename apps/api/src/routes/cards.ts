@@ -10,7 +10,7 @@ import { parseStoredQuotes, receiptPolicyFromStored } from "../services/noones";
 import { listCardCurrencyMetaForDisplay } from "../services/noones/currencyMeta";
 import { paymentMethodRequiresPin, resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { resolveCardRegionLock, tierMatchesRegionLock } from "../services/noones/regionLock";
-import { findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
+import { deductionRateCountForCard, findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 
 export const cardsRouter = Router();
 
@@ -118,7 +118,7 @@ cardsRouter.post(
     const data = validate(quoteSchema, req.body);
     const rate = await prisma.rate.findUnique({
       where: { id: data.rateId },
-      include: { cardType: { include: { _count: { select: { rates: true } } } } },
+      include: { cardType: true },
     });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
@@ -161,7 +161,7 @@ cardsRouter.post(
       reductions: reductionsForCard(
         rate.cardType,
         reductionsForRateCount(
-          rate.cardType._count.rates,
+          await deductionRateCountForCard(rate.cardTypeId, rate.currency),
           config.deductionBands,
           config.reductions,
           data.cardAmount,

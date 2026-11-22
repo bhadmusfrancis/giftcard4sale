@@ -19,8 +19,10 @@ export interface SyncedCardRate {
   /** Listings behind `ecodeNairaPerUnit`. */
   ecodeOfferCount?: number;
   /**
-   * Listings the rate was derived from. Sources that publish one rate per card
-   * leave this undefined; marketplaces set it so thin tiers can be held back.
+   * Live listings the marketplace had for this card + currency at sync — the
+   * "number of rates" the deduction bands bucket by. Sources that publish one
+   * rate per card leave this undefined; marketplaces set it so thin tiers can
+   * be held back and its depth recorded on the stored rate row.
    */
   offerCount?: number;
   /**

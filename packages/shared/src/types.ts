@@ -344,7 +344,7 @@ export interface RateReductions {
   ghsReductionPercent: number; // default 30 (Cedi)
 }
 
-/** Deduction % bucket keyed to how many rate rows a card type has. */
+/** Deduction % bucket keyed to a card currency's SafeTheTrade offer count at sync. */
 export interface DeductionBand extends RateReductions {
   minRateCount: number; // inclusive
   maxRateCount: number | null; // inclusive; null = no cap

@@ -10,7 +10,7 @@ import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
 import { executeNoOnesResell, isAutoResellEnabledForCard, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
 import { paymentMethodRequiresPin, resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
-import { findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
+import { deductionRateCountForCard, findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 import { generateTradeNumber } from "../services/tradeNumber";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
 import { canCancelTrade as canCancelTradeCheck } from "@gc4s/shared";
@@ -88,7 +88,7 @@ tradesRouter.post(
 
     const rate = await prisma.rate.findUnique({
       where: { id: data.rateId },
-      include: { cardType: { include: { _count: { select: { rates: true } } } } },
+      include: { cardType: true },
     });
     if (!rate || !rate.active) return res.status(404).json({ error: "Rate not found" });
 
@@ -170,7 +170,7 @@ tradesRouter.post(
       reductions: reductionsForCard(
         rate.cardType,
         reductionsForRateCount(
-          rate.cardType._count.rates,
+          await deductionRateCountForCard(rate.cardTypeId, rate.currency),
           config.deductionBands,
           config.reductions,
           data.cardAmount,

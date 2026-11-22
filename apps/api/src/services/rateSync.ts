@@ -204,6 +204,8 @@ async function upsertSyncedRate(params: {
   summary: RateSyncSummary;
   /** False keeps the row current without quoting it (see `syncSogoCard`). */
   activate?: boolean;
+  /** Live offers the source had for this card + currency (its "number of rates"). */
+  offerCount?: number;
 }): Promise<boolean> {
   const {
     cardTypeId,
@@ -241,7 +243,7 @@ async function upsertSyncedRate(params: {
     maxDenom,
     nairaPerUnit: new Prisma.Decimal(nairaPerUnit.toFixed(4)),
     storedQuotes: storedQuotesToJson(storedQuotes),
-    countryOfferCount: SYNCED_OFFER_COUNT,
+    countryOfferCount: params.offerCount ?? SYNCED_OFFER_COUNT,
     speed,
     active: activate,
   };
@@ -294,10 +296,17 @@ async function retireWeakerRates(
 async function retireStalePrimaryRate(
   cardTypeId: string,
   currency: string,
-  medium: CardMedium
+  medium: CardMedium,
+  offerCount?: number
 ): Promise<boolean> {
+  const where = { cardTypeId, currency, medium, speed: STT_RATE_SPEED };
+  // Keep the stored offer count current even on rows retired in an earlier
+  // run — the bands read the book's depth at the latest sync, not its best.
+  if (offerCount != null) {
+    await prisma.rate.updateMany({ where, data: { countryOfferCount: offerCount } });
+  }
   const retired = await prisma.rate.updateMany({
-    where: { cardTypeId, currency, medium, speed: STT_RATE_SPEED, active: true },
+    where: { ...where, active: true },
     data: { active: false },
   });
   return retired.count > 0;
@@ -369,9 +378,9 @@ function scaleQuotes(quotes: StoredQuotes, factor: number): StoredQuotes {
 
 async function persistCurrencyMeta(
   cardTypeId: string,
-  rows: Array<{ country: string; currency: string; minDenom: number; maxDenom: number }>
+  rows: Array<{ country: string; currency: string; minDenom: number; maxDenom: number; offerCount?: number }>
 ): Promise<void> {
-  const byCurrency = new Map<string, { country: string; currency: string; minDenom: number; maxDenom: number }>();
+  const byCurrency = new Map<string, { country: string; currency: string; minDenom: number; maxDenom: number; offerCount?: number }>();
   for (const row of rows) {
     const prev = byCurrency.get(row.currency);
     if (!prev) {
@@ -380,10 +389,11 @@ async function persistCurrencyMeta(
     }
     prev.minDenom = Math.min(prev.minDenom, row.minDenom);
     prev.maxDenom = Math.max(prev.maxDenom, row.maxDenom);
+    if (prev.offerCount == null) prev.offerCount = row.offerCount;
   }
   for (const row of byCurrency.values()) {
     await persistCardCurrencyMeta(cardTypeId, row.country, row.currency, {
-      offerCount: SYNCED_OFFER_COUNT,
+      offerCount: row.offerCount ?? SYNCED_OFFER_COUNT,
       ranges: [{ min: row.minDenom, max: row.maxDenom }],
     });
   }
@@ -481,7 +491,7 @@ async function syncPrimaryRate(
   let retired = false;
   for (const medium of ["PHYSICAL", "ECODE"] as CardMedium[]) {
     if (!hasEnoughOffers(rate, policy.minOfferOwners)) {
-      retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium)) || retired;
+      retired = (await retireStalePrimaryRate(dbCard.id, rate.currency, medium, rate.offerCount)) || retired;
       summary.skipped++;
       continue;
     }
@@ -499,6 +509,7 @@ async function syncPrimaryRate(
       nairaPerUnit,
       storedQuotes: scaleQuotes(rate.storedQuotes, nairaPerUnit / rate.nairaPerUnit),
       speed: STT_RATE_SPEED,
+      offerCount: rate.offerCount,
       summary,
     });
     if (!written) continue;
@@ -514,7 +525,7 @@ async function syncPrimaryRate(
 
   touchedCards.add(dbCard.id);
   await persistCurrencyMeta(dbCard.id, [
-    { country: rate.country, currency: rate.currency, minDenom: rate.minDenom, maxDenom: rate.maxDenom },
+    { country: rate.country, currency: rate.currency, minDenom: rate.minDenom, maxDenom: rate.maxDenom, offerCount: rate.offerCount },
   ]);
 }
 

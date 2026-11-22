@@ -5,6 +5,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test rateCalculator.test.cjs",
     "dev": "tsc -p tsconfig.json --watch"
   },
   "devDependencies": {

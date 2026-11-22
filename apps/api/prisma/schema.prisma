@@ -185,7 +185,7 @@ model Rate {
   medium        CardMedium @default(PHYSICAL)
   nairaPerUnit  Decimal    @db.Decimal(20, 4) // SLOW base rate, NGN per unit
   storedQuotes  Json?      // Cached NoOnes variants: NONE, CASH, DEBIT (per medium row)
-  countryOfferCount Int?   // Cached NoOnes offers for this country/currency tier
+  countryOfferCount Int?   // Offers the source had for this card's currency at sync (STT live offers; the "number of rates" deduction bands read)
   speed         String? // SLOW | FAST (kept for audit)
   active        Boolean    @default(true)
   createdAt     DateTime   @default(now())
@@ -271,11 +271,13 @@ model FxRateState {
   updatedAt     DateTime  @updatedAt
 }
 
-// Payout deduction % bucketed by how many rate rows a card type has.
+// Payout deduction % bucketed by how many SafeTheTrade offers a card's
+// currency had at the last sync — per currency, not the card-wide row count.
+// Cards with no SafeTheTrade rates (Sogo-only) skip the bands entirely.
 // A card's own per-currency overrides (CardType.*ReductionPercent) still win.
 model RateDeductionBand {
   id                    String   @id @default(cuid())
-  minRateCount          Int      // inclusive lower bound on a card's Rate rows
+  minRateCount          Int      // inclusive lower bound on a currency's STT offers
   maxRateCount          Int?     // inclusive upper bound; null = no cap
   nairaReductionPercent Int
   usdtReductionPercent  Int

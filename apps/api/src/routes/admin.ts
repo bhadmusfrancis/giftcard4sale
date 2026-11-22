@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, deductionBandForRateCount, deductionBandLabel, euroDenominationIsOdd, isEuroAppleRate, PayoutCurrency, reductionsForCard, reductionsForRateCount } from "@gc4s/shared";
+import { parseRateText, canonicalCardSlug, normalizeCardTypeName, sellSlug, calculateRateQuote, deductionBandForRateCount, deductionBandLabel, euroDenominationIsOdd, isEuroAppleRate, PayoutCurrency, reductionsForAdminTrade } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { asyncHandler, validate } from "../lib/http";
 import { requireAuth, requireAdmin, hashPassword, generateReferralCode, AuthedRequest } from "../lib/auth";
@@ -43,7 +43,8 @@ import {
   getUserModerationSummary,
   getUserTradeLimit,
 } from "../services/userModeration";
-import { findPhysicalSibling, storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
+import { deductionRateCountForCard, findPhysicalSibling, storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
+import { STT_RATE_SPEED } from "../services/rateSources";
 import { parseStoredQuotes } from "../services/noones";
 import { generateDailyInsights } from "../services/insights/generator";
 import { getLast24hSummary, getTrafficReport, type TrafficRange } from "../services/analytics";
@@ -661,6 +662,7 @@ adminRouter.post(
           medium: z.enum(["PHYSICAL", "ECODE"]).optional(),
           receiptType: z.enum(["NONE", "CASH", "DEBIT"]).default("NONE"),
           cardAmount: z.number().positive(),
+          useLowDenomRates: z.boolean().default(false),
           payoutCurrency: z.enum(["USDT", "NGN", "GHS"]),
           nairaPerUnit: z.number().positive().optional(),
           effectiveRate: z.number().positive().optional(),
@@ -712,7 +714,6 @@ adminRouter.post(
         nairaReductionPercent: true,
         usdtReductionPercent: true,
         ghsReductionPercent: true,
-        _count: { select: { rates: true } },
       },
     });
     const receiptType = receiptTypeForQuote({
@@ -736,15 +737,12 @@ adminRouter.post(
       payoutCurrency: data.payoutCurrency as PayoutCurrency,
       medium: medium as "PHYSICAL" | "ECODE",
       rates: config.rates,
-      reductions: reductionsForCard(
+      reductions: reductionsForAdminTrade(
         cardReductions,
-        reductionsForRateCount(
-          cardReductions?._count.rates ?? 0,
-          config.deductionBands,
-          config.reductions,
-          data.cardAmount,
-          config.lowDenom
-        )
+        await deductionRateCountForCard(cardTypeId, currency),
+        config,
+        data.cardAmount,
+        data.useLowDenomRates
       ),
       extraReductionPercent:
         isEuroAppleRate(cardReductions, currency, country) && euroDenominationIsOdd(data.cardAmount)
@@ -775,7 +773,10 @@ adminRouter.post(
         finalPayout: data.finalPayout != null ? new Prisma.Decimal(data.finalPayout) : null,
         ecodes: data.ecodes,
         cardPins: data.cardPins?.trim() || null,
-        notes: data.notes ? `[Admin] ${data.notes}` : "[Admin] Trade opened on behalf of user",
+        notes: [
+          data.notes ? `[Admin] ${data.notes}` : "[Admin] Trade opened on behalf of user",
+          data.useLowDenomRates ? "[Admin] Lower-denomination rates selected" : null,
+        ].filter(Boolean).join("\n"),
         status: data.markPaid ? "APPROVED" : data.status,
       },
     });
@@ -1121,16 +1122,34 @@ adminRouter.post(
 adminRouter.get(
   "/cards",
   asyncHandler(async (_req, res) => {
-    const [cards, config] = await Promise.all([
+    const [cards, config, sttRows] = await Promise.all([
       prisma.cardType.findMany({
         orderBy: { name: "asc" },
         include: { _count: { select: { rates: true } } },
       }),
       getRateConfig(),
+      prisma.rate.findMany({
+        where: { speed: STT_RATE_SPEED },
+        select: { cardTypeId: true, currency: true, countryOfferCount: true },
+        orderBy: { updatedAt: "desc" },
+      }),
     ]);
+    // The deduction band keys off each currency's own SafeTheTrade offer
+    // count, so a card can sit in several bands at once; the weakest (deepest)
+    // is the one summarised on the card row.
+    const sttCountsByCard = new Map<string, Map<string, number>>();
+    for (const row of sttRows) {
+      const counts = sttCountsByCard.get(row.cardTypeId) ?? new Map<string, number>();
+      if (!counts.has(row.currency)) counts.set(row.currency, row.countryOfferCount ?? 0);
+      sttCountsByCard.set(row.cardTypeId, counts);
+    }
     res.json({
       cards: cards.map((c) => {
-        const band = deductionBandForRateCount(c._count.rates, config.deductionBands);
+        const sttOfferCounts = Object.fromEntries(sttCountsByCard.get(c.id) ?? []);
+        const counts = Object.values(sttOfferCounts);
+        const band = counts.length
+          ? deductionBandForRateCount(Math.min(...counts), config.deductionBands)
+          : null;
         return {
           id: c.id,
           name: c.name,
@@ -1141,6 +1160,8 @@ adminRouter.get(
           imageUrl: c.imageUrl,
           description: c.description,
           rateCount: c._count.rates,
+          sttOfferCounts,
+          hasSttRates: counts.length > 0,
           noonesPaymentMethod: c.noonesPaymentMethod,
           noonesAutoResellEnabled: c.noonesAutoResellEnabled,
           nairaReductionPercent: c.nairaReductionPercent,

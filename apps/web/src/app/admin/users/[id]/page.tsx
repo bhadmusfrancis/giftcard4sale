@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, reductionsForCard, reductionsForRateCount } from "@gc4s/shared";
+import { calculateRateQuote, euroDenominationIsOdd, isEuroAppleRate, reductionsForAdminTrade } from "@gc4s/shared";
 import { api } from "@/lib/api";
 import { FormFeedback } from "@/components/FormFeedback";
 import { useAsyncAction } from "@/lib/useAsyncAction";
@@ -40,6 +40,7 @@ export default function AdminUserDetailPage() {
     currency: "USD",
     medium: "PHYSICAL" as "PHYSICAL" | "ECODE",
     cardAmount: 100,
+    useLowDenomRates: false,
     payoutCurrency: "NGN" as "USDT" | "NGN" | "GHS",
     receiptType: "NONE" as "NONE" | "CASH" | "DEBIT",
     nairaPerUnit: "",
@@ -120,15 +121,12 @@ export default function AdminUserDetailPage() {
         payoutCurrency: tradeForm.payoutCurrency,
         medium: tradeForm.medium,
         rates: platformConfig.rates,
-        reductions: reductionsForCard(
+        reductions: reductionsForAdminTrade(
           card,
-          reductionsForRateCount(
-            card?.rateCount ?? 0,
-            platformConfig.deductionBands ?? [],
-            platformConfig.reductions,
-            tradeForm.cardAmount,
-            platformConfig.lowDenom
-          )
+          card?.hasSttRates ? (card?.sttOfferCounts?.[tradeForm.currency?.toUpperCase()] ?? 0) : null,
+          platformConfig,
+          tradeForm.cardAmount,
+          tradeForm.useLowDenomRates
         ),
         extraReductionPercent:
           isEuroAppleRate(card, tradeForm.currency, tradeForm.country) &&
@@ -139,7 +137,7 @@ export default function AdminUserDetailPage() {
     } catch {
       return null;
     }
-  }, [platformConfig, cards, tradeForm.cardTypeId, tradeForm.nairaPerUnit, tradeForm.cardAmount, tradeForm.payoutCurrency, tradeForm.medium]);
+  }, [platformConfig, cards, tradeForm.cardTypeId, tradeForm.nairaPerUnit, tradeForm.cardAmount, tradeForm.payoutCurrency, tradeForm.medium, tradeForm.currency, tradeForm.country, tradeForm.useLowDenomRates]);
 
   async function moderate(action: string, extra: Record<string, unknown> = {}) {
     setMsg(null);
@@ -202,6 +200,7 @@ export default function AdminUserDetailPage() {
       const body: Record<string, unknown> = {
         userId: id,
         cardAmount: tradeForm.cardAmount,
+        useLowDenomRates: tradeForm.useLowDenomRates,
         payoutCurrency: tradeForm.payoutCurrency,
         receiptType: tradeForm.receiptType,
         nairaPerUnit,
@@ -490,10 +489,31 @@ export default function AdminUserDetailPage() {
             </div>
           </div>
 
+          <div className="space-y-1 rounded-lg bg-slate-50 p-3">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={tradeForm.useLowDenomRates}
+                onChange={(e) => setTradeForm({
+                  ...tradeForm,
+                  useLowDenomRates: e.target.checked,
+                  effectiveRate: "",
+                  quotedPayout: "",
+                })}
+              />
+              Use lower-denomination rates
+            </label>
+            <p className="text-xs text-slate-500">
+              Apply the lower-denomination deductions configured on the Rates page, regardless of total amount
+              or deduction band. These replace card-specific deductions where configured; unset currencies keep
+              their usual deductions. Leave unchecked for automatic amount-based rates.
+            </p>
+          </div>
+
           {payoutPreview && !tradeForm.quotedPayout && (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
               Calculated payout: <strong>{money(payoutPreview.payoutAmount, tradeForm.payoutCurrency)}</strong>
-              {" "}(effective ₦{payoutPreview.effectiveNairaPerUnit.toFixed(2)}/unit)
+              {" "}(effective ₦{payoutPreview.effectiveNairaPerUnit.toFixed(2)}/unit; {payoutPreview.reductionPercent}% deduction)
             </p>
           )}
 

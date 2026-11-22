@@ -10,6 +10,7 @@ import { trackTradePurchaseConversion } from "../tradeConversions";
 import { rejectTradeWithBadScore } from "../tradeRejection";
 import { getRateConfig } from "../rateConfig";
 import { isAutoResellEnabledForCard, isNoOnesConfigured, noonesPost, noonesUpload, NoOnesApiError } from "./client";
+import { deductionRateCountForCard } from "../rateQuoteResolve";
 import { resolveOfferForCard } from "./rates";
 import { NoOnesTradeGetData } from "./types";
 
@@ -115,10 +116,12 @@ async function grossUpNairaPerUnit(
   payoutCurrency: string,
   card?: CardReductionOverrides | null,
   cardTypeId?: string,
+  cardCurrency?: string,
   cardAmount?: number | null
 ): Promise<number> {
   const config = await getRateConfig();
-  const rateCount = cardTypeId ? await prisma.rate.count({ where: { cardTypeId } }) : 0;
+  const rateCount =
+    cardTypeId && cardCurrency ? await deductionRateCountForCard(cardTypeId, cardCurrency) : null;
   const reductions = reductionsForCard(
     card,
     reductionsForRateCount(rateCount, config.deductionBands, config.reductions, cardAmount, config.lowDenom)
@@ -276,6 +279,7 @@ export async function executeNoOnesResell(
       trade.payoutCurrency,
       trade.cardType,
       trade.cardTypeId,
+      trade.currency,
       cardAmount
     );
 

@@ -2,6 +2,7 @@ import { CardMedium, Prisma } from "@prisma/client";
 import { RateDenomRange, ReceiptType, cardAmountInRateRange, rateAmountRangeError, resolveStoredNairaPerUnit, StoredQuotes } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { parseStoredQuotes } from "./noones/storedQuotes";
+import { STT_RATE_SPEED } from "./rateSources";
 
 export function receiptTypeForQuote(params: {
   receiptType?: ReceiptType;
@@ -50,6 +51,30 @@ export async function findPhysicalSibling(rate: {
     },
     select: { nairaPerUnit: true, storedQuotes: true },
   });
+}
+
+/**
+ * The "number of rates" a card + currency's deduction band is read from: the
+ * offers SafeTheTrade had for that currency at its last sync, stored on the
+ * tier's rate rows (`countryOfferCount`). It is per currency, never the
+ * card-wide row count. A currency SafeTheTrade does not price counts 0.
+ *
+ * Returns null when the card has no SafeTheTrade rates at all (e.g. Sogo-only
+ * cards): number-of-rates deductions do not apply to them, so the platform
+ * default reductions are used instead of a band's.
+ */
+export async function deductionRateCountForCard(
+  cardTypeId: string,
+  currency: string
+): Promise<number | null> {
+  const sttRows = await prisma.rate.findMany({
+    where: { cardTypeId, speed: STT_RATE_SPEED },
+    select: { currency: true, countryOfferCount: true },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (!sttRows.length) return null;
+  const row = sttRows.find((r) => r.currency === currency);
+  return row?.countryOfferCount ?? 0;
 }
 
 export function validateCardAmountForRate(

@@ -46,17 +46,21 @@ export function deductionBandLabel(band: Pick<DeductionBand, "minRateCount" | "m
 
 /**
  * Platform deductions for a card's rate count — its band, else the global
- * defaults. When the traded face amount is within the configured
- * lower-denomination threshold and the card's band opted in, the
+ * defaults. `rateCount` is the number of SafeTheTrade offers the card's
+ * currency had at the last sync; pass null when the card has no SafeTheTrade
+ * rates (Sogo-only), where number-of-rates deductions do not apply and the
+ * defaults are used instead. When the traded face amount is within the
+ * configured lower-denomination threshold and the card's band opted in, the
  * lower-denomination percents apply instead (each null keeps the band's).
  */
 export function reductionsForRateCount(
-  rateCount: number,
+  rateCount: number | null,
   bands: DeductionBand[],
   fallback: RateReductions,
   cardAmount?: number | null,
   lowDenom?: LowDenomReductions | null
 ): RateReductions {
+  if (rateCount == null) return fallback;
   const band = deductionBandForRateCount(rateCount, bands);
   if (!band) return fallback;
   const low =
@@ -68,6 +72,29 @@ export function reductionsForRateCount(
     nairaReductionPercent: (low ? lowDenom?.nairaReductionPercent : null) ?? band.nairaReductionPercent,
     usdtReductionPercent: (low ? lowDenom?.usdtReductionPercent : null) ?? band.usdtReductionPercent,
     ghsReductionPercent: (low ? lowDenom?.ghsReductionPercent : null) ?? band.ghsReductionPercent,
+  };
+}
+
+export function reductionsForAdminTrade(
+  card: CardReductionOverrides | null | undefined,
+  rateCount: number | null,
+  config: {
+    reductions: RateReductions;
+    deductionBands?: DeductionBand[];
+    lowDenom?: LowDenomReductions | null;
+  },
+  cardAmount: number,
+  useLowDenomRates = false
+): RateReductions {
+  const base = reductionsForCard(
+    card,
+    reductionsForRateCount(rateCount, config.deductionBands ?? [], config.reductions, cardAmount, config.lowDenom)
+  );
+  if (!useLowDenomRates) return base;
+  return {
+    nairaReductionPercent: config.lowDenom?.nairaReductionPercent ?? base.nairaReductionPercent,
+    usdtReductionPercent: config.lowDenom?.usdtReductionPercent ?? base.usdtReductionPercent,
+    ghsReductionPercent: config.lowDenom?.ghsReductionPercent ?? base.ghsReductionPercent,
   };
 }
 
