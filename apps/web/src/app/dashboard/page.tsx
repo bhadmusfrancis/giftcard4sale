@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { money } from "@/lib/format";
 import { PushButton } from "@/components/PushButton";
+import { TradeCompletionGauge } from "@/components/TradeCompletionGauge";
 
 export default function DashboardHome() {
   const { user } = useAuth();
@@ -25,16 +26,7 @@ export default function DashboardHome() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
-        <div className="card p-4 sm:p-6">
-          <div className="text-xs font-medium text-slate-500 sm:text-sm">{t("Good trades")}</div>
-          <div className="mt-1 text-3xl font-extrabold text-emerald-600 sm:text-4xl">{user.goodScore}</div>
-        </div>
-        <div className="card p-4 sm:p-6">
-          <div className="text-xs font-medium text-slate-500 sm:text-sm">{t("Bad trades")}</div>
-          <div className="mt-1 text-3xl font-extrabold text-red-600 sm:text-4xl">{user.badScore}</div>
-        </div>
-      </div>
+      <TradeCompletionGauge completed={user.goodScore} rejected={user.badScore} />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold text-slate-700">{t("Wallets")}</h2>
