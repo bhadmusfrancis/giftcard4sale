@@ -42,7 +42,10 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
       if (d.config) setConfig(d.config);
       if (d.fx) setFx(d.fx);
       return d;
-    }, (d: any) => `CBN rate ₦${d.fx?.ngnPerUsd} (${d.fx?.rateDate}) fetched.`);
+    }, (d: any) =>
+      `Official rates fetched: CBN ₦${d.fx?.ngnPerUsd ?? "—"}${d.fx?.rateDate ? ` (${d.fx.rateDate})` : ""}` +
+      `${d.fx?.ngnPerGhs ? ` · BoG ₦${d.fx.ngnPerGhs}${d.fx.ghsRateDate ? ` (${d.fx.ghsRateDate})` : ""}` : ""}`
+    );
   }
 
   async function save(e: React.FormEvent) {
@@ -96,6 +99,8 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
           sttFallbackReductionPercent: Number(config.sttFallbackReductionPercent ?? 15),
           ngnPerUsdtAutoSync: config.ngnPerUsdtAutoSync !== false,
           ngnPerUsdtReductionPercent: Number(config.ngnPerUsdtReductionPercent ?? 8),
+          ngnPerGhsAutoSync: config.ngnPerGhsAutoSync !== false,
+          ngnPerGhsIncrementPercent: Number(config.ngnPerGhsIncrementPercent ?? 0),
           maxBankAccounts: Number(config.maxBankAccounts ?? 5),
           maxMomoAccounts: Number(config.maxMomoAccounts ?? 5),
         },
@@ -155,12 +160,48 @@ function ConfigSection({ onCardsChanged }: { onCardsChanged?: () => void }) {
               {fx?.lastError ? ` · last attempt failed: ${fx.lastError}` : ""}
             </span>
             <button type="button" onClick={refreshFx} className="btn-ghost px-3 py-1.5 text-xs" disabled={fxAction.busy}>
-              {fxAction.busy ? "Fetching…" : "Fetch CBN rate now"}
+              {fxAction.busy ? "Fetching…" : "Fetch official rates now"}
             </button>
           </div>
           <FormFeedback status={fxAction.status} anchorRef={fxAction.statusRef} />
         </div>
         <Field label="NGN per 1 GHS (Cedi)" value={config.rates.ngnPerGhs} onChange={(v) => setConfig({ ...config, rates: { ...config.rates, ngnPerGhs: v } })} />
+        <Field
+          label="NGN per Cedi increment % (on BoG rate)"
+          value={config.ngnPerGhsIncrementPercent ?? 0}
+          onChange={(v) => setConfig({ ...config, ngnPerGhsIncrementPercent: v })}
+        />
+        <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={config.ngnPerGhsAutoSync !== false}
+              onChange={(e) => setConfig({ ...config, ngnPerGhsAutoSync: e.target.checked })}
+            />
+            <span>
+              <span className="font-medium text-slate-800">Auto-update NGN per Cedi from the Bank of Ghana twice daily</span>
+              <span className="mt-1 block text-slate-500">
+                Every 12 hours, NGN per Cedi is set to the Bank of Ghana&apos;s official GHS/NGN interbank mid rate
+                plus the increment % above. You can still type a figure — it applies until the next refresh. Turn this
+                off to keep a manual figure.
+              </span>
+            </span>
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-slate-600">
+            <span>
+              {fx?.ngnPerGhs
+                ? `BoG official: ₦${Number(fx.ngnPerGhs).toLocaleString()} (${fx.ghsRateDate}) → ₦${(
+                    Number(fx.ngnPerGhs) *
+                    (1 + Number(config.ngnPerGhsIncrementPercent ?? 0) / 100)
+                  ).toLocaleString(undefined, { maximumFractionDigits: 2 })} per GHS · fetched ${new Date(
+                    fx.ghsFetchedAt
+                  ).toLocaleString()}`
+                : "BoG official rate not fetched yet."}
+              {fx?.ghsLastError ? ` · last attempt failed: ${fx.ghsLastError}` : ""}
+            </span>
+          </div>
+        </div>
         <Field label="Referral %" value={config.referralPercent} onChange={(v) => setConfig({ ...config, referralPercent: v })} />
         <div className="col-span-full">
           <p className="label">Deductions by number of rates</p>

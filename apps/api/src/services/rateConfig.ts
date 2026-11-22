@@ -55,6 +55,8 @@ export async function getRateConfig(): Promise<{
   sttFallbackReductionPercent: number;
   ngnPerUsdtAutoSync: boolean;
   ngnPerUsdtReductionPercent: number;
+  ngnPerGhsAutoSync: boolean;
+  ngnPerGhsIncrementPercent: number;
   maxBankAccounts: number;
   maxMomoAccounts: number;
   lowDenom: LowDenomReductions;
@@ -144,6 +146,8 @@ export async function getRateConfig(): Promise<{
     sttFallbackReductionPercent: cfg.sttFallbackReductionPercent,
     ngnPerUsdtAutoSync: cfg.ngnPerUsdtAutoSync,
     ngnPerUsdtReductionPercent: cfg.ngnPerUsdtReductionPercent,
+    ngnPerGhsAutoSync: cfg.ngnPerGhsAutoSync,
+    ngnPerGhsIncrementPercent: cfg.ngnPerGhsIncrementPercent,
     maxBankAccounts: cfg.maxBankAccounts,
     maxMomoAccounts: cfg.maxMomoAccounts,
     lowDenom: {

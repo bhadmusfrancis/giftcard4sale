@@ -243,6 +243,9 @@ model RateConfig {
   // Twice daily, ngnPerUsdt = CBN official USD/NGN less ngnPerUsdtReductionPercent.
   ngnPerUsdtAutoSync        Boolean  @default(true)
   ngnPerUsdtReductionPercent Int     @default(8)
+  // Twice daily, ngnPerGhs = BoG official GHS/NGN mid rate plus ngnPerGhsIncrementPercent.
+  ngnPerGhsAutoSync         Boolean  @default(true)
+  ngnPerGhsIncrementPercent Int      @default(0)
   // Lower-denomination deductions for cards in opted-in rate-count bands
   // (RateDeductionBand.lowDenomEnabled): a trade whose face amount is at most
   // lowDenomMax pays these instead; a null % keeps the band's own for that
@@ -258,8 +261,9 @@ model RateConfig {
   createdAt             DateTime @default(now())
 }
 
-// Last official USD/NGN fetched from the CBN. Kept out of RateConfig for the
-// same reason as RateSyncState: an admin save inserts a fresh config row.
+// Last official USD/NGN fetched from the CBN and GHS/NGN fetched from the
+// Bank of Ghana. Kept out of RateConfig for the same reason as RateSyncState:
+// an admin save inserts a fresh config row.
 model FxRateState {
   id            String    @id @default("singleton")
   ngnPerUsd     Decimal?  @db.Decimal(20, 4) // CBN central rate
@@ -268,6 +272,12 @@ model FxRateState {
   fetchedAt     DateTime?
   lastAttemptAt DateTime?
   lastError     String?
+  ngnPerGhs        Decimal?  @db.Decimal(20, 4) // BoG GHSNGN mid rate
+  ghsRateDate      String? // BoG rate date, e.g. "20 Nov 2026"
+  ghsSource        String?
+  ghsFetchedAt     DateTime?
+  ghsLastAttemptAt DateTime?
+  ghsLastError     String?
   updatedAt     DateTime  @updatedAt
 }
 

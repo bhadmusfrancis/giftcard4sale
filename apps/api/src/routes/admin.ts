@@ -14,7 +14,7 @@ import { payoutNgnToBank } from "../services/payoutProvider";
 import { notify, notifyAdmins } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getRateConfig } from "../services/rateConfig";
-import { getFxRateState, ngnPerUsdtFromOfficial, refreshNgnPerUsdt } from "../services/fxRate";
+import { getFxRateState, ngnPerGhsFromOfficial, ngnPerUsdtFromOfficial, refreshFxRates } from "../services/fxRate";
 import {
   executeNoOnesResell,
   isNoOnesConfigured,
@@ -1328,14 +1328,15 @@ adminRouter.get(
   })
 );
 
-// Fetch the CBN rate now (the scheduler does it twice daily) and apply it when auto-sync is on.
+// Fetch the official CBN + BoG rates now (the scheduler does it twice daily)
+// and apply them where auto-sync is on.
 adminRouter.post(
   "/fx/refresh",
   asyncHandler(async (_req, res) => {
     try {
-      await refreshNgnPerUsdt();
+      await refreshFxRates();
     } catch (err) {
-      return res.status(502).json({ error: `CBN rate fetch failed: ${(err as Error).message}`, fx: await getFxRateState() });
+      return res.status(502).json({ error: `Rate fetch failed: ${(err as Error).message}`, fx: await getFxRateState() });
     }
     const [config, fx] = await Promise.all([getRateConfig(), getFxRateState()]);
     res.json({ config, fx });
@@ -1388,6 +1389,8 @@ adminRouter.put(
         sttFallbackReductionPercent: z.number().int().min(0).max(100).optional(),
         ngnPerUsdtAutoSync: z.boolean().optional(),
         ngnPerUsdtReductionPercent: z.number().int().min(0).max(100).optional(),
+        ngnPerGhsAutoSync: z.boolean().optional(),
+        ngnPerGhsIncrementPercent: z.number().int().min(0).max(500).optional(),
         maxBankAccounts: z.number().int().min(1).max(50),
         maxMomoAccounts: z.number().int().min(1).max(50),
       }),
@@ -1495,10 +1498,24 @@ adminRouter.put(
       if (fx.ngnPerUsd) ngnPerUsdt = ngnPerUsdtFromOfficial(fx.ngnPerUsd, ngnPerUsdtReductionPercent);
     }
 
+    // Same for the cedi: a changed increment % (or turning auto-sync on)
+    // re-derives NGN per GHS from the last BoG rate; a typed figure is kept.
+    const ngnPerGhsAutoSync = data.ngnPerGhsAutoSync ?? prevConfig.ngnPerGhsAutoSync;
+    const ngnPerGhsIncrementPercent = data.ngnPerGhsIncrementPercent ?? prevConfig.ngnPerGhsIncrementPercent;
+    let ngnPerGhs = data.ngnPerGhs;
+    const ghsFigureEdited = data.ngnPerGhs !== prevConfig.rates.ngnPerGhs;
+    const ghsDerivationChanged =
+      ngnPerGhsIncrementPercent !== prevConfig.ngnPerGhsIncrementPercent ||
+      (ngnPerGhsAutoSync && !prevConfig.ngnPerGhsAutoSync);
+    if (ngnPerGhsAutoSync && ghsDerivationChanged && !ghsFigureEdited) {
+      const fx = await getFxRateState();
+      if (fx.ngnPerGhs) ngnPerGhs = ngnPerGhsFromOfficial(fx.ngnPerGhs, ngnPerGhsIncrementPercent);
+    }
+
     await prisma.rateConfig.create({
       data: {
         ngnPerUsdt: new Prisma.Decimal(ngnPerUsdt),
-        ngnPerGhs: new Prisma.Decimal(data.ngnPerGhs),
+        ngnPerGhs: new Prisma.Decimal(ngnPerGhs),
         nairaReductionPercent: data.nairaReductionPercent ?? prevConfig.reductions.nairaReductionPercent,
         usdtReductionPercent: data.usdtReductionPercent ?? prevConfig.reductions.usdtReductionPercent,
         ghsReductionPercent: data.ghsReductionPercent ?? prevConfig.reductions.ghsReductionPercent,
@@ -1520,6 +1537,8 @@ adminRouter.put(
         sttFallbackReductionPercent: data.sttFallbackReductionPercent ?? prevConfig.sttFallbackReductionPercent,
         ngnPerUsdtAutoSync,
         ngnPerUsdtReductionPercent,
+        ngnPerGhsAutoSync,
+        ngnPerGhsIncrementPercent,
         maxBankAccounts: data.maxBankAccounts,
         maxMomoAccounts: data.maxMomoAccounts,
         lowDenomMax,

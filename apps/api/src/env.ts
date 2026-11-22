@@ -102,6 +102,11 @@ export const env = {
   fx: {
     enabled: (process.env.FX_SYNC_ENABLED || process.env.RATE_SYNC_ENABLED || "true") === "true",
     cbnRatesUrl: process.env.CBN_RATES_URL || "https://www.cbn.gov.ng/api/GetAllExchangeRates",
+    // Bank of Ghana daily interbank rates page; the GHSNGN row is read from its
+    // wpDataTables AJAX endpoint discovered on the page.
+    bogRatesUrl:
+      process.env.BOG_RATES_URL ||
+      "https://www.bog.gov.gh/treasury-and-the-markets/daily-interbank-fx-rates/",
   },
 
   reductions: {
