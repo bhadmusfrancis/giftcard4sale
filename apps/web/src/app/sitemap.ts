@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { fetchSitemapFeed } from "@/lib/seo/sitemap-data";
 import { absoluteUrl } from "@/lib/seo/site";
-import { LOCALIZED_PAGE_PATHS, SEO_LOCALES, languageAlternates, localizedPath } from "@/lib/locale";
+import { LOCALIZED_PAGE_PATHS, languageAlternates } from "@/lib/locale";
 
 /** Regenerate often so crawlers see fresh lastmod after rate syncs and new insights. */
 export const revalidate = 900;
@@ -29,21 +29,19 @@ function absoluteAlternates(path: string): Record<string, string> {
   );
 }
 
-/** English entry plus one per SEO locale, all sharing the same hreflang map. */
+/**
+ * One <url> per path carrying the full hreflang cluster. Locale variants are
+ * not separate <url> entries: each page already emits hreflang links in its
+ * HTML metadata, and IndexNow pushes every locale URL — repeating the cluster
+ * on 20 per-locale entries ballooned the sitemap past Vercel's 20 MB ISR cap.
+ */
 function localizedEntries(
   path: string,
   lastModified: Date,
   changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"],
   priority: number
 ): MetadataRoute.Sitemap {
-  const languages = absoluteAlternates(path);
-  const entries: MetadataRoute.Sitemap = [
-    entry(path, lastModified, changeFrequency, priority, languages),
-  ];
-  for (const lang of SEO_LOCALES) {
-    entries.push(entry(localizedPath(lang, path), lastModified, changeFrequency, priority, languages));
-  }
-  return entries;
+  return [entry(path, lastModified, changeFrequency, priority, absoluteAlternates(path))];
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
