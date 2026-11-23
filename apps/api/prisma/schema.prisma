@@ -185,7 +185,7 @@ model Rate {
   medium        CardMedium @default(PHYSICAL)
   nairaPerUnit  Decimal    @db.Decimal(20, 4) // SLOW base rate, NGN per unit
   storedQuotes  Json?      // Cached NoOnes variants: NONE, CASH, DEBIT (per medium row)
-  countryOfferCount Int?   // Offers the source had for this card's currency at sync (STT live offers; the "number of rates" deduction bands read)
+  countryOfferCount Int?   // Offers the source had for this card's currency at sync (STT distinct live sellers — a trader's several listings count once; the "number of rates" deduction bands read)
   speed         String? // SLOW | FAST (kept for audit)
   active        Boolean    @default(true)
   createdAt     DateTime   @default(now())

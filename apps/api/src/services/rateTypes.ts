@@ -16,18 +16,20 @@ export interface SyncedCardRate {
    * none do — the sync then derives it from `nairaPerUnit`.
    */
   ecodeNairaPerUnit?: number;
-  /** Listings behind `ecodeNairaPerUnit`. */
+  /** Distinct sellers behind `ecodeNairaPerUnit`. */
   ecodeOfferCount?: number;
   /**
-   * Live listings the marketplace had for this card + currency at sync — the
-   * "number of rates" the deduction bands bucket by. Sources that publish one
-   * rate per card leave this undefined; marketplaces set it so thin tiers can
-   * be held back and its depth recorded on the stored rate row.
+   * Live offers the marketplace had for this card + currency at sync, counted
+   * as distinct sellers — a trader's several listings are one offer. This is
+   * the "number of rates" the deduction bands bucket by. Sources that publish
+   * one rate per card leave this undefined; marketplaces set it so thin tiers
+   * can be held back and its depth recorded on the stored rate row.
    */
   offerCount?: number;
   /**
-   * Distinct traders behind `offerCount`. Several listings from one seller are
-   * one opinion, so the publish threshold counts owners, not listings.
+   * Distinct traders behind the priced median. Several listings from one
+   * seller are one opinion, so the publish threshold counts owners, not
+   * listings.
    */
   ownerCount?: number;
   /**

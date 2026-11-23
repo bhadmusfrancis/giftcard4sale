@@ -463,8 +463,10 @@ export async function fetchSafeTheTradeRates(
       nairaPerUnit,
       storedQuotes: { NONE: nairaPerUnit, CASH: nairaPerUnit, DEBIT: nairaPerUnit },
       ecodeNairaPerUnit,
-      ecodeOfferCount: ecodeSamples.length,
-      offerCount: book.length,
+      ecodeOfferCount: new Set(ecodeSamples.map((s) => s.owner)).size,
+      // A trader's several listings for the same card + currency are one
+      // offer — the count is of distinct sellers, matching `ownerCount`.
+      offerCount: new Set(book.map((s) => s.owner)).size,
       ownerCount: new Set(samples.map((s) => s.owner)).size,
       catalogCandidate,
     });
