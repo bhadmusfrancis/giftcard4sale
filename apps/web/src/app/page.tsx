@@ -6,10 +6,12 @@ import { PopularCards } from "@/components/PopularCards";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 import { AppDownloadButtons } from "@/components/AppDownloadButtons";
 import { HomeSearchForm } from "@/components/HomeSearchForm";
+import { SeoLanguageLinks } from "@/components/SeoLanguageLinks";
 import { T } from "@/lib/i18n";
+import { languageAlternates } from "@/lib/locale";
 
 export const metadata: Metadata = {
-  alternates: { canonical: "/" },
+  alternates: { canonical: "/", languages: languageAlternates("/") },
 };
 
 /** Cache homepage card list; avoids blocking every visit on a slow API round-trip. */
@@ -147,6 +149,8 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      <SeoLanguageLinks />
     </div>
   );
 }

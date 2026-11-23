@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 import { DomTranslator } from "@/components/DomTranslator";
+import { SeoLanguageLinks } from "@/components/SeoLanguageLinks";
+import { languageAlternates } from "@/lib/locale";
 
 export const metadata: Metadata = {
   title: "About Us",
   description:
     "GiftCard4Sale is an independent gift card exchange. Sell unused gift cards for USDT, Nigerian Naira, or Ghana Cedi on giftcard4sale.com.",
-  alternates: { canonical: "/about" },
+  alternates: { canonical: "/about", languages: languageAlternates("/about") },
 };
 
 export default function AboutPage() {
@@ -95,6 +97,7 @@ export default function AboutPage() {
         </Link>
       </div>
     </div>
+    <SeoLanguageLinks />
     </DomTranslator>
   );
 }

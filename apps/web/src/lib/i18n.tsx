@@ -18,6 +18,7 @@ import {
   setCookie,
   normalizeLang,
   isRtl,
+  langFromPathname,
 } from "./locale";
 
 type Dict = Record<string, string>;
@@ -208,11 +209,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const retryTranslations = useCallback(() => applyLang(langRef.current), [applyLang]);
 
-  // Initial locale: cookie (set by middleware from geo/browser data), else the
-  // browser language, else English.
+  // Initial locale: an explicit /{lang}/… URL wins (localized SEO pages), then
+  // the cookie (set by middleware from geo/browser data), else the browser
+  // language, else English.
   useEffect(() => {
     const cookieLang = getCookie(LANG_COOKIE);
-    const detected = normalizeLang(cookieLang || navigator.language || "en");
+    const detected = normalizeLang(
+      langFromPathname(window.location.pathname) || cookieLang || navigator.language || "en"
+    );
     applyLang(detected);
     setCountry(getCookie(COUNTRY_COOKIE));
     setReady(true);

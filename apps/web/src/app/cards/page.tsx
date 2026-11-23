@@ -1,15 +1,20 @@
 import { Suspense } from "react";
 import { loadCatalogCards } from "@/lib/catalog";
 import { GiftCardCatalog } from "@/components/GiftCardCatalog";
+import { SeoLanguageLinks } from "@/components/SeoLanguageLinks";
 import { publicPageMetadata } from "@/lib/seo/public-metadata";
+import { languageAlternates } from "@/lib/locale";
 import { T } from "@/lib/i18n";
 
-export const metadata = publicPageMetadata({
-  title: "Sell a Gift Card",
-  description:
-    "Browse and search our gift card catalog. Compare live payout rates in USDT, Naira, or Cedi and open a trade in minutes.",
-  canonical: "/cards",
-});
+export const metadata = {
+  ...publicPageMetadata({
+    title: "Sell a Gift Card",
+    description:
+      "Browse and search our gift card catalog. Compare live payout rates in USDT, Naira, or Cedi and open a trade in minutes.",
+    canonical: "/cards",
+  }),
+  alternates: { canonical: "/cards", languages: languageAlternates("/cards") },
+};
 
 export default async function CardsPage({ searchParams }: { searchParams: { q?: string } }) {
   const { cards, stale } = await loadCatalogCards();
@@ -24,6 +29,7 @@ export default async function CardsPage({ searchParams }: { searchParams: { q?: 
           <GiftCardCatalog cards={cards} initialQuery={searchParams.q ?? ""} syncUrl stale={stale} />
         </div>
       </Suspense>
+      <SeoLanguageLinks />
     </div>
   );
 }

@@ -6,6 +6,7 @@
 import { fetchSitemapFeed } from "@/lib/seo/sitemap-data";
 import { SITE_URL, absoluteUrl } from "@/lib/seo/site";
 import { indexNowKey } from "@/lib/seo/indexnow";
+import { LOCALIZED_PAGE_PATHS, SEO_LOCALES, localizedPath } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,9 +17,24 @@ const CHUNK_SIZE = 10_000; // IndexNow hard limit per request
 function sitemapUrls(feed: Awaited<ReturnType<typeof fetchSitemapFeed>>): string[] {
   const staticPaths = ["/", "/cards", "/insights", "/about", "/contact", "/terms", "/privacy"];
   const urls = new Set<string>(staticPaths.map(absoluteUrl));
-  for (const c of feed.cards) urls.add(absoluteUrl(`/${c.sellSlug}`));
-  for (const p of feed.landingPages) urls.add(absoluteUrl(`/${p.slug}`));
-  for (const p of feed.insightPosts) urls.add(absoluteUrl(`/insights/${p.slug}`));
+  for (const path of LOCALIZED_PAGE_PATHS) {
+    for (const lang of SEO_LOCALES) urls.add(absoluteUrl(localizedPath(lang, path)));
+  }
+  const localized = (path: string) => {
+    for (const lang of SEO_LOCALES) urls.add(absoluteUrl(localizedPath(lang, path)));
+  };
+  for (const c of feed.cards) {
+    urls.add(absoluteUrl(`/${c.sellSlug}`));
+    localized(`/${c.sellSlug}`);
+  }
+  for (const p of feed.landingPages) {
+    urls.add(absoluteUrl(`/${p.slug}`));
+    localized(`/${p.slug}`);
+  }
+  for (const p of feed.insightPosts) {
+    urls.add(absoluteUrl(`/insights/${p.slug}`));
+    localized(`/insights/${p.slug}`);
+  }
   return [...urls];
 }
 

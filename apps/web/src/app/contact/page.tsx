@@ -3,11 +3,13 @@ import Link from "next/link";
 import { BrandAffiliationDisclaimer } from "@/components/BrandAffiliationDisclaimer";
 import { EmailSupportButton } from "@/components/EmailSupportButton";
 import { DomTranslator } from "@/components/DomTranslator";
+import { SeoLanguageLinks } from "@/components/SeoLanguageLinks";
+import { languageAlternates } from "@/lib/locale";
 
 export const metadata: Metadata = {
   title: "Contact",
   description: "Contact GiftCard4Sale support for account, trade, and payout questions.",
-  alternates: { canonical: "/contact" },
+  alternates: { canonical: "/contact", languages: languageAlternates("/contact") },
 };
 
 export default function ContactPage() {
@@ -74,6 +76,7 @@ export default function ContactPage() {
         .
       </p>
     </div>
+    <SeoLanguageLinks />
     </DomTranslator>
   );
 }

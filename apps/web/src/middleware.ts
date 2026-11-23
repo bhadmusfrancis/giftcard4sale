@@ -4,6 +4,7 @@ import {
   LANG_COOKIE,
   COUNTRY_COOKIE,
   langFromCountry,
+  langFromPathname,
   parseAcceptLanguage,
   normalizeLang,
 } from "@/lib/locale";
@@ -57,6 +58,18 @@ function applyLocaleCookies(request: NextRequest, response: NextResponse) {
   }
 }
 
+// Pretty locale URLs (/{lang}, /{lang}/about…) are rewritten to the internal
+// /localized/{lang}/… route tree — a root-level [lang] segment would collide
+// with the existing [slug] card/landing route. Unknown subpaths land on the
+// localized [slug] page and 404 through the normal card/landing lookup.
+function localizedRewriteTarget(request: NextRequest): string | null {
+  const { pathname } = request.nextUrl;
+  const lang = langFromPathname(pathname);
+  if (!lang) return null;
+  const seg = pathname.split("/")[1];
+  return `/localized/${lang}${pathname.slice(seg.length + 1)}`;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
@@ -67,9 +80,27 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(next, 301);
   }
 
+  // The internal localized routes exist only as rewrite targets — direct
+  // access would duplicate the pretty /{lang}/… URLs, so bounce it back out.
+  if (pathname === "/localized" || pathname.startsWith("/localized/")) {
+    const next = request.nextUrl.clone();
+    next.pathname = pathname.replace(/^\/localized/, "") || "/";
+    return NextResponse.redirect(next, 301);
+  }
+
+  const localized = localizedRewriteTarget(request);
+  const respond = () => {
+    if (localized) {
+      const next = request.nextUrl.clone();
+      next.pathname = localized;
+      return NextResponse.rewrite(next);
+    }
+    return NextResponse.next();
+  };
+
   const origin = canonicalOrigin();
   if (!origin) {
-    const res = NextResponse.next();
+    const res = respond();
     applyLocaleCookies(request, res);
     return res;
   }
@@ -81,7 +112,7 @@ export function middleware(request: NextRequest) {
   const isLocal =
     host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.endsWith(".local");
   if (isLocal) {
-    const res = NextResponse.next();
+    const res = respond();
     applyLocaleCookies(request, res);
     return res;
   }
@@ -94,7 +125,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(target, 301);
   }
 
-  const res = NextResponse.next();
+  const res = respond();
   applyLocaleCookies(request, res);
   return res;
 }

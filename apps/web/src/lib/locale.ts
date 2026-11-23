@@ -88,6 +88,51 @@ export const LANGUAGE_OPTIONS: { tag: string; label: string }[] = [
   { tag: "tw", label: "Twi" },
 ];
 
+// Locales that get dedicated, indexable pages under /{lang}/… (rendered
+// server-side in app/localized/[lang]). Kept in sync with the picker list so
+// every offered language also has crawlable content.
+export const SEO_LOCALES: string[] = LANGUAGE_OPTIONS.map((o) => o.tag).filter((t) => t !== "en");
+const SEO_LOCALE_SET = new Set(SEO_LOCALES);
+
+export function isSeoLocale(tag: string): boolean {
+  return SEO_LOCALE_SET.has(tag);
+}
+
+/** First path segment when it is a supported SEO locale, else null. */
+export function langFromPathname(pathname: string): string | null {
+  const seg = pathname.split("/")[1]?.toLowerCase();
+  return seg && SEO_LOCALE_SET.has(seg) ? seg : null;
+}
+
+// Static paths that exist under /{lang}/… — "" is the localized homepage.
+// Middleware rewrites every /{lang}/… URL; dynamic /{lang}/{slug} (cards,
+// landing pages) and /{lang}/insights/{slug} resolve through the shared
+// [slug]/insights loaders and 404 naturally when the slug doesn't exist.
+export const LOCALIZED_PAGE_PATHS: readonly string[] = [
+  "",
+  "/about",
+  "/cards",
+  "/contact",
+  "/insights",
+];
+
+/** Pretty external path for a locale: localizedPath("fr", "/about") -> "/fr/about". */
+export function localizedPath(lang: string, path: string): string {
+  const base = path === "/" ? "" : path;
+  return `/${lang}${base}`;
+}
+
+/**
+ * hreflang map for a route shared by all locales (e.g. "/about" or "/").
+ * Includes English and x-default pointing at the unprefixed URL.
+ */
+export function languageAlternates(path: string): Record<string, string> {
+  const canonical = path === "/" || path === "" ? "/" : path;
+  const out: Record<string, string> = { en: canonical, "x-default": canonical };
+  for (const lang of SEO_LOCALES) out[lang] = localizedPath(lang, canonical);
+  return out;
+}
+
 const RTL_LANGS = new Set(["ar", "he", "fa", "ur"]);
 
 export function isRtl(lang: string): boolean {
