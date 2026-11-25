@@ -40,6 +40,15 @@ const SYNCED_OFFER_COUNT = 999;
 const DEFAULT_SOGO_MAX_GAP_PERCENT = 25;
 const DEFAULT_STT_FALLBACK_REDUCTION_PERCENT = 15;
 
+/**
+ * A card + currency neither source has listed for this long drops its stored
+ * rows rather than keep quoting the last price a live book wrote. A synced
+ * row's `updatedAt` is the last run that produced its tier — a tier absent
+ * from both feeds is simply never written again, so the timestamp alone is
+ * the staleness signal.
+ */
+const STALE_RATE_EXPIRY_MS = 3 * 24 * 60 * 60_000;
+
 function capAtSogo(
   stt: number,
   sogo: number | undefined,
@@ -685,6 +694,11 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
     return summary;
   }
 
+  // Whether each source answered this run — before the single-card filter, so
+  // a synced card absent from a feed still has its rows expired.
+  const sttAnswered = primaryRates.length > 0;
+  const sogoAnswered = sogoCards.length > 0;
+
   const targetId = options?.cardTypeId;
   if (targetId) {
     const target = await prisma.cardType.findUnique({ where: { id: targetId } });
@@ -740,6 +754,41 @@ export async function syncCatalogRates(options?: CatalogRateSyncOptions): Promis
       summary.errors.push(`${card.name}: ${(err as Error).message}`);
     }
     if (isRateSyncActive()) mergeRateSyncSummary(summary);
+  }
+
+  // Drop synced rows whose tier has had no offers on SafeTheTrade or Sogo for
+  // the expiry window. Deleted rather than retired so restoreLastKnownRates
+  // can never resurrect them; only a source that answered this run gets its
+  // rows expired, so a failed fetch cannot wipe that source's book.
+  const staleBefore = new Date(Date.now() - STALE_RATE_EXPIRY_MS);
+  const speedsToExpire = [
+    ...(sttAnswered ? [STT_RATE_SPEED] : []),
+    ...(sogoAnswered ? [SOGO_RATE_SPEED] : []),
+  ];
+  if (speedsToExpire.length) {
+    const staleRateWhere: Prisma.RateWhereInput = {
+      speed: { in: speedsToExpire },
+      updatedAt: { lt: staleBefore },
+      ...(targetId ? { cardTypeId: targetId } : {}),
+    };
+    const staleCardIds = (
+      await prisma.rate.findMany({
+        where: staleRateWhere,
+        select: { cardTypeId: true },
+        distinct: ["cardTypeId"],
+      })
+    ).map((r) => r.cardTypeId);
+    summary.deleted += (await prisma.rate.deleteMany({ where: staleRateWhere })).count;
+    for (const id of staleCardIds) touchedCards.add(id);
+
+    // The card page's currency list is fed from this meta — a currency with no
+    // live rate rows must stop being offered too. Meta is only cleared when
+    // both sources answered; a failed source proves nothing about its tiers.
+    if (sttAnswered && sogoAnswered) {
+      await prisma.cardCurrencyMeta.deleteMany({
+        where: { syncedAt: { lt: staleBefore }, ...(targetId ? { cardTypeId: targetId } : {}) },
+      });
+    }
   }
 
   await refreshTouchedCards(touchedCards, summary);

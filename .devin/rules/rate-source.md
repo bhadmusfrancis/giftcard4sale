@@ -66,7 +66,8 @@ Until `SOGO_RATES_API_URL` is set to a working JSON API, Sogo rates come from an
 
 ## Never empty the catalog
 
-- A source that fails or returns nothing must leave existing rows untouched — the catalog keeps serving its last known rates.
+- A synced tier neither source has listed for more than **3 days** is dropped — its STT/Sogo `Rate` rows and its `CardCurrencyMeta` are deleted at sync (`STALE_RATE_EXPIRY_MS`), never retired, so `restoreLastKnownRates` cannot resurrect them. Only a source that answered that run has its rows expired, so a failed fetch cannot wipe a source's book. Manual and `PARTNER` rows are untouched.
+- Otherwise, a source that fails or returns nothing must leave existing rows untouched — the catalog keeps serving its last known rates (for up to the 3-day window above).
 - Only retire a row when a **stronger** source actually wrote a replacement for the same card/country/medium (or same card/currency, which is what stops one currency showing twice under different country labels).
 - `refreshCardCatalogVisibility()` reinstates the newest retired row per country+medium rather than letting a card fall out of the catalog.
 - `CardType.forceActive` is admin-owned ("Always active" on the Rates page): such a card is listed on `/cards` even with no active rate (`noOnesCatalogWhere()`). Syncs manage only `CardType.active` and must never write `forceActive`.
