@@ -75,7 +75,14 @@ const SKIPPED_CURRENCIES = new Set(["NGN"]);
 const IGNORED_METHOD_IDS = new Set(["stream-gift-card-code"]);
 
 /** Traders whose listings are never valid offers — excluded from every price, count and band. */
-const IGNORED_OWNERS = new Set(["aaagressive", "albert888"]);
+const IGNORED_OWNERS = new Set([
+  "aaagressive",
+  "albert888",
+  "james1888",
+  "coincorner",
+  "astutetrahira258",
+  "allen99988",
+]);
 
 /** SafeTheTrade payment-method ids that refer to the same brand.
  *  Key = alias id seen in the feed, value = canonical id used for grouping. */
