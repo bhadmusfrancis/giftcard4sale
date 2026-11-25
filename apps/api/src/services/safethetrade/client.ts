@@ -74,6 +74,9 @@ const SKIPPED_CURRENCIES = new Set(["NGN"]);
 /** Listings whose brand cannot be identified from the name at all. */
 const IGNORED_METHOD_IDS = new Set(["stream-gift-card-code"]);
 
+/** Traders whose listings are never valid offers — excluded from every price, count and band. */
+const IGNORED_OWNERS = new Set(["aaagressive", "albert888"]);
+
 /** SafeTheTrade payment-method ids that refer to the same brand.
  *  Key = alias id seen in the feed, value = canonical id used for grouping. */
 const METHOD_ID_ALIASES: Record<string, string> = {
@@ -368,6 +371,7 @@ export async function fetchSafeTheTradeRates(
     if (offer.type !== "sell") continue;
     if (offer.active === false || offer.deauthorized || offer.visibility !== "public") continue;
     if (offer.scheduleOnline === false || offer.autoOff) continue;
+    if (IGNORED_OWNERS.has(String(offer.ownerUsername ?? "").trim().toLowerCase())) continue;
 
     const methodId = String(offer.paymentMethodId ?? "").trim();
     const currency = String(offer.fiatCurrency ?? offer.pricing?.fiatCurrency ?? "").toUpperCase();
