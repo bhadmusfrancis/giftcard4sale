@@ -114,6 +114,9 @@ export default function AdminUserDetailPage() {
     const naira = Number(tradeForm.nairaPerUnit);
     if (!platformConfig || !naira || !tradeForm.cardAmount) return null;
     const card = cards.find((c) => c.id === tradeForm.cardTypeId);
+    const currencyOverride = card?.currencyReductions?.find(
+      (r: any) => r.currency === tradeForm.currency?.toUpperCase()
+    );
     try {
       return calculateRateQuote({
         nairaPerUnit: naira,
@@ -126,7 +129,8 @@ export default function AdminUserDetailPage() {
           card?.hasSttRates ? (card?.sttOfferCounts?.[tradeForm.currency?.toUpperCase()] ?? 0) : null,
           platformConfig,
           tradeForm.cardAmount,
-          tradeForm.useLowDenomRates
+          tradeForm.useLowDenomRates,
+          currencyOverride
         ),
         extraReductionPercent:
           isEuroAppleRate(card, tradeForm.currency, tradeForm.country) &&

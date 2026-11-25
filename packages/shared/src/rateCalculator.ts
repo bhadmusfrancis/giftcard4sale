@@ -5,14 +5,22 @@ function round(n: number, dp = 2): number {
   return Math.round((n + Number.EPSILON) * f) / f;
 }
 
-/** Per-card deduction overrides; a null/undefined field falls back to the platform default. */
+/**
+ * Deduction overrides; a null/undefined field falls back to the next layer.
+ * Layers: per-face-currency (CardCurrencyReduction) → per-card
+ * (CardType) → deduction band / platform default.
+ */
 export interface CardReductionOverrides {
   nairaReductionPercent?: number | null;
   usdtReductionPercent?: number | null;
   ghsReductionPercent?: number | null;
 }
 
-/** Effective deductions for a card: its own overrides where set, else the platform defaults. */
+/**
+ * Effective deductions: the overrides' fields where set, else `base`. To layer
+ * a per-face-currency override over a per-card one, call it twice:
+ * reductionsForCard(currencyOverride, reductionsForCard(card, base)).
+ */
 export function reductionsForCard(
   card: CardReductionOverrides | null | undefined,
   base: RateReductions
@@ -84,11 +92,15 @@ export function reductionsForAdminTrade(
     lowDenom?: LowDenomReductions | null;
   },
   cardAmount: number,
-  useLowDenomRates = false
+  useLowDenomRates = false,
+  currencyOverrides?: CardReductionOverrides | null
 ): RateReductions {
   const base = reductionsForCard(
-    card,
-    reductionsForRateCount(rateCount, config.deductionBands ?? [], config.reductions, cardAmount, config.lowDenom)
+    currencyOverrides,
+    reductionsForCard(
+      card,
+      reductionsForRateCount(rateCount, config.deductionBands ?? [], config.reductions, cardAmount, config.lowDenom)
+    )
   );
   if (!useLowDenomRates) return base;
   return {

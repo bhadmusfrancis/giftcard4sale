@@ -10,7 +10,7 @@ import { notify, notifyAdmins } from "../services/notify";
 import { shouldSendTradeChatNotification } from "../services/notificationPreferences";
 import { executeNoOnesResell, isAutoResellEnabledForCard, receiptPolicyFromStored, parseStoredQuotes } from "../services/noones";
 import { paymentMethodRequiresPin, resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
-import { deductionRateCountForCard, findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
+import { currencyReductionForCard, deductionRateCountForCard, findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 import { generateTradeNumber } from "../services/tradeNumber";
 import { cancelTrade, canCancelTrade } from "../services/tradeCancel";
 import { canCancelTrade as canCancelTradeCheck } from "@gc4s/shared";
@@ -168,13 +168,16 @@ tradesRouter.post(
       medium: rate.medium,
       rates: config.rates,
       reductions: reductionsForCard(
-        rate.cardType,
-        reductionsForRateCount(
-          await deductionRateCountForCard(rate.cardTypeId, rate.currency),
-          config.deductionBands,
-          config.reductions,
-          data.cardAmount,
-          config.lowDenom
+        await currencyReductionForCard(rate.cardTypeId, rate.currency),
+        reductionsForCard(
+          rate.cardType,
+          reductionsForRateCount(
+            await deductionRateCountForCard(rate.cardTypeId, rate.currency),
+            config.deductionBands,
+            config.reductions,
+            data.cardAmount,
+            config.lowDenom
+          )
         )
       ),
       extraReductionPercent,

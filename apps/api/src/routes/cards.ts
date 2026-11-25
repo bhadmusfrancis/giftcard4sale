@@ -10,7 +10,7 @@ import { parseStoredQuotes, receiptPolicyFromStored } from "../services/noones";
 import { listCardCurrencyMetaForDisplay } from "../services/noones/currencyMeta";
 import { paymentMethodRequiresPin, resolvePaymentMethodSlug } from "../services/noones/paymentMethods";
 import { resolveCardRegionLock, tierMatchesRegionLock } from "../services/noones/regionLock";
-import { deductionRateCountForCard, findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
+import { currencyReductionForCard, deductionRateCountForCard, findPhysicalSibling, receiptTypeForQuote, storedNairaFromRate, validateCardAmountForRate } from "../services/rateQuoteResolve";
 
 export const cardsRouter = Router();
 
@@ -159,13 +159,16 @@ cardsRouter.post(
       medium: rate.medium,
       rates: config.rates,
       reductions: reductionsForCard(
-        rate.cardType,
-        reductionsForRateCount(
-          await deductionRateCountForCard(rate.cardTypeId, rate.currency),
-          config.deductionBands,
-          config.reductions,
-          data.cardAmount,
-          config.lowDenom
+        await currencyReductionForCard(rate.cardTypeId, rate.currency),
+        reductionsForCard(
+          rate.cardType,
+          reductionsForRateCount(
+            await deductionRateCountForCard(rate.cardTypeId, rate.currency),
+            config.deductionBands,
+            config.reductions,
+            data.cardAmount,
+            config.lowDenom
+          )
         )
       ),
       extraReductionPercent,

@@ -133,6 +133,31 @@ async function absorbCardType(keeperId: string, dupId: string): Promise<{ ratesM
     });
   }
 
+  // Per-currency deduction overrides move with the card; where both cards set
+  // one for a currency, the keeper's non-null fields win and the duplicate's
+  // fill the gaps.
+  for (const r of await prisma.cardCurrencyReduction.findMany({ where: { cardTypeId: dupId } })) {
+    const keeperRow = await prisma.cardCurrencyReduction.findUnique({
+      where: { cardTypeId_currency: { cardTypeId: keeperId, currency: r.currency } },
+    });
+    if (keeperRow) {
+      await prisma.cardCurrencyReduction.update({
+        where: { id: keeperRow.id },
+        data: {
+          nairaReductionPercent: keeperRow.nairaReductionPercent ?? r.nairaReductionPercent,
+          usdtReductionPercent: keeperRow.usdtReductionPercent ?? r.usdtReductionPercent,
+          ghsReductionPercent: keeperRow.ghsReductionPercent ?? r.ghsReductionPercent,
+        },
+      });
+      await prisma.cardCurrencyReduction.delete({ where: { id: r.id } });
+    } else {
+      await prisma.cardCurrencyReduction.update({
+        where: { id: r.id },
+        data: { cardTypeId: keeperId },
+      });
+    }
+  }
+
   await prisma.cardType.delete({ where: { id: dupId } });
   return { ratesMoved, ratesDropped };
 }

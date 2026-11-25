@@ -10,7 +10,7 @@ import { trackTradePurchaseConversion } from "../tradeConversions";
 import { rejectTradeWithBadScore } from "../tradeRejection";
 import { getRateConfig } from "../rateConfig";
 import { isAutoResellEnabledForCard, isNoOnesConfigured, noonesPost, noonesUpload, NoOnesApiError } from "./client";
-import { deductionRateCountForCard } from "../rateQuoteResolve";
+import { currencyReductionForCard, deductionRateCountForCard } from "../rateQuoteResolve";
 import { resolveOfferForCard } from "./rates";
 import { NoOnesTradeGetData } from "./types";
 
@@ -122,9 +122,14 @@ async function grossUpNairaPerUnit(
   const config = await getRateConfig();
   const rateCount =
     cardTypeId && cardCurrency ? await deductionRateCountForCard(cardTypeId, cardCurrency) : null;
+  const currencyOverride =
+    cardTypeId && cardCurrency ? await currencyReductionForCard(cardTypeId, cardCurrency) : null;
   const reductions = reductionsForCard(
-    card,
-    reductionsForRateCount(rateCount, config.deductionBands, config.reductions, cardAmount, config.lowDenom)
+    currencyOverride,
+    reductionsForCard(
+      card,
+      reductionsForRateCount(rateCount, config.deductionBands, config.reductions, cardAmount, config.lowDenom)
+    )
   );
   const reduction =
     payoutCurrency === "NGN"

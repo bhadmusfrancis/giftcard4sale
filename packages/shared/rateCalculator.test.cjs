@@ -57,6 +57,20 @@ for (const [payoutCurrency, payoutAmount] of [["NGN", 120000], ["USDT", 100], ["
   });
 }
 
+test("per-currency overrides beat card overrides; unset fields fall through", () => {
+  const card = { nairaReductionPercent: 10, usdtReductionPercent: 15 };
+  const currency = { usdtReductionPercent: 5 };
+  assert.deepEqual(reductionsForAdminTrade(card, 3, config, 200, false, currency), {
+    nairaReductionPercent: 10,
+    usdtReductionPercent: 5,
+    ghsReductionPercent: 30,
+  });
+  assert.deepEqual(reductionsForAdminTrade(null, 3, config, 200, false, currency), {
+    ...regular,
+    usdtReductionPercent: 5,
+  });
+});
+
 test("cards with no SafeTheTrade rates skip the number-of-rates bands", () => {
   assert.deepEqual(reductionsForAdminTrade(null, null, config, 200), regular);
   assert.deepEqual(reductionsForAdminTrade(null, null, config, 200, true), lower);

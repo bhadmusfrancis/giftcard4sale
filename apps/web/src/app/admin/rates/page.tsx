@@ -753,6 +753,13 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
     onChange();
   }
 
+  const currencies = [
+    ...new Set<string>([
+      ...rates.map((r) => r.currency as string),
+      ...((card.currencyReductions ?? []) as any[]).map((r) => r.currency as string),
+    ]),
+  ].sort();
+
   return (
     <div className="pb-4">
       <div className="mb-3 rounded-lg bg-slate-50 p-3">
@@ -784,6 +791,29 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
             </label>
           ))}
         </div>
+        {currencies.length ? (
+          <div className="mt-3 border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-slate-600">
+              Deductions per currency{" "}
+              <span className="font-normal text-slate-400">
+                (blank = this card&apos;s value above)
+              </span>
+            </p>
+            <div className="mt-2 space-y-2">
+              {currencies.map((currency) => (
+                <CurrencyReductionRow
+                  key={`${currency}:${JSON.stringify(
+                    (card.currencyReductions ?? []).find((r: any) => r.currency === currency) ?? null
+                  )}`}
+                  card={card}
+                  currency={currency}
+                  override={(card.currencyReductions ?? []).find((r: any) => r.currency === currency)}
+                  onChange={onChange}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
       <table className="w-full min-w-[28rem] text-xs">
@@ -821,6 +851,78 @@ function RateEditor({ card, onChange }: { card: any; onChange: () => void }) {
         </tbody>
       </table>
       </div>
+    </div>
+  );
+}
+
+const REDUCTION_FIELDS = [
+  ["nairaReductionPercent", "Naira %"],
+  ["usdtReductionPercent", "USDT %"],
+  ["ghsReductionPercent", "Cedi %"],
+] as const;
+
+function CurrencyReductionRow({
+  card,
+  currency,
+  override,
+  onChange,
+}: {
+  card: any;
+  currency: string;
+  override: any;
+  onChange: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>({
+    nairaReductionPercent: override?.nairaReductionPercent ?? "",
+    usdtReductionPercent: override?.usdtReductionPercent ?? "",
+    ghsReductionPercent: override?.ghsReductionPercent ?? "",
+  });
+
+  async function save(field: string, raw: string) {
+    const trimmed = raw.trim();
+    const num = trimmed === "" ? null : Number(trimmed);
+    if (num !== null && (!Number.isInteger(num) || num < 0 || num > 100)) {
+      setValues((v) => ({ ...v, [field]: override?.[field] ?? "" }));
+      return;
+    }
+    const entry = { currency } as Record<string, unknown>;
+    let changed = false;
+    for (const [f] of REDUCTION_FIELDS) {
+      const current = f === field ? trimmed : values[f];
+      const value = current.trim() === "" ? null : Number(current);
+      if (value !== null && (!Number.isInteger(value) || value < 0 || value > 100)) return;
+      entry[f] = value;
+      if (value !== (override?.[f] ?? null)) changed = true;
+    }
+    if (!changed) return;
+    await api(`/admin/cards/${card.id}`, { method: "PATCH", body: { currencyReductions: [entry] } });
+    onChange();
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="w-12 text-xs font-bold text-slate-700">{currency}</span>
+      {REDUCTION_FIELDS.map(([field, label]) => (
+        <label key={field} className="flex min-w-0 flex-col gap-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:gap-1.5">
+          {label}
+          <input
+            type="number"
+            min={0}
+            max={100}
+            className="w-full min-w-0 rounded border border-slate-300 px-2 py-1 sm:w-20"
+            value={values[field]}
+            placeholder={
+              card[field] != null
+                ? String(card[field])
+                : card.deductionBand?.[field] != null
+                  ? String(card.deductionBand[field])
+                  : "Default"
+            }
+            onChange={(e) => setValues((v) => ({ ...v, [field]: e.target.value }))}
+            onBlur={(e) => save(field, e.target.value)}
+          />
+        </label>
+      ))}
     </div>
   );
 }

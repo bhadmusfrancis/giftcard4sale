@@ -1,5 +1,5 @@
 import { CardMedium, Prisma } from "@prisma/client";
-import { RateDenomRange, ReceiptType, cardAmountInRateRange, rateAmountRangeError, resolveStoredNairaPerUnit, StoredQuotes } from "@gc4s/shared";
+import { CardReductionOverrides, RateDenomRange, ReceiptType, cardAmountInRateRange, rateAmountRangeError, resolveStoredNairaPerUnit, StoredQuotes } from "@gc4s/shared";
 import { prisma } from "../prisma";
 import { parseStoredQuotes } from "./noones/storedQuotes";
 import { STT_RATE_SPEED } from "./rateSources";
@@ -75,6 +75,25 @@ export async function deductionRateCountForCard(
   if (!sttRows.length) return null;
   const row = sttRows.find((r) => r.currency === currency);
   return row?.countryOfferCount ?? 0;
+}
+
+/**
+ * A card's deduction overrides for one face currency (`CardCurrencyReduction`),
+ * or null when the admin has not set any for it. Layered above the card-wide
+ * `CardType.*ReductionPercent` overrides at quote time.
+ */
+export async function currencyReductionForCard(
+  cardTypeId: string,
+  currency: string
+): Promise<CardReductionOverrides | null> {
+  return prisma.cardCurrencyReduction.findUnique({
+    where: { cardTypeId_currency: { cardTypeId, currency } },
+    select: {
+      nairaReductionPercent: true,
+      usdtReductionPercent: true,
+      ghsReductionPercent: true,
+    },
+  });
 }
 
 export function validateCardAmountForRate(

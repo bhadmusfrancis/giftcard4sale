@@ -167,6 +167,7 @@ model CardType {
   ghsReductionPercent   Int?
   rates       Rate[]
   currencyMeta CardCurrencyMeta[]
+  currencyReductions CardCurrencyReduction[]
   trades      Trade[]
   landingPage LandingPage?
   insightPosts InsightPost[]
@@ -192,6 +193,25 @@ model Rate {
   updatedAt     DateTime   @updatedAt
 
   @@index([cardTypeId, country, medium])
+}
+
+// Per-card, per-face-currency deduction overrides (e.g. Apple USD vs Apple
+// GBP). A null field falls back to the card's own override
+// (CardType.*ReductionPercent), then the deduction band / platform default.
+// Admin-owned: rate syncs never touch it.
+model CardCurrencyReduction {
+  id          String   @id @default(cuid())
+  cardType    CardType @relation(fields: [cardTypeId], references: [id], onDelete: Cascade)
+  cardTypeId  String
+  currency    String // card face currency, e.g. USD
+  nairaReductionPercent Int?
+  usdtReductionPercent  Int?
+  ghsReductionPercent   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([cardTypeId, currency])
+  @@index([cardTypeId])
 }
 
 // Cached NoOnes offer metadata per card currency (ranges, offer count).
@@ -284,7 +304,8 @@ model FxRateState {
 // Payout deduction % bucketed by how many SafeTheTrade offers a card's
 // currency had at the last sync — per currency, not the card-wide row count.
 // Cards with no SafeTheTrade rates (Sogo-only) skip the bands entirely.
-// A card's own per-currency overrides (CardType.*ReductionPercent) still win.
+// A card's own overrides still win: CardCurrencyReduction per face currency,
+// then CardType.*ReductionPercent card-wide.
 model RateDeductionBand {
   id                    String   @id @default(cuid())
   minRateCount          Int      // inclusive lower bound on a currency's STT offers

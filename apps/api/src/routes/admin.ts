@@ -43,7 +43,7 @@ import {
   getUserModerationSummary,
   getUserTradeLimit,
 } from "../services/userModeration";
-import { deductionRateCountForCard, findPhysicalSibling, storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
+import { currencyReductionForCard, deductionRateCountForCard, findPhysicalSibling, storedNairaFromRate, receiptTypeForQuote } from "../services/rateQuoteResolve";
 import { STT_RATE_SPEED } from "../services/rateSources";
 import { parseStoredQuotes } from "../services/noones";
 import { generateDailyInsights } from "../services/insights/generator";
@@ -742,7 +742,8 @@ adminRouter.post(
         await deductionRateCountForCard(cardTypeId, currency),
         config,
         data.cardAmount,
-        data.useLowDenomRates
+        data.useLowDenomRates,
+        await currencyReductionForCard(cardTypeId, currency)
       ),
       extraReductionPercent:
         isEuroAppleRate(cardReductions, currency, country) && euroDenominationIsOdd(data.cardAmount)
@@ -1125,7 +1126,7 @@ adminRouter.get(
     const [cards, config, sttRows] = await Promise.all([
       prisma.cardType.findMany({
         orderBy: { name: "asc" },
-        include: { _count: { select: { rates: true } } },
+        include: { _count: { select: { rates: true } }, currencyReductions: true },
       }),
       getRateConfig(),
       prisma.rate.findMany({
@@ -1167,6 +1168,12 @@ adminRouter.get(
           nairaReductionPercent: c.nairaReductionPercent,
           usdtReductionPercent: c.usdtReductionPercent,
           ghsReductionPercent: c.ghsReductionPercent,
+          currencyReductions: c.currencyReductions.map((r) => ({
+            currency: r.currency,
+            nairaReductionPercent: r.nairaReductionPercent,
+            usdtReductionPercent: r.usdtReductionPercent,
+            ghsReductionPercent: r.ghsReductionPercent,
+          })),
           deductionBand: band
             ? {
                 label: deductionBandLabel(band),
@@ -1198,6 +1205,13 @@ adminRouter.post(
   })
 );
 
+const currencyReductionSchema = z.object({
+  currency: z.string().min(1).max(10),
+  nairaReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+  usdtReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+  ghsReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+});
+
 adminRouter.patch(
   "/cards/:id",
   asyncHandler(async (req, res) => {
@@ -1212,10 +1226,11 @@ adminRouter.patch(
         nairaReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
         usdtReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
         ghsReductionPercent: z.number().int().min(0).max(100).nullable().optional(),
+        currencyReductions: z.array(currencyReductionSchema).max(50).optional(),
       }),
       req.body
     );
-    const patch: any = { ...data };
+    const { currencyReductions, ...patch } = data as any;
     if (data.name) {
       const name = normalizeCardTypeName(data.name);
       patch.name = name;
@@ -1223,7 +1238,34 @@ adminRouter.patch(
       patch.sellSlug = sellSlug(name);
     }
     const card = await prisma.cardType.update({ where: { id: req.params.id }, data: patch });
-    res.json({ card });
+
+    // Per-face-currency overrides: a row with every field blank falls back to
+    // the card-wide overrides, so it is deleted rather than stored.
+    for (const r of currencyReductions ?? []) {
+      const currency = r.currency.trim().toUpperCase();
+      if (!currency) continue;
+      const fields = {
+        nairaReductionPercent: r.nairaReductionPercent ?? null,
+        usdtReductionPercent: r.usdtReductionPercent ?? null,
+        ghsReductionPercent: r.ghsReductionPercent ?? null,
+      };
+      const key = { cardTypeId_currency: { cardTypeId: card.id, currency } };
+      if (Object.values(fields).every((v) => v == null)) {
+        await prisma.cardCurrencyReduction.deleteMany({ where: { cardTypeId: card.id, currency } });
+      } else {
+        await prisma.cardCurrencyReduction.upsert({
+          where: key,
+          update: fields,
+          create: { cardTypeId: card.id, currency, ...fields },
+        });
+      }
+    }
+
+    const withReductions = await prisma.cardType.findUnique({
+      where: { id: card.id },
+      include: { currencyReductions: true },
+    });
+    res.json({ card: withReductions ?? card });
   })
 );
 
@@ -1570,6 +1612,18 @@ adminRouter.put(
     }
     if (Object.keys(cardCascade).length > 0) {
       await prisma.cardType.updateMany({ data: cardCascade });
+    }
+    // Per-currency overrides reset alongside the per-card ones; a row left
+    // with all three fields blank falls back entirely, so it is dropped.
+    if (cardDeductionsReset) {
+      const currencyReset: Prisma.CardCurrencyReductionUpdateManyMutationInput = {};
+      if (deductionReset.nairaReductionPercent === null) currencyReset.nairaReductionPercent = null;
+      if (deductionReset.usdtReductionPercent === null) currencyReset.usdtReductionPercent = null;
+      if (deductionReset.ghsReductionPercent === null) currencyReset.ghsReductionPercent = null;
+      await prisma.cardCurrencyReduction.updateMany({ data: currencyReset });
+      await prisma.cardCurrencyReduction.deleteMany({
+        where: { nairaReductionPercent: null, usdtReductionPercent: null, ghsReductionPercent: null },
+      });
     }
     const [config, fx] = await Promise.all([getRateConfig(), getFxRateState()]);
     res.json({ config, fx, autoResellOverrideApplied, cardDeductionsReset });
