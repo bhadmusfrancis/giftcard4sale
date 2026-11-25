@@ -481,8 +481,11 @@ async function syncPrimaryRate(
     return;
   }
   // Recorded even when the book is too thin to quote: Sogo then prices the
-  // tier, but over the amounts SafeTheTrade's sellers actually take.
-  sttRanges.set(`${dbCard.id}|${rate.currency}`, { min: rate.minDenom, max: rate.maxDenom });
+  // tier, but over the amounts SafeTheTrade's sellers actually take. An
+  // exhausted tier has no band of its own — its last stored one stands.
+  if (!rate.exhausted) {
+    sttRanges.set(`${dbCard.id}|${rate.currency}`, { min: rate.minDenom, max: rate.maxDenom });
+  }
 
   const reference = sogoReference.get(`${dbCard.id}|${rate.currency}`) ?? new Map<CardMedium, number>();
   const tierRates = primaryTierRates(rate, reference, policy);

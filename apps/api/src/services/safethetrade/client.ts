@@ -370,7 +370,14 @@ export async function fetchSafeTheTradeRates(
   const now = Date.now();
   const grouped = new Map<
     string,
-    { canonicalMethodId: string; currency: string; samples: Sample[]; catalogCandidate: boolean }
+    {
+      canonicalMethodId: string;
+      currency: string;
+      samples: Sample[];
+      catalogCandidate: boolean;
+      /** The feed lists the tier, but at least one offer was dropped as an ignored seller. */
+      sawIgnoredOwner?: boolean;
+    }
   >();
   let anonymousOwner = 0;
 
@@ -378,7 +385,6 @@ export async function fetchSafeTheTradeRates(
     if (offer.type !== "sell") continue;
     if (offer.active === false || offer.deauthorized || offer.visibility !== "public") continue;
     if (offer.scheduleOnline === false || offer.autoOff) continue;
-    if (IGNORED_OWNERS.has(String(offer.ownerUsername ?? "").trim().toLowerCase())) continue;
 
     const methodId = String(offer.paymentMethodId ?? "").trim();
     const currency = String(offer.fiatCurrency ?? offer.pricing?.fiatCurrency ?? "").toUpperCase();
@@ -409,6 +415,16 @@ export async function fetchSafeTheTradeRates(
       entry.catalogCandidate = false;
     }
 
+    // Ignored sellers never price a tier — but the group stays registered, so
+    // a book made of nothing but their listings is emitted as exhausted and
+    // its stored rate retired, rather than passing for absent-from-the-feed
+    // and keeping the last rate.
+    if (IGNORED_OWNERS.has(String(offer.ownerUsername ?? "").trim().toLowerCase())) {
+      entry.sawIgnoredOwner = true;
+      grouped.set(key, entry);
+      continue;
+    }
+
     const minFiat = num(offer.effectiveMinFiat) || num(offer.minFiat);
     const maxFiat = num(offer.effectiveMaxFiat) || num(offer.maxFiat);
     entry.samples.push({
@@ -430,12 +446,36 @@ export async function fetchSafeTheTradeRates(
   }
 
   const rows: SyncedCardRate[] = [];
-  for (const { canonicalMethodId, currency, samples: book, catalogCandidate } of grouped.values()) {
+  for (const { canonicalMethodId, currency, samples: book, catalogCandidate, sawIgnoredOwner } of grouped.values()) {
+    const canonicalApiName = methodNames.get(canonicalMethodId);
+    const cardName =
+      BRAND_NAME_OVERRIDES[canonicalMethodId] ??
+      (canonicalApiName ? cardNameFromMethod(canonicalMethodId, canonicalApiName) : undefined) ??
+      cardNameFromMethod(canonicalMethodId, canonicalMethodId);
+    const tier = currencyTierFromCode(currency);
+
     // With every seller offline there is no amount anyone can take right now.
     // Leaving the tier out keeps its last synced rate and range untouched
     // rather than re-advertising the offline traders' amounts.
     const online = book.filter((s) => s.online);
-    if (!online.length) continue;
+    if (!online.length) {
+      if (!book.length && sawIgnoredOwner) {
+        rows.push({
+          cardName,
+          slugHint: canonicalCardSlug(cardName),
+          currency,
+          country: tier.country,
+          minDenom: Math.max(1, Math.round(tier.minDenom ?? 1)),
+          maxDenom: Math.max(1, Math.round(tier.maxDenom ?? 1)),
+          nairaPerUnit: 0,
+          storedQuotes: {},
+          offerCount: 0,
+          ownerCount: 0,
+          exhausted: true,
+        });
+      }
+      continue;
+    }
 
     const samples = topRecommended(book, sellersPerTier);
     const usdtPerFiatUnit = median(samples.map((s) => s.usdtPerFiatUnit));
@@ -453,16 +493,9 @@ export async function fetchSafeTheTradeRates(
       ? median(ecodeSamples.map((s) => s.usdtPerFiatUnit)) * ngnPerUsdt
       : undefined;
 
-    const tier = currencyTierFromCode(currency);
     const range = coveredDenomRange(online, minOfferOwners);
     const minDenom = Math.max(1, Math.round(range?.min ?? tier.minDenom ?? 1));
     const maxDenom = Math.max(minDenom, Math.round(range?.max ?? tier.maxDenom ?? minDenom));
-
-    const canonicalApiName = methodNames.get(canonicalMethodId);
-    const cardName =
-      BRAND_NAME_OVERRIDES[canonicalMethodId] ??
-      (canonicalApiName ? cardNameFromMethod(canonicalMethodId, canonicalApiName) : undefined) ??
-      cardNameFromMethod(canonicalMethodId, canonicalMethodId);
 
     rows.push({
       cardName,

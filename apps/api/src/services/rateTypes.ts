@@ -38,6 +38,13 @@ export interface SyncedCardRate {
    * never become card types.
    */
   catalogCandidate?: boolean;
+  /**
+   * The marketplace still lists this card + currency, but every listing was
+   * excluded (all its sellers are ignored) — the sync retires the stored rows
+   * rather than treating the tier as absent and keeping its last rate. The
+   * rate fields are dummies; nothing behind them exists to quote.
+   */
+  exhausted?: boolean;
 }
 
 /** Counters reported by a sync run (admin panel, CLI output, progress polling). */
