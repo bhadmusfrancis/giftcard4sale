@@ -2,6 +2,7 @@ import { prisma } from "../prisma";
 import { env } from "../env";
 import { sendTransactionalEmail } from "./email";
 import { sendPushToUser } from "./push";
+import { activeUserWhere } from "./userModeration";
 import {
   inferNotificationCategory,
   getUserNotificationPreferences,
@@ -120,6 +121,49 @@ export async function notifyAdmins(opts: {
       })
     )
   );
+}
+
+export interface BroadcastOptions {
+  title: string;
+  body: string;
+  link?: string;
+  /** Also email users who opted in to broadcast email (default off). */
+  email?: boolean;
+  emailSubject?: string;
+}
+
+/** Count of users who would receive a broadcast right now. */
+export async function countBroadcastAudience(): Promise<number> {
+  return prisma.user.count({ where: activeUserWhere() });
+}
+
+/**
+ * Send an announcement to every active user (verified email, not suspended or
+ * banned). In-app + push delivery honors each user's "broadcast" preferences;
+ * email only reaches users who opted in.
+ */
+export async function broadcastToActiveUsers(opts: BroadcastOptions): Promise<{ recipients: number }> {
+  const users = await prisma.user.findMany({ where: activeUserWhere(), select: { id: true } });
+  const CHUNK = 25;
+  for (let i = 0; i < users.length; i += CHUNK) {
+    await Promise.all(
+      users.slice(i, i + CHUNK).map((u) =>
+        notify({
+          userId: u.id,
+          title: opts.title,
+          body: opts.body,
+          link: opts.link,
+          email: opts.email ?? false,
+          emailSubject: opts.emailSubject,
+          push: true,
+          category: "broadcast",
+        }).catch((err) =>
+          console.error(`[broadcast] notify failed for ${u.id}:`, (err as Error).message)
+        )
+      )
+    );
+  }
+  return { recipients: users.length };
 }
 
 export async function emailOperationsInbox(

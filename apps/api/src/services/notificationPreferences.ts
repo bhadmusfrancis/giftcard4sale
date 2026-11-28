@@ -1,6 +1,6 @@
 import { prisma } from "../prisma";
 
-export type NotificationCategory = "tradeStatus" | "tradeChat" | "withdrawal" | "referral";
+export type NotificationCategory = "tradeStatus" | "tradeChat" | "withdrawal" | "referral" | "broadcast";
 
 export interface NotificationChannelPrefs {
   inApp: boolean;
@@ -15,6 +15,7 @@ export const NOTIFICATION_CATEGORIES: NotificationCategory[] = [
   "tradeChat",
   "withdrawal",
   "referral",
+  "broadcast",
 ];
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -22,6 +23,8 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   tradeChat: { inApp: true, push: true, email: true },
   withdrawal: { inApp: true, push: true, email: true },
   referral: { inApp: true, push: true, email: true },
+  // Announcements reach in-app + push by default; marketing email is opt-in.
+  broadcast: { inApp: true, push: true, email: false },
 };
 
 function normalizeChannelPrefs(raw: unknown): NotificationChannelPrefs | null {
@@ -54,6 +57,7 @@ export async function getUserNotificationPreferences(userId: string): Promise<No
 
 export function inferNotificationCategory(title: string): NotificationCategory {
   const t = title.toLowerCase();
+  if (t.includes("announcement") || t.includes("broadcast")) return "broadcast";
   if (t.includes("chat") || t.includes("message") || t.includes("reply")) return "tradeChat";
   if (t.includes("withdrawal")) return "withdrawal";
   if (t.includes("referral")) return "referral";

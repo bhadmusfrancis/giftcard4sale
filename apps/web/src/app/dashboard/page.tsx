@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
-import { money } from "@/lib/format";
 import { PushButton } from "@/components/PushButton";
 import { TradeCompletionGauge } from "@/components/TradeCompletionGauge";
+import { WalletCards } from "@/components/WalletCards";
 
 export default function DashboardHome() {
   const { user } = useAuth();
@@ -30,20 +30,10 @@ export default function DashboardHome() {
 
       <div>
         <h2 className="mb-2 text-sm font-semibold text-slate-700">{t("Wallets")}</h2>
-        <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-          {[
-            ["USDT", user.balanceUsdt],
-            ["NGN", user.balanceNgn],
-            ["GHS", user.balanceGhs],
-          ].map(([cur, bal]) => (
-            <div key={cur as string} className="card p-4 sm:p-6">
-              <div className="text-xs font-medium text-slate-500 sm:text-sm">{t("{cur} wallet", { cur })}</div>
-              <div className="mt-1 break-all text-xl font-bold sm:text-2xl">
-                {money(bal as number, cur as string)}
-              </div>
-            </div>
-          ))}
-        </div>
+        <WalletCards
+          balances={{ USDT: user.balanceUsdt, NGN: user.balanceNgn, GHS: user.balanceGhs }}
+          linkToWallet
+        />
       </div>
 
       <div>

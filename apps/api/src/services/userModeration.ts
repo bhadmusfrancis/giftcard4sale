@@ -9,6 +9,22 @@ export const ACTIVE_TRADE_STATUSES: TradeStatus[] = [
   "APPROVED",
 ];
 
+/**
+ * Canonical definition of an "active user": a verified email address and an
+ * account that is neither banned nor currently suspended. Suspensions whose
+ * `suspendedUntil` already passed count as active — refreshExpiredSuspension
+ * flips them back to ACTIVE lazily on next access.
+ */
+export function activeUserWhere(): Prisma.UserWhereInput {
+  return {
+    emailVerified: true,
+    OR: [
+      { accountStatus: "ACTIVE" },
+      { accountStatus: "SUSPENDED", suspendedUntil: { lte: new Date() } },
+    ],
+  };
+}
+
 export interface UserRestriction {
   blocked: boolean;
   reason?: string;

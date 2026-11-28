@@ -11,7 +11,7 @@ import { importRates } from "../services/rateImport";
 import { payTrade } from "../services/payout";
 import { trackTradePurchaseConversion } from "../services/tradeConversions";
 import { payoutNgnToBank } from "../services/payoutProvider";
-import { notify, notifyAdmins } from "../services/notify";
+import { notify, notifyAdmins, broadcastToActiveUsers, countBroadcastAudience } from "../services/notify";
 import { sendPasswordResetEmail } from "../services/passwordReset";
 import { getRateConfig } from "../services/rateConfig";
 import { getFxRateState, ngnPerGhsFromOfficial, ngnPerUsdtFromOfficial, refreshFxRates } from "../services/fxRate";
@@ -64,6 +64,42 @@ adminRouter.get(
       getLast24hSummary(),
     ]);
     res.json({ users, pendingTrades, pendingWithdrawals, cardTypes, last24h });
+  })
+);
+
+// ---------------------------------------------------------------- Broadcasts
+adminRouter.get(
+  "/broadcasts/audience",
+  asyncHandler(async (_req, res) => {
+    const activeUsers = await countBroadcastAudience();
+    res.json({ activeUsers });
+  })
+);
+
+adminRouter.post(
+  "/broadcasts",
+  asyncHandler(async (req, res) => {
+    const data = validate(
+      z.object({
+        title: z.string().min(3).max(120),
+        body: z.string().min(10).max(500),
+        // Internal links only — rendered as an in-app link and push target.
+        link: z
+          .string()
+          .max(200)
+          .regex(/^\/[^\s]*$/, "Link must be an internal path like /cards")
+          .optional(),
+        sendEmail: z.boolean().optional(),
+      }),
+      req.body
+    );
+    const { recipients } = await broadcastToActiveUsers({
+      title: data.title.trim(),
+      body: data.body.trim(),
+      link: data.link?.trim() || undefined,
+      email: data.sendEmail ?? false,
+    });
+    res.json({ ok: true, recipients });
   })
 );
 

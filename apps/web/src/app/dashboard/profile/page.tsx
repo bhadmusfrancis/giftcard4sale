@@ -153,6 +153,7 @@ type NotificationPreferences = {
   tradeChat: ChannelPrefs;
   withdrawal: ChannelPrefs;
   referral: ChannelPrefs;
+  broadcast: ChannelPrefs;
 };
 
 const PREF_LABELS: { key: keyof NotificationPreferences; label: string; hint: string }[] = [
@@ -160,6 +161,7 @@ const PREF_LABELS: { key: keyof NotificationPreferences; label: string; hint: st
   { key: "tradeChat", label: "Trade chat", hint: "At most one alert per 15 minutes per trade" },
   { key: "withdrawal", label: "Withdrawals", hint: "Withdrawal requests and payouts" },
   { key: "referral", label: "Referrals", hint: "Referral bonus earnings" },
+  { key: "broadcast", label: "Announcements", hint: "New cards, rate boosts and platform news" },
 ];
 
 function NotificationPreferencesSection() {

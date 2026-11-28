@@ -15,6 +15,7 @@ const NAV = [
   { href: "/admin/rates", label: "Rates & cards" },
   { href: "/admin/landing", label: "Landing pages" },
   { href: "/admin/referrals", label: "Referrals" },
+  { href: "/admin/broadcasts", label: "Broadcasts" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

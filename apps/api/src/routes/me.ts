@@ -26,6 +26,7 @@ const preferencesPatchSchema = z.object({
   tradeChat: channelPrefsSchema.partial().optional(),
   withdrawal: channelPrefsSchema.partial().optional(),
   referral: channelPrefsSchema.partial().optional(),
+  broadcast: channelPrefsSchema.partial().optional(),
 });
 
 meRouter.get(

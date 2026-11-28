@@ -16,7 +16,8 @@
     "regenerate:insights": "tsx scripts/regenerate-insights.ts",
     "publish:landing": "tsx scripts/publish-landing-pages.ts",
     "import:noones-cards": "tsx scripts/import-noones-cards.ts",
-    "sync:rates": "tsx --import ./scripts/cli-preload.ts scripts/sync-rates.ts"
+    "sync:rates": "tsx --import ./scripts/cli-preload.ts scripts/sync-rates.ts",
+    "broadcast:new-cards": "tsx --import ./scripts/cli-preload.ts scripts/broadcast-new-cards.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

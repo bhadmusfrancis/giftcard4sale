@@ -6,16 +6,11 @@ import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { USDT_WITHDRAWAL_NETWORK_FEE } from "@gc4s/shared";
 import { FormFeedback } from "@/components/FormFeedback";
+import { WalletCards, WalletCurrency } from "@/components/WalletCards";
 import { useAsyncAction } from "@/lib/useAsyncAction";
 import { money, date, STATUS_COLORS } from "@/lib/format";
 
 const MOMO_NETWORKS = ["MTN", "Vodafone", "AirtelTigo"] as const;
-
-const CURRENCY_LABELS: Record<"USDT" | "NGN" | "GHS", string> = {
-  USDT: "USDT",
-  NGN: "Naira",
-  GHS: "Cedi",
-};
 
 function withdrawalDestination(w: {
   bankAccount?: { bankName: string; accountNumber: string } | null;
@@ -129,26 +124,19 @@ export default function WalletPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{tr("Wallet")}</h1>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {(["USDT", "NGN", "GHS"] as const).map((cur) => {
-          const min = minWithdrawals[cur] ?? 0;
-          return (
-            <div key={cur} className="card p-6">
-              <div className="text-sm text-slate-500">{tr("{cur} balance", { cur: CURRENCY_LABELS[cur] })}</div>
-              <div className="mt-1 text-2xl font-bold">{money(balances[cur], cur)}</div>
-              {min > 0 && (
-                <p className="mt-2 text-xs text-slate-500">
-                  {tr("Min withdrawal")}: {money(min, cur)}
-                </p>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <WalletCards
+        balances={balances as Record<WalletCurrency, number>}
+        minWithdrawals={minWithdrawals as Partial<Record<WalletCurrency, number>>}
+        selected={currency}
+        onSelect={(cur) => {
+          setCurrency(cur);
+          document.getElementById("withdraw-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Withdraw / send */}
-        <form onSubmit={submitWithdraw} className="card space-y-4 p-6">
+        <form id="withdraw-form" onSubmit={submitWithdraw} className="card space-y-4 p-6 scroll-mt-24">
           <h2 className="text-lg font-bold">{tr("Send / Withdraw")}</h2>
           <div>
             <label className="label">{tr("Currency")}</label>
