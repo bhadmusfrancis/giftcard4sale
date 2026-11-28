@@ -88,11 +88,12 @@ export function WalletCards({
   selected?: WalletCurrency;
 }) {
   const t = useT();
-  const [hidden, setHidden] = useState(false);
+  const [hidden, setHidden] = useState<Partial<Record<WalletCurrency, boolean>>>({});
 
   const renderCard = (cur: WalletCurrency) => {
     const theme = THEMES[cur];
     const min = minWithdrawals?.[cur];
+    const isHidden = !!hidden[cur];
     return (
       <div
         className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${theme.gradient} p-4 text-white shadow-md transition hover:shadow-lg hover:brightness-[1.04] sm:p-5 ${
@@ -118,16 +119,16 @@ export function WalletCards({
             </div>
             <button
               type="button"
-              aria-label={hidden ? t("Show balances") : t("Hide balances")}
-              aria-pressed={hidden}
+              aria-label={isHidden ? t("Show {cur} balance", { cur }) : t("Hide {cur} balance", { cur })}
+              aria-pressed={isHidden}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setHidden((h) => !h);
+                setHidden((h) => ({ ...h, [cur]: !h[cur] }));
               }}
               className="shrink-0 rounded-full bg-white/15 p-2 text-white/90 ring-1 ring-white/20 backdrop-blur-sm transition hover:bg-white/25"
             >
-              <EyeIcon off={hidden} />
+              <EyeIcon off={isHidden} />
             </button>
           </div>
 
@@ -135,7 +136,7 @@ export function WalletCards({
             {t("Available balance")}
           </div>
           <div className="mt-1 break-all text-2xl font-extrabold tracking-tight tabular-nums sm:text-[1.75rem]">
-            {hidden ? "••••••" : money(balances[cur], cur)}
+            {isHidden ? "••••••" : money(balances[cur], cur)}
           </div>
 
           <div className="mt-3 flex min-h-6 items-center">
